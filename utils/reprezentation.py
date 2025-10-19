@@ -302,7 +302,6 @@ def capture_layer_representations(
             
 
     # Generate image to trigger activations
-    print(f"Generating image to capture layer activations...")
     pipe_args = {
         "prompt": prompt,
         "num_inference_steps": num_inference_steps,
@@ -316,7 +315,6 @@ def capture_layer_representations(
     # Clean up hooks
     for handle in hook_handles:
         handle.remove()
-    print("Hooks removed. Representations captured successfully.")
     
     # Return list of tensors in the order specified by layer_paths
     results = [captured_representations[f"hook_{i}"] for i in range(len(layer_paths)) if f"hook_{i}" in captured_representations]
