@@ -133,16 +133,23 @@ def create_visualization_callback(pipe, storage_list: List[Image.Image]) -> Call
     Returns:
         Callable: Callback function compatible with diffusers pipeline.
     """
-    def capture_step_visualization(step: int, timestep: int, latents: torch.FloatTensor):
+    def capture_step_visualization(pipeline, step_index: int, timestep: int, callback_kwargs: dict):
         """
         Function called after each denoising step.
         Converts the current latent tensor to an image and saves it.
         
         Args:
-            step (int): Current denoising step number.
+            pipeline: The pipeline instance (passed automatically by diffusers).
+            step_index (int): Current denoising step number.
             timestep (int): Current timestep in the diffusion process.
-            latents (torch.FloatTensor): Latent tensor representation of the image.
+            callback_kwargs (dict): Dictionary containing 'latents' and other tensors.
+        
+        Returns:
+            dict: Updated callback_kwargs (must return for diffusers compatibility).
         """
+        # Extract latents from callback_kwargs
+        latents = callback_kwargs["latents"]
+        
         # Take the first element (batch size 1) and detach it from the graph
         latent_to_decode = latents[0].detach()
         
@@ -161,6 +168,7 @@ def create_visualization_callback(pipe, storage_list: List[Image.Image]) -> Call
         # Save the image to the storage list
         storage_list.append(image)
         
-        return None
+        # Must return callback_kwargs for diffusers compatibility
+        return callback_kwargs
     
     return capture_step_visualization
