@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 
 dependencies = [
     "diffusers>=0.35.2",
+    "dotenv>=0.9.9",
     "einops>=0.8.1",
     "ipykernel>=7.0.1",
     "jupyterlab>=4.4.10",
