@@ -1,24 +1,22 @@
 #!/bin/bash
 ################################################################################
-# SLURM Array Job Script - Cluster Test
-# Purpose: Test job array functionality with different parameter combinations
+# SLURM Array Job Script - Image Generation Test
+# Purpose: Test image generation with Stable Diffusion using different prompts
 #
 # Usage:
-#   sbatch scripts/eden_test.sh
+#   sbatch scripts/test_image_generation.sh
 #
 # Description:
-#   This script runs 24 parallel tasks (0-23) split between two test scripts:
-#   - Tasks 0-11:  Run eden_cluster_test_1.py
-#   - Tasks 12-23: Run eden_cluster_test_2.py
+#   This script runs 6 parallel tasks (0-5) to generate images:
+#   - Each task uses a different prompt
+#   - Tests both CUDA and CPU device preferences
 #   
-#   Each task tests different combinations of:
-#   - 4 model backbones (resnet18, resnet50, vgg16, mobilenet)
-#   - 3 datasets (mnist, cifar10, imagenet)
-#   - 2 splits (validation, training)
+#   Tasks 0-2: Prompt 1, 2, 3 with CUDA
+#   Tasks 3-5: Prompt 1, 2, 3 with CPU fallback
 #   
 #   Results are saved to:
-#   - Script 1: results/test_result_task_{0-11}.txt
-#   - Script 2: results/alternative/alternative_test_task_{12-23}.txt
+#   - Images: results/images/task_{TASK_ID}_{timestamp}_{prompt}.png
+#   - Metadata: results/images/task_{TASK_ID}_{timestamp}_metadata.txt
 #   - Logs: logs/job_{JOB_ID}_{TASK_ID}.log
 ################################################################################
 
@@ -27,17 +25,17 @@
 # Tell SLURM what resources you need
 #==============================================================================
 
-#SBATCH --account mjarosz          # Your compute account name
-#SBATCH --job-name eden_test        # Name shown in queue
-#SBATCH --time 0-00:10:00               # Max runtime (Days-Hours:Min:Sec)
+#SBATCH --account mi2lab-normal          # Your compute account name
+#SBATCH --job-name sd_img_test          # Name shown in queue
+#SBATCH --time 0-00:30:00               # Max runtime (Days-Hours:Min:Sec)
 #SBATCH --nodes 1                       # Number of nodes
 #SBATCH --ntasks-per-node 1             # Tasks per node
-#SBATCH --gres 1                    # Request 1 GPU
-#SBATCH --cpus-per-task 12              # CPU cores (for data loading)
+#SBATCH --gres gpu:1                    # Request 1 GPU
+#SBATCH --cpus-per-task 6               # CPU cores (for data loading)
 #SBATCH --mem 16G                       # RAM
 #SBATCH --partition short               # Queue name
 #SBATCH --output logs/job_%A_%a.log     # %A=job ID, %a=task ID
-#SBATCH --array 0-23%5                  # 24 tasks, max 5 running at once
+#SBATCH --array 0-5%3                   # 6 tasks, max 3 running at once
 
 # Optional: email notifications
 # #SBATCH --mail-user 01180706@pw.edu.pl
@@ -63,94 +61,74 @@ echo "=========================================="
 
 # Create directories if needed
 mkdir -p logs
-mkdir -p data
-mkdir -p results
+mkdir -p results/images
 
 # Navigate to your project directory
 cd /mnt/evafs/groups/mi2lab/mjarosz/sd-control-and-representation
 
 # Load environment variables if you have them
 if [ -f .env ]; then
-  export $(cat .env | xargs)
+  export $(cat .env | grep -v '^#' | xargs)
 fi
+
+# Display key environment variables for debugging
+echo "Environment Configuration:"
+echo "  RESULTS_DIR: ${RESULTS_DIR:-Not set (will use default)}"
+echo "  HF_HOME: ${HF_HOME:-Not set}"
+echo ""
 
 #==============================================================================
 # EXPERIMENT CONFIGURATION
 # Define all parameters you want to test
 #==============================================================================
 
-# Python scripts to run
-PYTHON_SCRIPTS=(
-    "code/tests/eden_cluster_test_1.py"
-    "code/tests/eden_cluster_test_2.py"
+# Python script
+PYTHON_SCRIPT="src/tests/test_image_generation.py"
+
+# Prompts to test
+PROMPTS=(
+    "A frog wearing a top hat and monocle"
+    "An orange tabby cat sitting on a skateboard"
+    "A futuristic cityscape at sunset with flying cars"
 )
 
-# Model backbones
-BACKBONES=(
-    "resnet18"
-    "resnet50"
-    "vgg16"
-    "mobilenet"
+# Device preferences
+DEVICE_PREFERENCES=(
+    "cuda"
+    "cpu"
 )
 
-# Datasets
-DATASETS=(
-    "mnist"
-    "cifar10"
-    "imagenet"
-)
-
-# Splits
-SPLITS=(
-    ""              # validation (default)
-    "--train-split" # training
-)
+# Image generation parameters
+GUIDANCE_SCALE=7.5
+NUM_STEPS=50
+SEED=42
 
 #==============================================================================
 # TASK MAPPING
-# Convert task ID (0-23) to specific parameter combination
+# Convert task ID (0-5) to specific parameter combination
 #
 # How it works:
-# - Tasks 0-11:  Use eden_cluster_test.py
-# - Tasks 12-23: Use eden_cluster_test_2.py
-# Both use same parameters: 4 backbones × 3 datasets × 2 splits = 24 combinations
+# - Tasks 0-2: Prompts 1, 2, 3 with CUDA preference
+# - Tasks 3-5: Prompts 1, 2, 3 with CPU preference
 #==============================================================================
 
-# Determine which script to use
-if [ $SLURM_ARRAY_TASK_ID -lt 12 ]; then
-    SCRIPT_IDX=0
-    ADJUSTED_TASK_ID=$SLURM_ARRAY_TASK_ID
-else
-    SCRIPT_IDX=1
-    ADJUSTED_TASK_ID=$((SLURM_ARRAY_TASK_ID - 12))
-fi
-
-PYTHON_SCRIPT=${PYTHON_SCRIPTS[$SCRIPT_IDX]}
-
-# Calculate parameter indices (same logic for both scripts)
-BACKBONE_IDX=$((ADJUSTED_TASK_ID % 4))                  # Cycles 0-3
-DATASET_IDX=$(( (ADJUSTED_TASK_ID / 4) % 3 ))          # 0, 1, or 2
-SPLIT_IDX=$((ADJUSTED_TASK_ID / 12))                   # 0 or 1 (but always 0 for tasks 0-11)
+# Calculate parameter indices
+PROMPT_IDX=$((SLURM_ARRAY_TASK_ID % 3))              # Cycles 0-2
+DEVICE_IDX=$((SLURM_ARRAY_TASK_ID / 3))              # 0 for tasks 0-2, 1 for tasks 3-5
 
 # Get actual parameter values
-CURRENT_BACKBONE=${BACKBONES[$BACKBONE_IDX]}
-CURRENT_DATASET=${DATASETS[$DATASET_IDX]}
-CURRENT_SPLIT=${SPLITS[$SPLIT_IDX]}
-
-# Create readable split name
-if [ -z "$CURRENT_SPLIT" ]; then
-    SPLIT_NAME="validation"
-else
-    SPLIT_NAME="train"
-fi
+CURRENT_PROMPT=${PROMPTS[$PROMPT_IDX]}
+CURRENT_DEVICE=${DEVICE_PREFERENCES[$DEVICE_IDX]}
 
 # Display configuration
 echo ""
 echo "Task Configuration:"
 echo "  Script: ${PYTHON_SCRIPT}"
-echo "  Backbone: ${CURRENT_BACKBONE}"
-echo "  Dataset:  ${CURRENT_DATASET}"
-echo "  Split:    ${SPLIT_NAME}"
+echo "  Prompt: ${CURRENT_PROMPT}"
+echo "  Device Preference: ${CURRENT_DEVICE}"
+echo "  Guidance Scale: ${GUIDANCE_SCALE}"
+echo "  Steps: ${NUM_STEPS}"
+echo "  Seed: ${SEED}"
 echo "=========================================="
 echo ""
 
@@ -160,14 +138,13 @@ echo ""
 
 echo "Starting experiment..."
 
-# Run the selected Python script with the same parameters
+# Run the Python script with the parameters
 uv run python ${PYTHON_SCRIPT} \
-    --backbone ${CURRENT_BACKBONE} \
-    --dataset ${CURRENT_DATASET} \
-    --batch-size 256 \
-    --workers 8 \
-    --seed 42 \
-    ${CURRENT_SPLIT}
+    --prompt "${CURRENT_PROMPT}" \
+    --preferred-device ${CURRENT_DEVICE} \
+    --guidance-scale ${GUIDANCE_SCALE} \
+    --steps ${NUM_STEPS} \
+    --seed ${SEED}
 
 # Capture whether it succeeded or failed
 EXIT_CODE=$?
