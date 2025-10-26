@@ -335,7 +335,7 @@ def capture_layer_representations(
         "callback_on_step_end_tensor_inputs": ["latents"],
     }
 
-    pipe(**pipe_args)
+    image = pipe(**pipe_args).images[0]
 
     # Clean up hooks
     for handle in hook_handles:
@@ -348,4 +348,4 @@ def capture_layer_representations(
         if f"hook_{i}" in captured_representations
     ]
 
-    return results
+    return results, image
