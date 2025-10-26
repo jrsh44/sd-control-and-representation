@@ -14,7 +14,12 @@ from pathlib import Path
 import torch
 from diffusers import StableDiffusionPipeline
 
-from src.utils.reprezentation import LayerPath, capture_layer_representations
+# Add project root to path to allow imports to work from any location
+project_root = Path(__file__).parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from src.utils.reprezentation import LayerPath, capture_layer_representations  # noqa: E402
 
 
 def main():
