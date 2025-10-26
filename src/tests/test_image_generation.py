@@ -45,8 +45,8 @@ def main():
     args = parser.parse_args()
 
     # Get SLURM environment variables
-    job_id = os.environ.get("SLURM_JOB_ID", "N/A")
-    task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "N/A")
+    job_id = os.environ.get("SLURM_JOB_ID", "no_slurm_job_id")
+    task_id = os.environ.get("SLURM_ARRAY_TASK_ID", "no_slurm_task_id")
 
     # Get results directory from environment variable or use default
     # If RESULTS_DIR is set, use it; otherwise use local "results" directory
