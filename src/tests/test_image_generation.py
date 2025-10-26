@@ -12,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-from diffusers import StableDiffusionPipeline
 from dotenv import load_dotenv
 
 # Add project root to path to allow imports to work from any location
@@ -22,6 +21,8 @@ if str(project_root) not in sys.path:
 
 # Load .env from project root
 load_dotenv(dotenv_path=project_root / ".env")
+
+from diffusers import StableDiffusionPipeline  # noqa: E402
 
 from src.utils.reprezentation import LayerPath, capture_layer_representations  # noqa: E402
 
