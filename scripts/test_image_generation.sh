@@ -25,7 +25,7 @@
 # Tell SLURM what resources you need
 #==============================================================================
 
-#SBATCH --account mi2lab-normal          # Your compute account name
+#SBATCH --account mi2lab          # Your compute account name
 #SBATCH --job-name sd_img_test          # Name shown in queue
 #SBATCH --time 0-00:30:00               # Max runtime (Days-Hours:Min:Sec)
 #SBATCH --nodes 1                       # Number of nodes
