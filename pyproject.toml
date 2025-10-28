@@ -1,0 +1,34 @@
+[project]
+name = "sd-control-and-representation"
+version = "0.1.0"
+description = "Stable Diffusion: Semantic Representation Analysis and Control."
+requires-python = ">=3.10"
+
+dependencies = [
+    "diffusers>=0.35.2",
+    "dotenv>=0.9.9",
+    "einops>=0.8.1",
+    "ipykernel>=7.0.1",
+    "jupyterlab>=4.4.10",
+    "matplotlib>=3.10.7",
+    "overcomplete>=0.2.8",
+    "torch>=2.9.0",
+    "transformers>=4.57.1",
+]
+
+[tool.uv]
+
+[tool.ruff]
+select = ["E", "W", "F", "I", "N", "B", "S", "TID", "C4"]
+ignore = []
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# Some Jupyter notebook issues we want to ignore
+"*.ipynb" = ["E402", "F841"] # E402: imports, F841: unused variables
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.2",
+]

@@ -1,7 +1,8 @@
+from enum import Enum
+from typing import Any, Dict, List
+
 import torch
 from diffusers import StableDiffusionPipeline
-from typing import List, Dict, Any
-from enum import Enum
 
 # --- 1. LayerPath: Simple Enum for Layer Paths ---
 
@@ -22,7 +23,7 @@ class LayerPath(Enum):
     # Shape: [batch, 77 tokens, 768 dims]
     # Usage: Baseline representation before transformer processing
     # Analysis: Shows initial token meanings before context is applied
-    TEXT_TOKEN_EMBEDS = "text_encoder.text_model.embeddings.token_embedding"
+    TEXT_TOKEN_EMBEDS = "text_encoder.text_model.embeddings.token_embedding"  # noqa: S105
 
     # Middle CLIP Layer (Layer 5/11) - MID-LEVEL SEMANTICS
     # Intermediate representation halfway through CLIP's transformer stack.
@@ -75,12 +76,8 @@ class LayerPath(Enum):
     # Analysis: Pure visual features without text conditioning
     # ⭐ MOST USEFUL: RES_1 (final features before downsampling)
     UNET_DOWN_0_RES_0 = "unet.down_blocks.0.resnets.0"  # Initial local features
-    UNET_DOWN_0_RES_1 = (
-        "unet.down_blocks.0.resnets.1"  # ⭐ Refined features before downsample
-    )
-    UNET_DOWN_0_DOWNSAMPLE = (
-        "unet.down_blocks.0.downsamplers.0"  # After resolution reduction
-    )
+    UNET_DOWN_0_RES_1 = "unet.down_blocks.0.resnets.1"  # ⭐ Refined features before downsample
+    UNET_DOWN_0_DOWNSAMPLE = "unet.down_blocks.0.downsamplers.0"  # After resolution reduction
 
     # Down Block 1 (32x32) - MID/HIGH RESOLUTION, CROSS-ATTENTION STARTS
     # First block with cross-attention, text conditioning begins.
@@ -89,12 +86,14 @@ class LayerPath(Enum):
     # Analysis: Compare ResNet vs Attention outputs to see text's impact
     # ⭐ MOST USEFUL: ATT_1 (final text-conditioned features) or pair RES_1 + ATT_1
     UNET_DOWN_1_RES_0 = "unet.down_blocks.1.resnets.0"  # Visual features before text
-    UNET_DOWN_1_ATT_0 = "unet.down_blocks.1.attentions.0.transformer_blocks.0"  # First text conditioning
-    UNET_DOWN_1_RES_1 = "unet.down_blocks.1.resnets.1"  # Further visual refinement
-    UNET_DOWN_1_ATT_1 = "unet.down_blocks.1.attentions.1.transformer_blocks.0"  # ⭐ Final conditioned features
-    UNET_DOWN_1_DOWNSAMPLE = (
-        "unet.down_blocks.1.downsamplers.0"  # After resolution reduction
+    UNET_DOWN_1_ATT_0 = (
+        "unet.down_blocks.1.attentions.0.transformer_blocks.0"  # First text conditioning
     )
+    UNET_DOWN_1_RES_1 = "unet.down_blocks.1.resnets.1"  # Further visual refinement
+    UNET_DOWN_1_ATT_1 = (
+        "unet.down_blocks.1.attentions.1.transformer_blocks.0"  # ⭐ Final conditioned features
+    )
+    UNET_DOWN_1_DOWNSAMPLE = "unet.down_blocks.1.downsamplers.0"  # After resolution reduction
 
     # Down Block 2 (16x16) - LOWER RESOLUTION, GLOBAL FEATURES
     # More abstract features, stronger semantic alignment.
@@ -103,12 +102,14 @@ class LayerPath(Enum):
     # Analysis: See how objects are represented at coarser scales
     # ⭐ MOST USEFUL: ATT_0 or ATT_1 (strong text-visual alignment for objects)
     UNET_DOWN_2_RES_0 = "unet.down_blocks.2.resnets.0"  # Visual features before text
-    UNET_DOWN_2_ATT_0 = "unet.down_blocks.2.attentions.0.transformer_blocks.0"  # ⭐ Object-level alignment
-    UNET_DOWN_2_RES_1 = "unet.down_blocks.2.resnets.1"  # Further visual refinement
-    UNET_DOWN_2_ATT_1 = "unet.down_blocks.2.attentions.1.transformer_blocks.0"  # ⭐ Refined semantic features
-    UNET_DOWN_2_DOWNSAMPLE = (
-        "unet.down_blocks.2.downsamplers.0"  # After resolution reduction
+    UNET_DOWN_2_ATT_0 = (
+        "unet.down_blocks.2.attentions.0.transformer_blocks.0"  # ⭐ Object-level alignment
     )
+    UNET_DOWN_2_RES_1 = "unet.down_blocks.2.resnets.1"  # Further visual refinement
+    UNET_DOWN_2_ATT_1 = (
+        "unet.down_blocks.2.attentions.1.transformer_blocks.0"  # ⭐ Refined semantic features
+    )
+    UNET_DOWN_2_DOWNSAMPLE = "unet.down_blocks.2.downsamplers.0"  # After resolution reduction
 
     # Down Block 3 (8x8) - LOWEST RESOLUTION BEFORE MID, VERY ABSTRACT
     # Deepest downsampling block, most abstract visual features.
@@ -118,9 +119,13 @@ class LayerPath(Enum):
     # Note: Last down block has no downsampler
     # ⭐ MOST USEFUL: ATT_1 (highest abstraction before bottleneck)
     UNET_DOWN_3_RES_0 = "unet.down_blocks.3.resnets.0"  # Visual features before text
-    UNET_DOWN_3_ATT_0 = "unet.down_blocks.3.attentions.0.transformer_blocks.0"  # Global semantic alignment
+    UNET_DOWN_3_ATT_0 = (
+        "unet.down_blocks.3.attentions.0.transformer_blocks.0"  # Global semantic alignment
+    )
     UNET_DOWN_3_RES_1 = "unet.down_blocks.3.resnets.1"  # Further visual refinement
-    UNET_DOWN_3_ATT_1 = "unet.down_blocks.3.attentions.1.transformer_blocks.0"  # ⭐ Most abstract features
+    UNET_DOWN_3_ATT_1 = (
+        "unet.down_blocks.3.attentions.1.transformer_blocks.0"  # ⭐ Most abstract features
+    )
 
     # --- Mid Block (Bottleneck: Lowest Resolution, Maximum Context) ---
     # ⭐⭐⭐ CRITICAL BLOCK: Determines overall composition and structure
@@ -139,9 +144,7 @@ class LayerPath(Enum):
     # Analysis: QK^T maps show which words influence which regions most
     # Tip: This layer determines overall image structure and object placement
     # Why critical: Only one attention layer here, maximum receptive field
-    UNET_MID_ATT = (
-        "unet.mid_block.attentions.0.transformer_blocks.0"  # ⭐⭐⭐ MOST IMPORTANT
-    )
+    UNET_MID_ATT = "unet.mid_block.attentions.0.transformer_blocks.0"  # ⭐⭐⭐ MOST IMPORTANT
 
     # Mid Block ResNet 1 - AFTER ATTENTION
     # Feature refinement after cross-attention.
@@ -161,15 +164,13 @@ class LayerPath(Enum):
     # ⭐ MOST USEFUL: ATT_2 (final features before spatial expansion) or sequence ATT_0→ATT_1→ATT_2
     # Why 3 ResNets: Skip connections from encoder create 3 refinement stages
     UNET_UP_3_RES_0 = "unet.up_blocks.3.resnets.0"  # First refinement after mid
-    UNET_UP_3_ATT_0 = (
-        "unet.up_blocks.3.attentions.0.transformer_blocks.0"  # Initial text alignment
-    )
+    UNET_UP_3_ATT_0 = "unet.up_blocks.3.attentions.0.transformer_blocks.0"  # Initial text alignment
     UNET_UP_3_RES_1 = "unet.up_blocks.3.resnets.1"  # Second refinement
-    UNET_UP_3_ATT_1 = (
-        "unet.up_blocks.3.attentions.1.transformer_blocks.0"  # Further alignment
-    )
+    UNET_UP_3_ATT_1 = "unet.up_blocks.3.attentions.1.transformer_blocks.0"  # Further alignment
     UNET_UP_3_RES_2 = "unet.up_blocks.3.resnets.2"  # Final refinement
-    UNET_UP_3_ATT_2 = "unet.up_blocks.3.attentions.2.transformer_blocks.0"  # ⭐ Most refined abstract features
+    UNET_UP_3_ATT_2 = (
+        "unet.up_blocks.3.attentions.2.transformer_blocks.0"  # ⭐ Most refined abstract features
+    )
 
     # Up Block 2 (16x16→32x32) - STRUCTURE RECOVERY
     # Mid-level detail restoration, object shapes emerge.
@@ -183,9 +184,13 @@ class LayerPath(Enum):
         "unet.up_blocks.2.attentions.0.transformer_blocks.0"  # Early boundary alignment
     )
     UNET_UP_2_RES_1 = "unet.up_blocks.2.resnets.1"  # Boundary refinement
-    UNET_UP_2_ATT_1 = "unet.up_blocks.2.attentions.1.transformer_blocks.0"  # ⭐ Object shape definition
+    UNET_UP_2_ATT_1 = (
+        "unet.up_blocks.2.attentions.1.transformer_blocks.0"  # ⭐ Object shape definition
+    )
     UNET_UP_2_RES_2 = "unet.up_blocks.2.resnets.2"  # Final structure polish
-    UNET_UP_2_ATT_2 = "unet.up_blocks.2.attentions.2.transformer_blocks.0"  # ⭐ Refined spatial structure
+    UNET_UP_2_ATT_2 = (
+        "unet.up_blocks.2.attentions.2.transformer_blocks.0"  # ⭐ Refined spatial structure
+    )
 
     # Up Block 1 (32x32→64x64) - FINE DETAIL RECOVERY
     # High-resolution detail synthesis, textures and edges.
@@ -200,9 +205,13 @@ class LayerPath(Enum):
         "unet.up_blocks.1.attentions.0.transformer_blocks.0"  # Coarse detail alignment
     )
     UNET_UP_1_RES_1 = "unet.up_blocks.1.resnets.1"  # Detail refinement
-    UNET_UP_1_ATT_1 = "unet.up_blocks.1.attentions.1.transformer_blocks.0"  # ⭐ Texture/edge alignment
+    UNET_UP_1_ATT_1 = (
+        "unet.up_blocks.1.attentions.1.transformer_blocks.0"  # ⭐ Texture/edge alignment
+    )
     UNET_UP_1_RES_2 = "unet.up_blocks.1.resnets.2"  # Final detail polish
-    UNET_UP_1_ATT_2 = "unet.up_blocks.1.attentions.2.transformer_blocks.0"  # ⭐ Finest conditioned details
+    UNET_UP_1_ATT_2 = (
+        "unet.up_blocks.1.attentions.2.transformer_blocks.0"  # ⭐ Finest conditioned details
+    )
 
     # Up Block 0 (64x64) - HIGHEST RESOLUTION, FINAL DETAILS BEFORE VAE
     # Final refinement at full latent resolution, no cross-attention.
@@ -326,7 +335,7 @@ def capture_layer_representations(
         "callback_on_step_end_tensor_inputs": ["latents"],
     }
 
-    pipe(**pipe_args)
+    image = pipe(**pipe_args).images[0]
 
     # Clean up hooks
     for handle in hook_handles:
@@ -339,4 +348,4 @@ def capture_layer_representations(
         if f"hook_{i}" in captured_representations
     ]
 
-    return results
+    return results, image

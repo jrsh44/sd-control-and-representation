@@ -1,10 +1,11 @@
-import matplotlib.pyplot as plt
-from PIL import Image
-from typing import List, Callable
-import torch
-
 from io import BytesIO
-from IPython.display import display, Image as IPImage
+from typing import Callable, List
+
+import matplotlib.pyplot as plt
+import torch
+from IPython.display import Image as IPImage
+from IPython.display import display
+from PIL import Image
 
 
 def display_image(image: Image.Image, title: str = ""):
@@ -41,9 +42,7 @@ def display_sequence(
         max_cols (int): Maximum number of columns in the grid.
         sampling_rate (int): Display every N-th image from the list to shorten the sequence.
     """
-    if not isinstance(images, list) or not all(
-        isinstance(img, Image.Image) for img in images
-    ):
+    if not isinstance(images, list) or not all(isinstance(img, Image.Image) for img in images):
         print("Error: Expected a list of PIL.Image objects.")
         return
     if not images:
@@ -72,7 +71,7 @@ def display_sequence(
     plt.suptitle(title, fontsize=16)
 
     # --- Draw Images in Grid ---
-    for i, (img, original_idx) in enumerate(zip(display_list, display_indices)):
+    for i, (img, original_idx) in enumerate(zip(display_list, display_indices, strict=False)):
         ax = plt.subplot(rows, cols, i + 1)
 
         plt.imshow(img)
@@ -131,9 +130,7 @@ def create_visualization_callback(pipe, storage_list: List[Image.Image]) -> Call
         Callable: Callback function compatible with diffusers pipeline.
     """
 
-    def capture_step_visualization(
-        pipeline, step_index: int, timestep: int, callback_kwargs: dict
-    ):
+    def capture_step_visualization(pipeline, step_index: int, timestep: int, callback_kwargs: dict):
         """
         Function called after each denoising step.
         Converts the current latent tensor to an image and saves it.
