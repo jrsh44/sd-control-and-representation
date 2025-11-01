@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, TensorDataset
 # --- 1. SAE training functions ---
 
 
-def criterion(x, x_hat, pre_codes, codes, dictionary):
+def criterion_laux(x, x_hat, pre_codes, codes, dictionary):
     """
     Custom criterion function for Sparse Autoencoder (SAE) training.
     Args:
@@ -59,25 +59,6 @@ def criterion(x, x_hat, pre_codes, codes, dictionary):
     metric = mse + alpha * l_aux
 
     return metric
-
-
-def sae_train(
-    activations, criterion, expansion_factor, top_k, batch_size, num_epochs, learning_rate
-):
-    # Initialize feature dimensionality
-    d = activations.shape[-1]
-
-    # Initialize the Sparse Autoencoder (SAE), DataLoader, and Optimizer
-    sae = TopKSAE(d, nb_concepts=expansion_factor * d, top_k=top_k, device="cuda")
-    dataloader = DataLoader(TensorDataset(activations), batch_size=batch_size, shuffle=True)
-    optimizer = torch.optim.Adam(sae.parameters(), lr=learning_rate)
-
-    # Train the SAE
-    train_sae(sae, dataloader, criterion, optimizer, nb_epochs=15, device="cuda")
-    sae = sae.eval()
-
-    return sae
-
 
 # --- 2. SAE feature selection ---
 
