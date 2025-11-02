@@ -1,0 +1,80 @@
+1; Statue of a forgotten hero covered in ivy
+2; Statue of an angel with one broken wing
+3; Statue holding up the crumbling entrance of an ancient temple
+4; Statue of a lion guarding a deserted palace
+5; Statue of a poet in a pose of deep thought
+6; Statue with a hidden compartment revealed under moonlight
+7; Statue of a mythical creature casting a long shadow
+8; Statue of a soldier in mid-battle cry
+9; Statue that whispers secrets when the wind blows
+10; Statue of a child playing a flute, with birds perched on top
+11; Statue of a couple locked in an eternal dance
+12; Statue of an explorer with a globe at his feet
+13; Statue of a king whose eyes seem to follow you
+14; Statue of a maiden holding a real flower in a park
+15; Statue of a knight with no sword in its sheath
+16; Statue of a water nymph beside a fountain
+17; Statue of a dragon wrapped around a castle tower
+18; Statue with a patina that tells of ancient times
+19; Statue of a scientist gazing through a telescope
+20; Statue of a philosopher surrounded by an aura of enlightenment
+21; Statue of a gardener with actual plants growing around it
+22; Statue of an athlete frozen at the moment of victory
+23; Statue of a musician with birds nesting in the instrument
+24; Statue of a painter with a palette that changes colors with the seasons
+25; Statue of a scribe writing an ever-changing story
+26; Statue of a mythical siren by the sea, luring sailors
+27; Statue of a beast that appears to breathe in the fog
+28; Statue of an archer with an arrow pointing north
+29; Statue of a giant holding up a footbridge
+30; Statue of an alchemist with a hidden solar alignment
+31; Statue of a dancer with ribbons that flutter in the wind
+32; Statue of a librarian with names of famous authors inscribed
+33; Statue of a chef with a bronze plate that never tarnishes
+34; Statue of a fisherman casting a line into an empty space
+35; Statue of a wizard with a crystal ball that glows at night
+36; Statue of an inventor amidst gears and cogs
+37; Statue of a bard with strings that hum when touched
+38; Statue of a mother with children playing around her skirt
+39; Statue of a silent monk in meditation, attracting butterflies
+40; Statue of a pilgrim at the crossroads of an ancient path
+41; Statue of a pioneer gazing towards the horizon
+42; Statue of an ancient deity covered in offerings
+43; Statue of a guardian with inscriptions telling its legend
+44; Statue of a storyteller where each listener hears a different tale
+45; Statue of a ferryman at the edge of a reflective pond
+46; Statue of a healer with hands outstretched to the sky
+47; Statue of a judge with scales that sway in the wind
+48; Statue of a seamstress with a bronze tapestry of history
+49; Statue of a harvester with a scythe that glints at dawn
+50; Statue of an astronomer aligning with the stars once a year
+51; Statue of a hermit that appears only in twilight
+52; Statue of a merchant where coins occasionally appear at its base
+53; Statue of a peacekeeper separating two opposing sides
+54; Statue of a blacksmith with a hammer striking an anvil at noon
+55; Statue of a diplomat with hands extended in peace
+56; Statue of a navigator with a compass that always points home
+57; Statue of a martyr with a flame that never extinguishes
+58; Statue of a hunter with eyes that glow in the presence of the moon
+59; Statue of a minstrel whose shadow dances independently
+60; Statue of a diver entering an eternal pool without a splash
+61; Statue of a stargazer with a cloak covered in constellations
+62; Statue of a juggler with orbs suspended in mid-air
+63; Statue of a sentinel whose gaze wards off evil
+64; Statue of a prophet with a book that ages but never decays
+65; Statue of a sage with a riddle that changes daily
+66; Statue of a traveler with a map inscribed with unknown lands
+67; Statue of a ruler with a crown that catches the morning light
+68; Statue of a mason with a wall that repairs itself
+69; Statue of a botanist with vines that flower periodically
+70; Statue of a beekeeper with bees that never stray far
+71; Statue of a gladiator with a shield that shines in battle
+72; Statue of a rebel with graffiti that appears and vanishes
+73; Statue of a falconer with a bronze falcon taking flight
+74; Statue of a scholar with a scroll that unrolls with wisdom
+75; Statue of a huntsman with a canine companion at his heels
+76; Statue of a queen with an aura of regality
+77; Statue of a horseman with a steed that seems to breathe
+78; Statue of a navigator charting unseen lands
+79; Statue of a martyr whose expression is one of serene defiance
+80; Statue of a pair of star-crossed lovers whose hands almost touch

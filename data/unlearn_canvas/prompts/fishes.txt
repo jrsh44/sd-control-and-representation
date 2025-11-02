@@ -1,0 +1,80 @@
+1; A goldfish swimming in a crystal-clear bowl.
+2; A school of neon tetras in a vibrant coral reef.
+3; A solitary betta fish with flowing, colorful fins.
+4; A koi fish gliding elegantly in a garden pond.
+5; A clownfish hiding in an anemone.
+6; A pufferfish expanding in defense.
+7; A guppy with a shimmering, multi-colored tail.
+8; A salmon leaping upstream against the current.
+9; An angelfish with striking stripes swimming gracefully.
+10; A parrotfish nibbling on coral.
+11; A group of catfish resting at the bottom of a river.
+12; A lionfish displaying its venomous spines.
+13; A sturgeon swimming in a cold, deep lake.
+14; A school of sardines forming a shimmering ball.
+15; A barracuda swiftly pursuing its prey.
+16; A swordfish cutting through the water.
+17; A flounder camouflaged against the ocean floor.
+18; A sunfish basking near the water's surface.
+19; A rainbow trout in a crystal mountain stream.
+20; A hammerhead shark cruising the ocean depths.
+21; A flying fish gliding over the waves.
+22; A goliath grouper lurking in a shipwreck.
+23; A piranha in a feeding frenzy.
+24; An electric eel generating a charge.
+25; A blue tang exploring a seaweed forest.
+26; A manta ray gliding gracefully in the open sea.
+27; A freshwater perch by the reeds of a lake.
+28; A walleye fish in the dim light of dawn.
+29; A black marlin leaping out of the water.
+30; A red snapper caught on a fisherman's line.
+31; A discus fish in a planted aquarium.
+32; A Siamese fighting fish displaying its fins.
+33; An Arctic char in icy waters.
+34; A bass striking at a lure.
+35; A tarpon jumping high above the surf.
+36; A haddock in the cold northern ocean.
+37; A mahi-mahi with its iridescent colors.
+38; A cichlid guarding its territory in a rocky lake.
+39; A gar with its long, tooth-filled snout.
+40; A halibut lying flat on the sandy seabed.
+41; A zebrafish swimming in laboratory waters.
+42; A mudskipper on the muddy shore.
+43; A pollock in a school near the ocean surface.
+44; A surgeonfish with its scalpel-like spine.
+45; A tuna darting swiftly through the water.
+46; A whale shark with its mouth wide open.
+47; A bluefin tuna in the deep blue sea.
+48; A monkfish with its lure glowing in the dark.
+49; A cod swimming in the chilly North Atlantic.
+50; A wrasse cleaning parasites off other fish.
+51; A green spotted puffer in a freshwater tank.
+52; A triggerfish with its unique dorsal fin.
+53; An anchovy in a shoal, glittering in unison.
+54; A bowfin surviving in low-oxygen waters.
+55; A milkfish in the brackish waters of a mangrove forest.
+56; A whitefish in the clear waters of a northern lake.
+57; A carp feeding on the water's surface.
+58; A remora attached to a larger fish.
+59; A bream with its silvery scales.
+60; A celebes rainbowfish in a tropical stream.
+61; A tilefish building a burrow on the sea floor.
+62; A sculpin with its spiny, armored body.
+63; A herring swimming in large, coordinated schools.
+64; A crappie hiding among water plants.
+65; A stonefish camouflaged among rocks.
+66; A catla leaping out of the water.
+67; A ghost knife fish moving like a ribbon.
+68; A stickleback building a nest for its eggs.
+69; A rohu fish in the calm waters of a river.
+70; A cutthroat trout in a rushing mountain stream.
+71; An oscar fish with its vibrant patterns.
+72; A sailfish racing at incredible speeds.
+73; A perch perched on a submerged log.
+74; A blenny peeking out from a coral crevice.
+75; A roosterfish with its distinct dorsal fin.
+76; A pike lurking in wait for prey.
+77; A bluegill basking in the sunlit shallows.
+78; A characin flashing by in a rainforest stream.
+79; A grouper fish in the shelter of a reef.
+80; A minnow darting in a school in shallow water.

@@ -1,0 +1,80 @@
+1; A dog wearing aviator goggles piloting an airplane
+2; A dachshund stretched out like a limousine
+3; A poodle with an elaborate hairstyle as a florist
+4; A dog astronaut floating in space with a bone-shaped spaceship
+5; A beagle detective with a magnifying glass
+6; A superhero dog with a flowing cape flying over a city
+7; A border collie herding clouds in the sky
+8; A dog dressed as a knight in shining armor
+9; A dog with a paintbrush painting a self-portrait
+10; A chef dog cooking in a gourmet kitchen
+11; A dog surfing on a big wave in Hawaii
+12; A golden retriever as a librarian sorting books
+13; A doggy paddle rowing a canoe on a serene lake
+14; A firefighter dog rescuing a cat from a tree
+15; A dog wearing a crown as the king of a castle
+16; A Jack Russell terrier skateboarding in a park
+17; A chihuahua in a taco costume at a party
+18; A dog with a backpack hiking up a mountain trail
+19; A dog as a yoga instructor in a peaceful pose
+20; A St. Bernard as a bartender mixing drinks
+21; A dog on a magic carpet ride above an enchanted city
+22; A sheepdog with wool like a sheep itself
+23; A Great Dane standing guard outside a palace
+24; A husky sledding through the Arctic
+25; A pug dressed up as a famous movie star
+26; A dog wearing a lab coat conducting experiments
+27; A German shepherd as a police officer on patrol
+28; A dog walking on a tightrope in a circus
+29; A schnauzer as a pilot in a vintage biplane
+30; A bulldog as a coach blowing a whistle
+31; A Cocker Spaniel with butterfly wings in a meadow
+32; A dog in a submarine exploring the ocean depths
+33; A bloodhound as a detective solving mysteries
+34; A dog performing ballet on stage
+35; A mastiff as a bodyguard in a suit
+36; A dog planting a garden full of bones
+37; A corgi as a baker selling pastries
+38; A dog riding a motorcycle through a cityscape
+39; A Scottish terrier playing bagpipes in a kilt
+40; A Bichon Frise as a snowball in a winter wonderland
+41; A dog wearing a tuxedo hosting a gala
+42; A Shih Tzu with a lion's mane in the savannah
+43; A beagle as an archeologist uncovering fossils
+44; A dog wearing a spacesuit on Mars
+45; A boxer as a heavyweight champion in the ring
+46; A dog as a news anchor reporting live
+47; A dog with a jetpack zooming through the sky
+48; A Rottweiler as a bank security guard
+49; A dog as a cowboy riding a horse in the Wild West
+50; A Samoyed as a cloud in a clear blue sky
+51; A dog on a skateboard doing tricks
+52; A dog as a ship captain navigating rough seas
+53; A dog painting the Mona Lisa with a tail brush
+54; A Doberman as a CEO in a corporate office
+55; A dog dressed as a pharaoh in ancient Egypt
+56; A dog as a gardener pruning plants
+57; A dog teaching a class of puppies
+58; A dog as a DJ spinning records at a club
+59; A dog flying with a cape as a superhero
+60; A Maltese as an angel with wings
+61; A dog riding a bike through a park
+62; A dog as a ninja sneaking in the shadows
+63; A dog as a king holding court
+64; A Shiba Inu brewing tea in Japan
+65; A dog sculpting a masterpiece from marble
+66; A dog as a tourist taking photos
+67; A Papillon as a butterfly in a field of flowers
+68; A dog as a judge with a gavel
+69; A dog as a librarian with glasses
+70; A dog playing a drum set in a band
+71; A dog as a quarterback in a football game
+72; A dog with a detective hat and magnifying glass
+73; A dog as a pizza chef tossing dough
+74; A dog riding a unicycle while juggling bones
+75; A dog as a painter with a beret and palette
+76; A dog as a sushi chef preparing rolls
+77; A dog as a scientist with a test tube
+78; A dog with angel wings and a halo
+79; A dog as a construction worker with a hard hat
+80; A dog flying a kite in the shape of a bone

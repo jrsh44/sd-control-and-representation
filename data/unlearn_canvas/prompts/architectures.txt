@@ -1,0 +1,80 @@
+1; Gothic cathedral with flying buttresses and stained glass windows
+2; Modern eco-friendly skyscraper with a vertical garden
+3; Ancient Roman amphitheater under the stars
+4; Grand Victorian mansion with a secret garden
+5; Traditional Japanese pagoda next to a cherry blossom tree
+6; Adobe pueblo under the southwestern sun
+7; Art Deco cinema with neon marquee signs
+8; Mediterranean villa overlooking the sea
+9; Abandoned industrial warehouse converted into lofts
+10; Futuristic space station orbiting Earth
+11; Cliffside monastery with a winding staircase
+12; Old Western saloon in a ghost town
+13; Classic American diner from the 1950s
+14; Suburban house with a white picket fence
+15; Renaissance castle with a moat and drawbridge
+16; Caribbean beach hut on stilts
+17; Chinese imperial palace with dragon motifs
+18; Contemporary art museum with abstract shapes
+19; Snow-covered log cabin in the woods
+20; Bamboo house in a tropical rainforest
+21; Byzantine church with gold mosaics
+22; Steampunk airship dock with copper pipes and gears
+23; Floating houseboat with a rooftop terrace
+24; Overgrown ancient ruins taken by nature
+25; Traditional yurt in the Mongolian steppe
+26; Colonial townhouse with a cobblestone street
+27; Whimsical treehouse with rope bridges
+28; Desert oasis with a luxurious palace
+29; Nordic longhouse in a Viking village
+30; Cyberpunk cityscape with holographic signs
+31; Underground bunker with a post-apocalyptic vibe
+32; Art Nouveau hotel with floral ironwork
+33; Minimalist loft with a panoramic city view
+34; Haunted Gothic mansion with gargoyles
+35; Ornate Indian temple with intricate carvings
+36; Terracotta-roofed cottages in a quaint village
+37; High-tech research facility in the Arctic
+38; Dilapidated factory reclaimed by street artists
+39; Luxurious Las Vegas casino with bright lights
+40; Solar-powered dome in a sustainable community
+41; Neoclassical courthouse with tall columns
+42; Greek island home with blue domes and white walls
+43; Parisian café with a flower-covered facade
+44; Tudor-style house with timber framing
+45; Moroccan riad with a central courtyard
+46; Opulent opera house with red velvet seats
+47; Seaside lighthouse guiding ships home
+48; Southern plantation with a wraparound porch
+49; Elaborate corn maze at a fall harvest festival
+50; Enchanting gingerbread house with candy decorations
+51; Islamic mosque with a minaret and dome
+52; Rustic barn for a country wedding
+53; Tree-lined boulevard with art nouveau lamp posts
+54; Fairytale castle with turrets and spires
+55; Glass igloo under the Northern Lights
+56; Watermill next to a babbling brook
+57; Dutch windmill with tulip fields
+58; Baroque library filled with ancient books
+59; Underground wine cellar with vaulted ceilings
+60; Craftsman bungalow with a cozy fireplace
+61; Geodesic dome in a futuristic city
+62; Historic firehouse with a classic red engine
+63; Mountain lodge with a stone facade
+64; Egyptian pyramid among the sands
+65; Quaint English pub with a thatched roof
+66; Animated theme park castle with fireworks
+67; Old schoolhouse with a bell tower
+68; Sci-fi lab with a teleportation chamber
+69; Rooftop garden oasis in an urban jungle
+70; Traditional Scandinavian sauna by a frozen lake
+71; Animated movie studio with a whimsical entrance
+72; Southern antebellum mansion with ironwork balconies
+73; Luxurious penthouse with an infinity pool
+74; Prehistoric dwelling inside a cave
+75; Korean hanok with sliding doors
+76; Retro-futuristic motel on Route 66
+77; Ornamental fish pond with a Japanese tea house
+78; Majestic observatory with a retractable dome
+79; Tranquil monastery with zen gardens
+80; Stilt houses in a Southeast Asian fishing village
