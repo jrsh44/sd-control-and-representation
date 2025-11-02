@@ -5,6 +5,14 @@ Saves each layer separately in: results/sd_1_5/{layer_name}/cached_rep.pt
 Structure per layer: {object: {style: {prompt_nr: tensor[timesteps, ...]}}}
 """
 
+"""
+EXAMPLE USAGE:
+uv run src/sd_1_5_generate_cache.py \
+    --prompts-dir data/unlearn_canvas/prompts/test \
+    --style Impressionism \
+    --layers TEXT_EMBEDDING_FINAL UNET_MID_ATT UNET_DOWN_1_ATT_1 UNET_DOWN_2_ATT_1 UNET_UP_2_ATT_2 UNET_UP_1_ATT_2
+"""
+
 import argparse
 import os
 import sys
@@ -321,11 +329,9 @@ def main():
     #############################################
     # SETUP LAYER CACHES
     #############################################
+
     # Determine base output directory
-    if args.output_dir:
-        base_output_dir = Path(args.output_dir)
-    else:
-        base_output_dir = results_base_path / "sd_1_5"
+    base_output_dir = results_base_path / "sd_1_5"
     
     # Load existing caches for each layer
     layer_caches = {}
