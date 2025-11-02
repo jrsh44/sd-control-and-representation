@@ -284,10 +284,10 @@ def capture_layer_representations(
     num_inference_steps: int = 50,
     guidance_scale: float = 7.5,
     generator: torch.Generator = None,
-) -> List[torch.Tensor]:
+) -> tuple[List[torch.Tensor], Any]:
     """
-    Captures intermediate representations from specified layers during a single SD generation.
-    Uses forward hooks to intercept and store activations from target layers.
+    Captures intermediate representations from specified layers during SD generation.
+    Collects representations for ALL timesteps during denoising process.
 
     Args:
         pipe (StableDiffusionPipeline): The Stable Diffusion pipeline instance.
@@ -298,19 +298,28 @@ def capture_layer_representations(
         generator (torch.Generator): Random generator for reproducibility.
 
     Returns:
-        List[torch.Tensor]: List of captured activation tensors, in the same order as layer_paths.
+        Tuple[List[torch.Tensor], Any]: 
+            - List of captured activation tensors with shape [timesteps, ...], one per layer
+            - Generated PIL Image
     """
-    captured_representations: Dict[str, torch.Tensor] = {}
+    # Store representations for each timestep: {hook_name: [list of tensors per timestep]}
+    captured_representations: Dict[str, List[torch.Tensor]] = {
+        f"hook_{i}": [] for i in range(len(layer_paths))
+    }
     hook_handles: List[Any] = []
+    current_timestep = [0]  # Mutable counter for timestep tracking
 
     def create_capture_hook(name: str):
-        """Factory function to create a hook that captures module output."""
+        """Factory function to create a hook that captures module output at each timestep."""
 
         def hook(model, input, output):
             if isinstance(output, tuple):
-                captured_representations[name] = output[0].detach().cpu()
+                tensor = output[0].detach().cpu()
             else:
-                captured_representations[name] = output.detach().cpu()
+                tensor = output.detach().cpu()
+            
+            # Append this timestep's representation
+            captured_representations[name].append(tensor)
 
         return hook
 
@@ -341,11 +350,16 @@ def capture_layer_representations(
     for handle in hook_handles:
         handle.remove()
 
-    # Return list of tensors in the order specified by layer_paths
-    results = [
-        captured_representations[f"hook_{i}"]
-        for i in range(len(layer_paths))
-        if f"hook_{i}" in captured_representations
-    ]
+    # Stack timesteps into single tensor per layer: [timesteps, ...]
+    results = []
+    for i in range(len(layer_paths)):
+        hook_name = f"hook_{i}"
+        if hook_name in captured_representations and captured_representations[hook_name]:
+            # Stack all timesteps into first dimension
+            timestep_tensors = captured_representations[hook_name]
+            stacked = torch.stack(timestep_tensors, dim=0)  # [timesteps, batch, ...]
+            results.append(stacked)
+        else:
+            results.append(None)
 
     return results, image
