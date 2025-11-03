@@ -19,7 +19,7 @@
 
 #SBATCH --account mi2lab               # Your compute account
 #SBATCH --job-name sd_rep_gen          # Job name
-#SBATCH --time 1-00:00:00              # Max runtime (1 day)
+#SBATCH --time 0-02:00:00              # Max runtime (1 day)
 #SBATCH --nodes 1                      # Number of nodes
 #SBATCH --ntasks-per-node 1            # Tasks per node
 #SBATCH --gres gpu:1                   # Request 1 GPU
