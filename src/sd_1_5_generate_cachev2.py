@@ -18,6 +18,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
+import wandb
 
 import torch
 from dotenv import load_dotenv
@@ -32,6 +33,7 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from diffusers import StableDiffusionPipeline
 from src.utils.reprezentation import LayerPath, capture_layer_representations
+from src.utils.wandb import get_system_metrics
 
 
 def get_representation_path(
@@ -248,6 +250,21 @@ def main():
     ).to(device)
     model_load_time = time.time() - model_load_start
 
+    # Initialize wandb
+    wandb.login()
+    wandb.init(
+        project="sd-control-representation",
+        entity="bartoszjezierski28-warsaw-university-of-technology",
+        config={
+            "model": model_id,
+            "device": device,
+            "style": args.style,
+            "guidance_scale": args.guidance_scale,
+            "steps": args.steps,
+            "base_seed": args.seed,
+        }
+    )
+
     # Generation statistics
     total_generations = 0
     skipped_generations = 0
@@ -284,6 +301,9 @@ def main():
                 # Generate with fixed seed
                 generator = torch.Generator(device).manual_seed(args.seed + prompt_nr)
 
+                # Get metadata metrics for wandb
+                system_metrics_start = get_system_metrics(device)
+
                 # Capture representations
                 inference_start = time.time()
                 representations, image = capture_layer_representations(
@@ -311,7 +331,41 @@ def main():
                     f"      ✓ Done in {inference_time:.2f}s ({saved_count} representations saved)"
                 )
 
+                # Log to wandb
+                wandb.log({
+                    "object": object_name,
+                    "prompt_nr": prompt_nr,
+                    "base_prompt": base_prompt,
+                    "styled_prompt": styled_prompt,
+                    "inference_time": inference_time,
+                    "total_time": time.time() - inference_start,
+                    "saved_representations": saved_count,
+                    "image": wandb.Image(
+                        image,
+                        caption=(
+                            f"Object: {object_name} | "
+                            f"Style: {style} | "
+                            f"Prompt #{prompt_nr} | "
+                            f"Inference time: {inference_time:.2f}s\n"
+                            f"Prompt: {styled_prompt[:180]}"
+                        )
+                    ),
+                    **get_system_metrics(device),
+                    "system_metrics_change": {
+                        k: (get_system_metrics(device))[k] - system_metrics_start[k]
+                        for k in system_metrics_start
+                    }
+                })
+
             except Exception as e:
+                # Log failure
+                wandb.log({
+                    "error": str(e),
+                    "object": object_name,
+                    "prompt_nr": prompt_nr,
+                    "styled_prompt": styled_prompt,
+                })
+
                 failed_generations += 1
                 print(f"      ✗ ERROR: {e}")
                 import traceback
@@ -336,6 +390,18 @@ def main():
     print(f"            └── <style>/")
     print(f"                └── <prompt_nr>.pt")
     print("=" * 70)
+
+    # Log final summary
+    wandb.log({
+        "final_summary": {
+            "total_generations": total_generations,
+            "skipped_generations": skipped_generations,
+            "failed_generations": failed_generations,
+            "model_load_time": model_load_time,
+        }
+    })
+
+    wandb.finish()
 
     return 0
 
