@@ -1,6 +1,7 @@
+from typing import Dict
+
 import GPUtil
 import psutil
-from typing import Dict
 
 
 def get_system_metrics(device: str) -> Dict:
@@ -16,9 +17,6 @@ def get_system_metrics(device: str) -> Dict:
                 "gpu_load": gpu.load * 100,
             }
         except Exception:
-            pass
-    return {
-        "cpu_percent": cpu_percent,
-        "memory_percent": memory.percent,
-        **gpu_metrics
-    }
+            print("Warning: Could not retrieve GPU metrics.")
+
+    return {"cpu_percent": cpu_percent, "memory_percent": memory.percent, **gpu_metrics}
