@@ -1,8 +1,6 @@
 import torch
 from einops import rearrange
-from overcomplete.sae import TopKSAE, train_sae
 from PIL import Image
-from torch.utils.data import DataLoader, TensorDataset
 
 """ Note:
     The global variables:
@@ -59,6 +57,7 @@ def criterion_laux(x, x_hat, pre_codes, codes, dictionary):
     metric = mse + alpha * l_aux
 
     return metric
+
 
 # --- 2. SAE feature selection ---
 
