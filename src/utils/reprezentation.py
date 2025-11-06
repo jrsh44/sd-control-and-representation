@@ -298,7 +298,7 @@ def capture_layer_representations(
         generator (torch.Generator): Random generator for reproducibility.
 
     Returns:
-        Tuple[List[torch.Tensor], Any]: 
+        Tuple[List[torch.Tensor], Any]:
             - List of captured activation tensors with shape [timesteps, ...], one per layer
             - Generated PIL Image
     """
@@ -317,7 +317,7 @@ def capture_layer_representations(
                 tensor = output[0].detach().cpu()
             else:
                 tensor = output.detach().cpu()
-            
+
             # Append this timestep's representation
             captured_representations[name].append(tensor)
 
