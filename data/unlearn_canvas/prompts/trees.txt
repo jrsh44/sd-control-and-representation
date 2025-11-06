@@ -1,0 +1,80 @@
+1; A majestic oak tree in a serene forest.
+2; An ancient banyan tree with hanging roots.
+3; A row of cherry blossoms in full bloom.
+4; A towering redwood shrouded in fog.
+5; A gnarled olive tree in a Mediterranean grove.
+6; A lone cypress tree silhouetted against the sunset.
+7; A maple tree ablaze with autumn colors.
+8; A baobab tree standing tall in the savannah.
+9; An aspen grove quaking in the breeze.
+10; A eucalyptus tree with peeling bark.
+11; A pine tree laden with fresh snow.
+12; A weeping willow by a tranquil pond.
+13; A rubber tree plantation in the tropics.
+14; A sugar maple being tapped for syrup.
+15; A blooming jacaranda tree with purple flowers.
+16; A lemon tree heavy with ripe fruit.
+17; A spruce tree festooned with Christmas lights.
+18; A palm tree swaying on a sandy beach.
+19; A spooky tree with gnarled branches at night.
+20; A Joshua tree under the starry desert sky.
+21; A beech tree with initials carved in the trunk.
+22; A sequoia with a walk-through tunnel.
+23; A sycamore tree shedding its patchy bark.
+24; A blossoming almond tree in early spring.
+25; A fruiting fig tree with birds perched on limbs.
+26; A birch tree forest in the snow.
+27; A kapok tree towering over the Amazon.
+28; A flowering dogwood in a wildflower meadow.
+29; An apple tree in an orchard at harvest.
+30; A wind-swept pine on a rocky cliff.
+31; A pecan tree in a southern backyard.
+32; A tamarind tree with hanging seed pods.
+33; A towering araucaria tree in a cloud forest.
+34; A catalpa tree with long seed pods.
+35; An elm tree standing tall in the city park.
+36; A hawthorn tree with red berries in winter.
+37; A cedar tree releasing its fragrant scent.
+38; A mango tree providing shade in a tropical village.
+39; A plane tree lining an urban avenue.
+40; A silver birch tree glimmering in moonlight.
+41; A live oak draped with Spanish moss.
+42; A flame tree with fiery red blossoms.
+43; A monkey puzzle tree with unique branch patterns.
+44; A neem tree in a lush green pasture.
+45; A pistachio tree with clusters of ripening nuts.
+46; A horse chestnut tree with conkers on the ground.
+47; A kauri tree with a massive girth.
+48; A cottonwood tree releasing its fluffy seeds.
+49; A linden tree frequented by buzzing bees.
+50; A rowan tree with clusters of bright berries.
+51; A fir tree standing in a silent snowy landscape.
+52; A magnolia tree with large, fragrant blossoms.
+53; A larch tree with golden needles in fall.
+54; A walnut tree with a carpet of fallen nuts.
+55; A camphor tree with a canopy like an umbrella.
+56; A mulberry tree with birds feasting on the fruit.
+57; A sweetgum tree with spiky seed balls.
+58; A paulownia tree with heart-shaped leaves.
+59; A cedar of Lebanon in an ancient grove.
+60; A pomegranate tree with ripe, split-open fruits.
+61; A date palm heavy with bunches of dates.
+62; A bristlecone pine in a high mountain range.
+63; A poplar tree shimmering in the wind.
+64; A teak tree in a sustainable forest.
+65; A parrot perched in a rainbow eucalyptus tree.
+66; A cork oak with bark removed.
+67; A chestnut tree in bloom.
+68; A yew tree in an old graveyard.
+69; A tall coconut palm on a tropical shore.
+70; A Scots pine tree in a purple heather moor.
+71; A black walnut tree in a sunny field.
+72; A hemlock tree shrouded in mist.
+73; A golden wattle tree, the emblem of Australia.
+74; A moringa tree, known as the "miracle tree."
+75; A juniper tree with blue berries.
+76; A lychee tree in a sub-tropical orchard.
+77; A hornbeam tree with a pleated leaf pattern.
+78; A tulip poplar with cup-shaped flowers.
+79; A Moreton Bay fig with impressive buttress roots.
+80; A ginkgo tree with fan-shaped leaves.

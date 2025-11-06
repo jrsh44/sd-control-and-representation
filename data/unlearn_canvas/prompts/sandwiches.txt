@@ -1,0 +1,80 @@
+1; A classic BLT sandwich on toasted bread.
+2; Grilled cheese sandwich oozing with cheddar.
+3; Hearty pastrami sandwich on rye with mustard.
+4; Fresh veggie sandwich with avocado and sprouts.
+5; Traditional club sandwich stacked high with fixings.
+6; Monte Cristo sandwich dusted with powdered sugar.
+7; Savory meatball sub dripping with marinara sauce.
+8; Gourmet turkey and cranberry sandwich on artisan bread.
+9; Egg salad sandwich with crisp lettuce leaves.
+10; Pulled pork sandwich with a tangy barbecue sauce.
+11; Italian sub sandwich with salami, ham, and provolone.
+12; Sloppy joe sandwich with a side of pickles.
+13; Spicy buffalo chicken wrap sandwich.
+14; Smoked salmon sandwich with cream cheese and dill.
+15; Peanut butter and jelly sandwich cut into triangles.
+16; Tuna melt sandwich with melted Swiss cheese.
+17; Caprese sandwich with tomato, mozzarella, and basil.
+18; Roast beef sandwich with horseradish sauce.
+19; Falafel sandwich in a warm pita with tahini.
+20; French dip sandwich with au jus for dipping.
+21; Veggie burger sandwich with all the toppings.
+22; Banh mi sandwich with pickled vegetables.
+23; Reuben sandwich with sauerkraut and Swiss cheese.
+24; Cucumber sandwich with cream cheese on white bread.
+25; Philly cheesesteak sandwich with onions and peppers.
+26; Grilled vegetable and hummus ciabatta sandwich.
+27; Cuban sandwich with roast pork, ham, and pickles.
+28; Chicken parmesan sandwich with melted mozzarella.
+29; Shrimp po' boy sandwich with spicy remoulade.
+30; Breakfast sandwich with eggs, bacon, and cheese.
+31; Ham and brie sandwich with fig jam.
+32; Chicken caesar wrap sandwich.
+33; Corned beef special sandwich on a kaiser roll.
+34; Turkey and stuffing sandwich with cranberry sauce.
+35; Croque monsieur sandwich with béchamel sauce.
+36; Lobster roll sandwich in a buttered bun.
+37; Chicken salad sandwich with grapes and walnuts.
+38; Fried green tomato sandwich with pimento cheese.
+39; Pesto chicken sandwich with roasted red peppers.
+40; Panini sandwich with ham, cheese, and tomato.
+41; Barbecue brisket sandwich with coleslaw.
+42; Spicy Italian sandwich with pepperoni and hot peppers.
+43; Clubhouse sandwich with turkey, bacon, and mayo.
+44; Fried eggplant sandwich with marinara and mozzarella.
+45; Roasted portobello mushroom sandwich.
+46; Smoked turkey and avocado sandwich on whole grain.
+47; Tofu banh mi sandwich with vegan mayo.
+48; Cold cut sandwich with mustard and mayo.
+49; Gyro sandwich with lamb, tzatziki, and onions.
+50; Muffuletta sandwich with olive salad.
+51; Egg and chorizo breakfast sandwich.
+52; Chicken cutlet sandwich with honey mustard.
+53; Roasted beet and goat cheese sandwich.
+54; Pulled jackfruit sandwich for a vegan option.
+55; Jalapeño popper grilled cheese sandwich.
+56; Tandoori chicken sandwich with cucumber raita.
+57; Grilled fish sandwich with tartar sauce.
+58; Portobello steak sandwich with blue cheese.
+59; Rueben sandwich with corned beef and Thousand Island dressing.
+60; Chimichurri steak sandwich on a crusty roll.
+61; Prosciutto and melon sandwich on focaccia.
+62; Mediterranean veggie sandwich with feta and olives.
+63; Southern fried chicken biscuit sandwich.
+64; Ahi tuna sandwich with wasabi mayo.
+65; Curry chicken salad sandwich with almonds and raisins.
+66; Pork belly sandwich with Asian slaw.
+67; Catfish po' boy sandwich with lettuce and tomato.
+68; Veggie and hummus sandwich on multigrain bread.
+69; Hot dog sandwich with relish and onions.
+70; Teriyaki chicken sandwich with grilled pineapple.
+71; Sourdough sandwich with turkey and cranberry.
+72; Prime rib sandwich with a side of creamy horseradish.
+73; S'mores dessert sandwich with marshmallow and chocolate.
+74; Korean BBQ beef sandwich with kimchi.
+75; Seafood salad sandwich with shrimp and crab.
+76; Fried chicken and waffle sandwich.
+77; Vegan tempeh reuben sandwich.
+78; New York-style bagel sandwich with lox.
+79; Chipotle chicken panini with pepper jack cheese.
+80; Italian sausage sandwich with peppers and onions.

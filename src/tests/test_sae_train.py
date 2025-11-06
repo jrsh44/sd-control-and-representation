@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from overcomplete.sae import TopKSAE, train_sae
-from src.utils.sae_utils import criterion_laux
+from src.models.sae.training import criterion_laux
 
 # Add project root to path to allow imports to work from any location
 project_root = Path(__file__).parent.parent.parent
@@ -28,7 +28,8 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 # Load .env from project root
-load_dotenv(dotenv_path=project_root / ".env") 
+load_dotenv(dotenv_path=project_root / ".env")
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -102,69 +103,73 @@ def find_leaf_files(base_path: Path) -> List[Path]:
 def load_and_concatenate_tensors(file_paths: List[Path]) -> Tuple[torch.Tensor, dict]:
     """
     Load all .pt files and concatenate them into a single tensor.
-    
+
     Expected input shape: [timesteps, num_of_obs, dimension]
     Output shape: [total_num_of_obs_for_every_timestep, dimension]
-    
+
     Returns:
         concatenated_tensor: The concatenated tensor
         metadata: Dictionary with information about the loading process
     """
     if not file_paths:
         raise ValueError("No files to load")
-    
+
     all_tensors = []
     metadata = {
-        'num_files': len(file_paths),
-        'file_shapes': [],
-        'total_obs': 0,
-        'dimension': None,
-        'num_timesteps': None
+        "num_files": len(file_paths),
+        "file_shapes": [],
+        "total_obs": 0,
+        "dimension": None,
+        "num_timesteps": None,
     }
-    
+
     print("\nLoading tensors...")
     for i, file_path in enumerate(file_paths, 1):
         print(f"  [{i}/{len(file_paths)}] Loading {file_path.name}...", end=" ")
-        
+
         try:
-            tensor = torch.load(file_path, map_location='cpu')
-            
+            tensor = torch.load(file_path, map_location="cpu")
+
             # Validate shape: should be [timesteps, num_of_obs, dimension]
             if tensor.dim() != 3:
                 raise ValueError(f"Expected 3D tensor, got {tensor.dim()}D: {tensor.shape}")
-            
+
             timesteps, num_obs, dimension = tensor.shape
-            metadata['file_shapes'].append(tensor.shape)
-            
+            metadata["file_shapes"].append(tensor.shape)
+
             # Check consistency across files
-            if metadata['dimension'] is None:
-                metadata['dimension'] = dimension
-                metadata['num_timesteps'] = timesteps
+            if metadata["dimension"] is None:
+                metadata["dimension"] = dimension
+                metadata["num_timesteps"] = timesteps
             else:
-                if dimension != metadata['dimension']:
-                    raise ValueError(f"Dimension mismatch: expected {metadata['dimension']}, got {dimension}")
-                if timesteps != metadata['num_timesteps']:
-                    raise ValueError(f"Timesteps mismatch: expected {metadata['num_timesteps']}, got {timesteps}")
-            
+                if dimension != metadata["dimension"]:
+                    raise ValueError(
+                        f"Dimension mismatch: expected {metadata['dimension']}, got {dimension}"
+                    )
+                if timesteps != metadata["num_timesteps"]:
+                    raise ValueError(
+                        f"Timesteps mismatch: expected {metadata['num_timesteps']}, got {timesteps}"
+                    )
+
             # Reshape: [timesteps, num_obs, dimension] -> [timesteps * num_obs, dimension]
             reshaped = tensor.reshape(-1, dimension)
             all_tensors.append(reshaped)
-            metadata['total_obs'] += timesteps * num_obs
-            
+            metadata["total_obs"] += timesteps * num_obs
+
             print(f"✓ Shape: {tensor.shape} -> {reshaped.shape}")
-            
+
         except Exception as e:
             print(f"✗ ERROR: {e}")
             raise
-    
+
     # Concatenate all tensors along the observation dimension
     print("\nConcatenating tensors...")
     concatenated = torch.cat(all_tensors, dim=0)
-    
+
     print(f"✓ Final shape: {concatenated.shape}")
     print(f"  Total observations: {metadata['total_obs']:,}")
     print(f"  Dimension: {metadata['dimension']}")
-    
+
     return concatenated, metadata
 
 
@@ -176,11 +181,11 @@ def train_sae_model(
     learning_rate: float,
     num_epochs: int,
     batch_size: int,
-    device: torch.device
+    device: torch.device,
 ) -> TopKSAE:
     """
     Train a Sparse Autoencoder on the given activations.
-    
+
     Args:
         activations: Input tensor of shape (num_samples, input_dim)
         input_dim: Dimension of input features
@@ -190,7 +195,7 @@ def train_sae_model(
         num_epochs: Number of training epochs
         batch_size: Batch size for training
         device: Device to train on
-    
+
     Returns:
         Trained SAE model
     """
@@ -206,28 +211,28 @@ def train_sae_model(
     print(f"Batch size: {batch_size}")
     print(f"Device: {device}")
     print("-" * 80)
-    
+
     # Move data to device
     activations = activations.to(device)
-    
+
     # Prepare DataLoader
     dataset = TensorDataset(activations)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    
+
     # Initialize SAE model
     nb_concepts = input_dim * expansion_factor
     sae = TopKSAE(input_dim, nb_concepts=nb_concepts, top_k=top_k, device=device)
     sae = sae.to(device)
-    
+
     # Define optimizer
     optimizer = torch.optim.Adam(sae.parameters(), lr=learning_rate)
-    
+
     # Train SAE
     print("\nStarting SAE training...")
     train_sae(sae, dataloader, criterion_laux, optimizer, nb_epochs=num_epochs, device=device)
     sae = sae.eval()
     print("\n✓ SAE training completed.")
-    
+
     return sae
 
 
@@ -235,7 +240,7 @@ def main() -> int:
     args = parse_args()
 
     # Select device (GPU if available)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Get results directory from environment variable or use default
     results_base_dir = os.environ.get("RESULTS_DIR")
@@ -259,8 +264,10 @@ def main() -> int:
     print(f"Root: {root_path}")
     print(f"Layer: {args.layer_in_model_path}")
     print(f"Device: {device}")
-    print(f"SAE Config: epochs={args.num_of_epochs}, lr={args.learning_rate}, "
-          f"exp_factor={args.expansion_factor}, top_k={args.top_k}")
+    print(
+        f"SAE Config: epochs={args.num_of_epochs}, lr={args.learning_rate}, "
+        f"exp_factor={args.expansion_factor}, top_k={args.top_k}"
+    )
     print("-" * 80)
 
     # Find all .pt files
@@ -277,11 +284,11 @@ def main() -> int:
         print(f"[{i:3d}] {rel_path}  ({file_path.stat().st_size // 1024:,} KB)")
 
     print("\n" + "-" * 80)
-    
+
     # Load and concatenate tensors
     try:
         concatenated_tensor, metadata = load_and_concatenate_tensors(leaf_files)
-        
+
         print("\n" + "=" * 80)
         print("DATA SUMMARY")
         print("=" * 80)
@@ -289,20 +296,22 @@ def main() -> int:
         print(f"Final tensor shape: {concatenated_tensor.shape}")
         print(f"Total observations: {metadata['total_obs']:,}")
         print(f"Dimension: {metadata['dimension']}")
-        print(f"Memory usage: {concatenated_tensor.element_size() * concatenated_tensor.nelement() / (1024**2):.2f} MB")
-        
+        print(
+            f"Memory usage: {concatenated_tensor.element_size() * concatenated_tensor.nelement() / (1024**2):.2f} MB"
+        )
+
         # Train SAE on the concatenated data
         sae = train_sae_model(
             activations=concatenated_tensor,
-            input_dim=metadata['dimension'],
+            input_dim=metadata["dimension"],
             expansion_factor=args.expansion_factor,
             top_k=args.top_k,
             learning_rate=args.learning_rate,
             num_epochs=args.num_of_epochs,
             batch_size=args.batch_size,
-            device=device
+            device=device,
         )
-        
+
         # Save the trained model
         model_path = root_path / "SAE"
         learning_rate_str = f"{args.learning_rate:.5e}".replace("-", "m").replace("+", "p")
@@ -314,14 +323,15 @@ def main() -> int:
         print(f"Saving trained SAE model to: {model_path}")
         torch.save(sae.state_dict(), model_path)
         print("✓ Model saved successfully")
-        
+
         print("\n" + "=" * 80)
         print("Done.")
         return 0
-        
+
     except Exception as e:
         print(f"\n✗ ERROR: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -332,5 +342,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n✗ ERROR: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

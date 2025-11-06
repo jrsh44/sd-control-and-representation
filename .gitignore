@@ -62,3 +62,6 @@ venv.bak/
 # OS
 Thumbs.db
 .DS_Store
+
+# WANDB
+wandb/
