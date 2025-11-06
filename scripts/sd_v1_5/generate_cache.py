@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Generate cached representations for Stable Diffusion models using Arrow format.
+Generate cached representations for Stable Diffusion v1.5.
 
-Structure: {results_dir}/sd_1_5/{layer_name}/
+Structure: {results_dir}/cache/sd_v1_5/{layer_name}/
 Each dataset contains: object, style, prompt_nr, prompt_text, representation
 
 EXAMPLE:
-uv run src/generate_cache.py \
+uv run scripts/sd_v1_5/generate_cache.py \
     --prompts-dir data/unlearn_canvas/prompts/test \
     --style Impressionism \
     --layers TEXT_EMBEDDING_FINAL UNET_UP_3_ATT_2 UNET_UP_2_ATT_2 \
@@ -19,14 +19,14 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import List
 
 import torch
 import wandb
 from dotenv import load_dotenv
 
 # Add project root to path
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -34,56 +34,9 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from diffusers import StableDiffusionPipeline  # noqa: E402
 
-from src.utils.representation_cache import RepresentationCache  # noqa: E402
-from src.utils.reprezentation import LayerPath, capture_layer_representations  # noqa: E402
+from src.data import RepresentationCache, load_prompts_from_directory  # noqa: E402
+from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
-
-
-def load_prompts_from_directory(prompts_dir: Path) -> Dict[str, Dict[int, str]]:
-    """
-    Load prompts from .txt files in the specified directory.
-    Each file represents one object, and each line has format: ID; prompt
-    Skips entries with empty prompts.
-
-    Args:
-        prompts_dir: Path to directory containing .txt files
-
-    Returns:
-        Dictionary mapping object names to dict of {prompt_id: prompt_text}
-    """
-    prompts_by_object = {}
-    txt_files = sorted(prompts_dir.glob("*.txt"))
-
-    for txt_file in txt_files:
-        object_name = txt_file.stem.replace("sd_prompt_", "")
-        prompts = {}
-        skipped = 0
-
-        with open(txt_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-
-                if ";" in line:
-                    parts = line.split(";", 1)
-                    prompt_id = int(parts[0].strip())
-                    prompt_text = parts[1].strip() if len(parts) > 1 else ""
-
-                    if not prompt_text:
-                        skipped += 1
-                        continue
-
-                    prompts[prompt_id] = prompt_text
-
-        if prompts:
-            prompts_by_object[object_name] = prompts
-            status = f"  Loaded {len(prompts)} prompts for object: {object_name}"
-            if skipped > 0:
-                status += f" (skipped {skipped} empty)"
-            print(status)
-
-    return prompts_by_object
 
 
 def parse_layer_names(layer_names: List[str]) -> List[LayerPath]:
