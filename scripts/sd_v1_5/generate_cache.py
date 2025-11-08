@@ -160,15 +160,14 @@ def main():
 
     # Load model
     print("\nLoading model...")
-    model_id = "sd-legacy/stable-diffusion-v1-5"
-    variant = "fp16" if device == "cuda" else "fp32"
+    gdrive_url = "https://drive.google.com/drive/folders/18x40pLBcfNFyxBWZBGncTjqJTs_75SLx?fbclid=IwY2xjawN8Y3lleHRuA2FlbQIxMQBzcnRjBmFwcF9pZAEwAAEeuSfZ74-V0WjG0n_QDUfpqyQNwN5C3GKFmmT-4y5omuieOFyT-b8kxe-WdrM_aem_5VqGyNOa3QFmbCBfLwdZYQ"
+    model_name = "style50"
 
-    model_load_start = time.time()
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id,
-        variant=variant,
-        safety_checker=None,
-    ).to(device)
+    loader = ModelLoader(
+        gdrive_folder_url=gdrive_url,
+        model_name=model_name
+    )
+    pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f}s")
 
