@@ -24,7 +24,9 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from diffusers import StableDiffusionPipeline  # noqa: E402
 
-from src.utils.reprezentation import LayerPath, capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
+from src.utils.model_loader import ModelLoader
 
 
 def main():
@@ -81,16 +83,16 @@ def main():
     #############################################
     # MODEL
     #############################################
-    model_id = "sd-legacy/stable-diffusion-v1-5"
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    # Example of how to use the updated ModelLoader
+    gdrive_url = "https://drive.google.com/drive/folders/18x40pLBcfNFyxBWZBGncTjqJTs_75SLx?fbclid=IwY2xjawN8Y3lleHRuA2FlbQIxMQBzcnRjBmFwcF9pZAEwAAEeuSfZ74-V0WjG0n_QDUfpqyQNwN5C3GKFmmT-4y5omuieOFyT-b8kxe-WdrM_aem_5VqGyNOa3QFmbCBfLwdZYQ"
+    model_name = "style50"
 
-    print("\nLoading model...")
     model_load_start = time.time()
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id,
-        torch_dtype=dtype,
-        safety_checker=None,
-    ).to(device)
+    loader = ModelLoader(
+        gdrive_folder_url=gdrive_url,
+        model_name=model_name
+    )
+    pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f} seconds")
 
