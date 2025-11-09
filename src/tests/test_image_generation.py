@@ -22,10 +22,10 @@ if str(project_root) not in sys.path:
 # Load .env from project root
 load_dotenv(dotenv_path=project_root / ".env")
 
-from diffusers import StableDiffusionPipeline  # noqa: E402
 
 from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
 from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
+from src.utils.model_enum import ModelEnum
 from src.utils.model_loader import ModelLoader
 
 
@@ -83,15 +83,8 @@ def main():
     #############################################
     # MODEL
     #############################################
-    # Example of how to use the updated ModelLoader
-    gdrive_url = "https://drive.google.com/drive/folders/18x40pLBcfNFyxBWZBGncTjqJTs_75SLx?fbclid=IwY2xjawN8Y3lleHRuA2FlbQIxMQBzcnRjBmFwcF9pZAEwAAEeuSfZ74-V0WjG0n_QDUfpqyQNwN5C3GKFmmT-4y5omuieOFyT-b8kxe-WdrM_aem_5VqGyNOa3QFmbCBfLwdZYQ"
-    model_name = "style50"
-
     model_load_start = time.time()
-    loader = ModelLoader(
-        gdrive_folder_url=gdrive_url,
-        model_name=model_name
-    )
+    loader = ModelLoader(model_enum=ModelEnum.FINETUNED_SAEURON)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f} seconds")
