@@ -2,7 +2,7 @@
 """
 Generate cached representations for Stable Diffusion v1.5.
 
-Structure: {results_dir}/cache/sd_v1_5/{layer_name}/
+Structure: {results_dir}/{model_name}/cached_representations/{layer_name}/
 Each dataset contains: object, style, prompt_nr, prompt_text, representation
 
 EXAMPLE:
@@ -10,7 +10,6 @@ uv run scripts/sd_v1_5/generate_cache.py \
     --prompts-dir data/unlearn_canvas/prompts/test \
     --style Impressionism \
     --layers TEXT_EMBEDDING_FINAL UNET_UP_3_ATT_2 UNET_UP_2_ATT_2 \
-    --batch-size 10 \
     --skip-wandb
 """
 
@@ -22,8 +21,9 @@ from pathlib import Path
 from typing import List
 
 import torch
-import wandb
 from dotenv import load_dotenv
+
+import wandb
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -34,9 +34,9 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data import RepresentationCache, load_prompts_from_directory  # noqa: E402
 from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
-from src.utils.wandb import get_system_metrics  # noqa: E402
-from src.utils.model_enum import ModelEnum
+from src.utils.model_enum import ModelEnum  # noqa: E402
 from src.utils.model_loader import ModelLoader  # noqa: E402
+from src.utils.wandb import get_system_metrics  # noqa: E402
 
 
 def parse_layer_names(layer_names: List[str]) -> List[LayerPath]:
@@ -78,8 +78,9 @@ def main():
     parser.add_argument(
         "--style",
         type=str,
-        required=True,
-        help="Style name (e.g., 'Impressionism', 'Van_Gogh')",
+        default=None,
+        help="Style name (e.g., 'Impressionism', 'Van_Gogh'). "
+        "If not provided, no style suffix is added.",
     )
     parser.add_argument(
         "--layers",
@@ -87,12 +88,6 @@ def main():
         nargs="+",
         required=True,
         help="List of layer names to capture",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=10,
-        help="Number of representations to batch before saving (default: 10)",
     )
     parser.add_argument(
         "--device",
@@ -104,6 +99,11 @@ def main():
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--skip-wandb", action="store_true")
+    parser.add_argument(
+        "--skip-existence-check",
+        action="store_true",
+        help="Skip checking if representations already exist (regenerate all)",
+    )
 
     args = parser.parse_args()
 
@@ -118,7 +118,7 @@ def main():
         print("ERROR: No valid layers specified")
         return 1
 
-    # Setup results directory with cache/sd_1_5 subdirectory
+    # Setup results directory with model_name/cached_representations subdirectory
     if args.results_dir:
         results_dir = Path(args.results_dir)
     elif os.environ.get("RESULTS_DIR"):
@@ -130,8 +130,19 @@ def main():
         print("  2. Set RESULTS_DIR in .env file")
         return 1
 
-    # Add cache/sd_1_5 subdirectory structure
-    results_dir = results_dir / "cache" / "sd_1_5"
+    # Load model to get model name
+    print("\nLoading model...")
+    model_load_start = time.time()
+    model_enum = ModelEnum.FINETUNED_SAEURON
+    loader = ModelLoader(model_enum=model_enum)
+    device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
+    pipe = loader.load_model(device=device)
+    model_load_time = time.time() - model_load_start
+    print(f"Model loaded in {model_load_time:.2f}s")
+
+    # Build cache path: {results_dir}/{model_name}/cached_representations/
+    model_name = model_enum.value.name
+    cache_dir = results_dir / model_name / "cached_representations"
 
     # Setup device
     device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
@@ -140,16 +151,16 @@ def main():
     print("=" * 70)
     print("Generate Representations Cache (SD 1.5)")
     print("=" * 70)
-    print(f"Results Dir: {results_dir}")
+    print(f"Model: {model_name}")
+    print(f"Cache Dir: {cache_dir}")
     print(f"Prompts: {prompts_dir}")
     print(f"Style: {args.style}")
     print(f"Layers: {', '.join(layer.name for layer in layers_to_capture)}")
-    print(f"Batch Size: {args.batch_size}")
     print(f"Device: {device}")
     print("=" * 70)
 
     # Initialize cache
-    cache = RepresentationCache(results_dir)
+    cache = RepresentationCache(cache_dir)
 
     # Load prompts
     print("\nLoading prompts...")
@@ -158,14 +169,6 @@ def main():
         print("ERROR: No prompts loaded")
         return 1
 
-    # Load model
-    print("\nLoading model...")
-    model_load_start = time.time()
-    loader = ModelLoader(model_enum=ModelEnum.FINETUNED_SAEURON)
-    pipe = loader.load_model(device=device)
-    model_load_time = time.time() - model_load_start
-    print(f"Model loaded in {model_load_time:.2f}s")
-
     # Initialize wandb
     if not args.skip_wandb:
         wandb.login()
@@ -173,17 +176,16 @@ def main():
             project="sd-control-representation",
             entity="bartoszjezierski28-warsaw-university-of-technology",
             config={
-                "model": model_id,
+                "model": "name",
                 "device": device,
-                "style": args.style,
-                "batch_size": args.batch_size,
+                "style": args.style or "no_style",
                 "guidance_scale": args.guidance_scale,
                 "steps": args.steps,
                 "base_seed": args.seed,
-                "storage_format": "arrow",
+                "storage_format": "parquet_zstd",
                 "layers": [layer.name for layer in layers_to_capture],
             },
-            tags=["arrow", "cache_generation", args.style],
+            tags=["parquet", "zstd", "cache_generation", args.style or "no_style"],
         )
 
     # Generation statistics
@@ -191,33 +193,36 @@ def main():
     skipped_generations = 0
     failed_generations = 0
     total_inference_time = 0.0
-
-    # No batch buffers - save immediately after each generation!
+    total_save_time = 0.0
 
     style = args.style
-    print(f"\nStarting generation for style: {style}")
+    if style:
+        print(f"\nStarting generation for style: {style}")
+    else:
+        print("\nStarting generation (no style applied)")
     print("=" * 70)
 
     for object_name, prompts in prompts_by_object.items():
         print(f"\n[Object: {object_name}] Processing {len(prompts)} prompts...")
 
         for prompt_nr, base_prompt in prompts.items():
-            # ============================================================
-            # EXISTENCE CHECK - Comment out this block to disable
-            # ============================================================
-            # all_exist = all(
-            #     cache.check_exists(layer.name, object_name, style, prompt_nr)
-            #     for layer in layers_to_capture
-            # )
-            #
-            # if all_exist:
-            #     skipped_generations += 1
-            #     print(f"  [{prompt_nr}] ⏭️  Skipping (already cached)")
-            #     continue
-            # ============================================================
+            # Check if all layers already have this representation
+            if not args.skip_existence_check:
+                all_exist = all(
+                    cache.check_exists(layer.name, object_name, style or "", prompt_nr)
+                    for layer in layers_to_capture
+                )
 
-            # Generate with style
-            styled_prompt = f"{base_prompt} in {style} style"
+                if all_exist:
+                    skipped_generations += 1
+                    print(f"  [{prompt_nr}] ⏭️  Skipping (already cached)")
+                    continue
+
+            # Generate with optional style
+            if style:
+                styled_prompt = f"{base_prompt} in {style} style"
+            else:
+                styled_prompt = base_prompt
             print(f"  [{prompt_nr}] 🎨 Generating: {styled_prompt[:60]}...")
 
             try:
@@ -237,38 +242,32 @@ def main():
                 inference_time = time.time() - inference_start
                 total_inference_time += inference_time
 
-                # Save immediately - one sample at a time, no batching
+                # Save each representation immediately
                 save_start = time.time()
                 for layer, tensor in zip(layers_to_capture, representations, strict=True):
                     if tensor is not None:
-                        cache.save_batch(
-                            layer.name,
-                            [
-                                {
-                                    "object": object_name,
-                                    "style": style,
-                                    "prompt_nr": prompt_nr,
-                                    "prompt_text": styled_prompt,
-                                    "representation": tensor,
-                                }
-                            ],
-                            verbose=False,  # Reduce log spam
+                        cache.save_representation(
+                            layer_name=layer.name,
+                            object_name=object_name,
+                            style=style or "",
+                            prompt_nr=prompt_nr,
+                            prompt_text=styled_prompt,
+                            representation=tensor,
+                            num_steps=args.steps,
+                            guidance_scale=args.guidance_scale,
                         )
-                        # Free memory immediately after saving
-                        del tensor
+                save_time = time.time() - save_start
+                total_save_time += save_time
 
-                # Free everything
+                # Free GPU memory
                 del representations
                 if image is not None:
                     del image
-                torch.cuda.empty_cache()  # Clear GPU cache
-
-                save_time = time.time() - save_start
+                torch.cuda.empty_cache()
 
                 total_generations += 1
-                print(f"      ✅ Done in {inference_time:.2f}s | Saved in {save_time:.2f}s")
+                print(f"      ✅ Generated in {inference_time:.2f}s, saved in {save_time:.2f}s")
 
-                # Log to wandb
                 if not args.skip_wandb:
                     system_metrics_end = get_system_metrics(device)
                     wandb.log(
@@ -301,21 +300,31 @@ def main():
 
                 traceback.print_exc()
 
+    # Save all accumulated metadata
+    print("\n💾 Saving metadata...")
+    metadata_save_start = time.time()
+    cache.save_metadata()
+    metadata_save_time = time.time() - metadata_save_start
+    print(f"✅ Metadata saved in {metadata_save_time:.2f}s")
+
     # Print summary
     print("\n" + "=" * 70)
     print("GENERATION SUMMARY")
     print("=" * 70)
-    print(f"Style: {style}")
+    print(f"Style: {style if style else 'None'}")
     print(f"Device: {device}")
     print(f"Model Load Time: {model_load_time:.2f}s")
     print(f"Total Inference Time: {total_inference_time:.2f}s")
+    print(f"Total Save Time: {total_save_time:.2f}s")
+    print(f"Metadata Save Time: {metadata_save_time:.2f}s")
     if total_generations > 0:
         print(f"Avg Inference Time: {total_inference_time / total_generations:.2f}s per generation")
+        print(f"Avg Save Time: {total_save_time / total_generations:.2f}s per generation")
     print("\nResults:")
     print(f"  ✅ Generated: {total_generations}")
     print(f"  ⏭️ Skipped: {skipped_generations}")
     print(f"  ❌ Failed: {failed_generations}")
-    print(f"\nResults Location: {results_dir}/")
+    print(f"\nCache Location: {cache_dir}/")
     print("=" * 70)
 
     # Log final summary
@@ -327,7 +336,10 @@ def main():
                 "final/failed_generations": failed_generations,
                 "final/model_load_time": model_load_time,
                 "final/total_inference_time": total_inference_time,
+                "final/total_save_time": total_save_time,
+                "final/metadata_save_time": metadata_save_time,
                 "final/avg_inference_time": total_inference_time / max(total_generations, 1),
+                "final/avg_save_time": total_save_time / max(total_generations, 1),
             }
         )
 
