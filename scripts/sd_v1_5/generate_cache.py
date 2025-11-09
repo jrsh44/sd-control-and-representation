@@ -32,11 +32,11 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
-from diffusers import StableDiffusionPipeline  # noqa: E402
-
 from src.data import RepresentationCache, load_prompts_from_directory  # noqa: E402
 from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
+from src.utils.model_enum import ModelEnum
+from src.utils.model_loader import ModelLoader  # noqa: E402
 
 
 def parse_layer_names(layer_names: List[str]) -> List[LayerPath]:
@@ -160,13 +160,8 @@ def main():
 
     # Load model
     print("\nLoading model...")
-    gdrive_url = "https://drive.google.com/drive/folders/18x40pLBcfNFyxBWZBGncTjqJTs_75SLx?fbclid=IwY2xjawN8Y3lleHRuA2FlbQIxMQBzcnRjBmFwcF9pZAEwAAEeuSfZ74-V0WjG0n_QDUfpqyQNwN5C3GKFmmT-4y5omuieOFyT-b8kxe-WdrM_aem_5VqGyNOa3QFmbCBfLwdZYQ"
-    model_name = "style50"
-
-    loader = ModelLoader(
-        gdrive_folder_url=gdrive_url,
-        model_name=model_name
-    )
+    model_load_start = time.time()
+    loader = ModelLoader(model_enum=ModelEnum.FINETUNED_SAEURON)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f}s")
