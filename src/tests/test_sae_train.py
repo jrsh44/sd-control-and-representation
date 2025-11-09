@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 """
-List all leaf files in cached_rep/obj_*/style_* directories, load them into a single tensor,
-and train a Sparse Autoencoder (SAE) on the concatenated data.
+Train a Sparse Autoencoder (SAE) on representations from a Stable Diffusion layer using RepresentationDataset.
 
-Traverses the directory tree:
-    {stable_diffusion_model_path}/{layer_in_model_path}/cached_rep/obj_[1-3]/style_[1-3]/
+This script loads a dataset via RepresentationDataset, creates or loads an existing SAE model from a specified .pt file,
+trains it on the dataset, and saves the updated model back to the .pt file.
 
-Loads .pt files with shape [timesteps, num_of_obs, dimension] and concatenates them
-into a single tensor of shape [total_num_of_obs_for_every_timestep, dimension].
-Then trains an SAE on this data.
+Designed for incremental training across multiple datasets by reusing the same SAE model path.
 """
 
 import os
+import wandb
 import argparse
 from pathlib import Path
-from typing import List, Tuple
 import sys
 from dotenv import load_dotenv
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 from overcomplete.sae import TopKSAE, train_sae
 from src.models.sae.training import criterion_laux
+from src.data.dataset import RepresentationDataset
+from src.utils.wandb import get_system_metrics
+from models.sae.train_sae_validation import train_sae_val
 
 # Add project root to path to allow imports to work from any location
 project_root = Path(__file__).parent.parent.parent
@@ -33,47 +33,63 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Load cached representations and train SAE on concatenated tensor."
+        description="Train SAE on representations from Stable Diffusion layer using RepresentationDataset."
     )
+    # Dataset parameters
     parser.add_argument(
-        "--model_type",
+        "--train_dataset_path",
         type=str,
         required=True,
-        help="Base path to Stable Diffusion model outputs (e.g., results/enum_layer_1)",
+        help="Path to training dataset directory (e.g., results/sd_1_5/unet_mid_att)",
     )
     parser.add_argument(
-        "--layer_name",
+        "--test_dataset_path",
         type=str,
         required=True,
-        help="Layer path (e.g., SAE or UNET_UP_1_ATT_2)",
+        help="Path to training dataset directory (e.g., results/sd_1_5/unet_mid_att)",
     )
     parser.add_argument(
-        "--num_of_epochs",
-        default=5,
-        type=int,
-        required=True,
-        help="Number of SAE training epochs",
+        "--flatten",
+        action="store_true",
+        default=True,
+        help="Flatten representations to 1D vectors (default: True)",
     )
     parser.add_argument(
-        "--learning_rate",
-        type=float,
-        default=1e-4,
+        "--return_metadata",
+        action="store_true",
+        default=True,
+        help="Return metadata along with representations (default: True)",
+    )
+    # SAE parameters
+    parser.add_argument(
+        "--sae_path",
+        type=str,
         required=True,
-        help="SAE learning rate",
+        help="Path to .pt file for SAE weights (load if exists, create and save if not)",
     )
     parser.add_argument(
         "--expansion_factor",
         type=int,
         default=16,
-        required=True,
         help="SAE expansion factor",
     )
     parser.add_argument(
         "--top_k",
         type=int,
         default=32,
-        required=True,
         help="SAE top-k sparsity",
+    )
+    parser.add_argument(
+        "--learning_rate",
+        type=float,
+        default=1e-4,
+        help="SAE learning rate",
+    )
+    parser.add_argument(
+        "--num_epochs",
+        type=int,
+        default=5,
+        help="Number of SAE training epochs",
     )
     parser.add_argument(
         "--batch_size",
@@ -81,159 +97,11 @@ def parse_args() -> argparse.Namespace:
         default=1024,
         help="Batch size for SAE training",
     )
+    parser.add_argument(
+        "--skip-wandb",
+        action="store_true"
+    )
     return parser.parse_args()
-
-
-def find_leaf_files(base_path: Path) -> List[Path]:
-    """
-    Find all files in leaf directories: cached_rep/obj_*/style_*/*
-    """
-    leaf_files = []
-    pattern = base_path / "cached_rep" / "obj_*" / "style_*"
-
-    for style_dir in sorted(pattern.glob("*")):
-        if not style_dir.is_dir():
-            continue
-        for file_path in sorted(style_dir.iterdir()):
-            if file_path.is_file() and file_path.suffix == ".pt":
-                leaf_files.append(file_path)
-    return leaf_files
-
-
-def load_and_concatenate_tensors(file_paths: List[Path]) -> Tuple[torch.Tensor, dict]:
-    """
-    Load all .pt files and concatenate them into a single tensor.
-
-    Expected input shape: [timesteps, num_of_obs, dimension]
-    Output shape: [total_num_of_obs_for_every_timestep, dimension]
-
-    Returns:
-        concatenated_tensor: The concatenated tensor
-        metadata: Dictionary with information about the loading process
-    """
-    if not file_paths:
-        raise ValueError("No files to load")
-
-    all_tensors = []
-    metadata = {
-        "num_files": len(file_paths),
-        "file_shapes": [],
-        "total_obs": 0,
-        "dimension": None,
-        "num_timesteps": None,
-    }
-
-    print("\nLoading tensors...")
-    for i, file_path in enumerate(file_paths, 1):
-        print(f"  [{i}/{len(file_paths)}] Loading {file_path.name}...", end=" ")
-
-        try:
-            tensor = torch.load(file_path, map_location="cpu")
-
-            # Validate shape: should be [timesteps, num_of_obs, dimension]
-            if tensor.dim() != 3:
-                raise ValueError(f"Expected 3D tensor, got {tensor.dim()}D: {tensor.shape}")
-
-            timesteps, num_obs, dimension = tensor.shape
-            metadata["file_shapes"].append(tensor.shape)
-
-            # Check consistency across files
-            if metadata["dimension"] is None:
-                metadata["dimension"] = dimension
-                metadata["num_timesteps"] = timesteps
-            else:
-                if dimension != metadata["dimension"]:
-                    raise ValueError(
-                        f"Dimension mismatch: expected {metadata['dimension']}, got {dimension}"
-                    )
-                if timesteps != metadata["num_timesteps"]:
-                    raise ValueError(
-                        f"Timesteps mismatch: expected {metadata['num_timesteps']}, got {timesteps}"
-                    )
-
-            # Reshape: [timesteps, num_obs, dimension] -> [timesteps * num_obs, dimension]
-            reshaped = tensor.reshape(-1, dimension)
-            all_tensors.append(reshaped)
-            metadata["total_obs"] += timesteps * num_obs
-
-            print(f"✓ Shape: {tensor.shape} -> {reshaped.shape}")
-
-        except Exception as e:
-            print(f"✗ ERROR: {e}")
-            raise
-
-    # Concatenate all tensors along the observation dimension
-    print("\nConcatenating tensors...")
-    concatenated = torch.cat(all_tensors, dim=0)
-
-    print(f"✓ Final shape: {concatenated.shape}")
-    print(f"  Total observations: {metadata['total_obs']:,}")
-    print(f"  Dimension: {metadata['dimension']}")
-
-    return concatenated, metadata
-
-
-def train_sae_model(
-    activations: torch.Tensor,
-    input_dim: int,
-    expansion_factor: int,
-    top_k: int,
-    learning_rate: float,
-    num_epochs: int,
-    batch_size: int,
-    device: torch.device,
-) -> TopKSAE:
-    """
-    Train a Sparse Autoencoder on the given activations.
-
-    Args:
-        activations: Input tensor of shape (num_samples, input_dim)
-        input_dim: Dimension of input features
-        expansion_factor: SAE expansion factor
-        top_k: Number of active units (sparsity)
-        learning_rate: Learning rate for optimizer
-        num_epochs: Number of training epochs
-        batch_size: Batch size for training
-        device: Device to train on
-
-    Returns:
-        Trained SAE model
-    """
-    print("\n" + "=" * 80)
-    print("SAE TRAINING")
-    print("=" * 80)
-    print(f"Input dimension: {input_dim}")
-    print(f"Number of concepts: {input_dim * expansion_factor}")
-    print(f"Expansion factor: {expansion_factor}")
-    print(f"Top-k sparsity: {top_k}")
-    print(f"Learning rate: {learning_rate}")
-    print(f"Number of epochs: {num_epochs}")
-    print(f"Batch size: {batch_size}")
-    print(f"Device: {device}")
-    print("-" * 80)
-
-    # Move data to device
-    activations = activations.to(device)
-
-    # Prepare DataLoader
-    dataset = TensorDataset(activations)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-    # Initialize SAE model
-    nb_concepts = input_dim * expansion_factor
-    sae = TopKSAE(input_dim, nb_concepts=nb_concepts, top_k=top_k, device=device)
-    sae = sae.to(device)
-
-    # Define optimizer
-    optimizer = torch.optim.Adam(sae.parameters(), lr=learning_rate)
-
-    # Train SAE
-    print("\nStarting SAE training...")
-    train_sae(sae, dataloader, criterion_laux, optimizer, nb_epochs=num_epochs, device=device)
-    sae = sae.eval()
-    print("\n✓ SAE training completed.")
-
-    return sae
 
 
 def main() -> int:
@@ -242,86 +110,122 @@ def main() -> int:
     # Select device (GPU if available)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Get results directory from environment variable or use default
-    results_base_dir = os.environ.get("RESULTS_DIR")
-    if results_base_dir:
-        results_base_path = Path(results_base_dir)
-    else:
-        # Default to relative path from project root
-        results_base_path = Path(__file__).parent.parent.parent / "results"
-
-    # Construct full path
-    root_path = results_base_path / args.stable_diffusion_model_path / args.layer_in_model_path
-    cached_rep_path = root_path / "cached_rep"
-
-    if not cached_rep_path.exists():
-        print(f"Error: Path does not exist: {cached_rep_path}")
-        return 1
-
     print("=" * 80)
-    print("LOAD, CONCATENATE AND TRAIN SAE ON CACHED REPRESENTATIONS")
+    print("LOAD DATASET AND TRAIN SAE ON REPRESENTATIONS")
     print("=" * 80)
-    print(f"Root: {root_path}")
-    print(f"Layer: {args.layer_in_model_path}")
+    print(f"Train dataset path: {args.train_dataset_path}")
+    print(f"Test dataset path: {args.test_dataset_path}")
+    print(f"Flatten: {args.flatten}")
+    print(f"Return metadata: {args.return_metadata}")
+    print(f"SAE path: {args.sae_path}")
     print(f"Device: {device}")
     print(
-        f"SAE Config: epochs={args.num_of_epochs}, lr={args.learning_rate}, "
-        f"exp_factor={args.expansion_factor}, top_k={args.top_k}"
+        f"SAE Config: epochs={args.num_epochs}, lr={args.learning_rate}, "
+        f"exp_factor={args.expansion_factor}, top_k={args.top_k}, batch_size={args.batch_size}"
     )
     print("-" * 80)
 
-    # Find all .pt files
-    leaf_files = find_leaf_files(root_path)
-
-    if not leaf_files:
-        print("No .pt files found. Check the directory structure.")
-        print("Expected: .../cached_rep/obj_[1-3]/style_[1-3]/<files>.pt")
-        return 1
-
-    print(f"Found {len(leaf_files)} .pt file(s) in leaf directories:\n")
-    for i, file_path in enumerate(leaf_files, 1):
-        rel_path = file_path.relative_to(root_path)
-        print(f"[{i:3d}] {rel_path}  ({file_path.stat().st_size // 1024:,} KB)")
-
-    print("\n" + "-" * 80)
-
-    # Load and concatenate tensors
     try:
-        concatenated_tensor, metadata = load_and_concatenate_tensors(leaf_files)
 
-        print("\n" + "=" * 80)
-        print("DATA SUMMARY")
-        print("=" * 80)
-        print(f"Files processed: {metadata['num_files']}")
-        print(f"Final tensor shape: {concatenated_tensor.shape}")
-        print(f"Total observations: {metadata['total_obs']:,}")
-        print(f"Dimension: {metadata['dimension']}")
-        print(
-            f"Memory usage: {concatenated_tensor.element_size() * concatenated_tensor.nelement() / (1024**2):.2f} MB"
+        # Initialize wandb
+        if not args.skip_wandb:
+            wandb.login()
+            wandb.init(
+                project="sd-control-representation",
+                entity="bartoszjezierski28-warsaw-university-of-technology",
+                name=f"SAE_{Path(args.sae_path).stem}",  # nazwa eksperymentu
+                config={
+                    "sae_path": args.sae_path,
+                    "val_dataset_path": args.test_dataset_path,
+                    "expansion_factor": args.expansion_factor,
+                    "top_k": args.top_k,
+                    "learning_rate": args.learning_rate,
+                    "batch_size": args.batch_size,
+                    "num_epochs": args.num_epochs,
+                },
+                tags=["sae", "incremental", "validation"],
+                notes="Trained incrementally on multiple train datasets, single validation set.",
+            )
+
+        # Load dataset
+        trining_dataset = RepresentationDataset(
+            dataset_path=Path(args.train_dataset_path),
+            flatten=args.flatten,
+            return_metadata=args.return_metadata,
         )
+        validation_dataset = RepresentationDataset(
+            dataset_path=Path(args.test_dataset_path),
+            flatten=args.flatten,
+            return_metadata=args.return_metadata,
+        )
+        input_dim = trining_dataset.feature_dim
+        print(f"Loaded dataset: {len(trining_dataset)} samples, input_dim={input_dim}")
 
-        # Train SAE on the concatenated data
-        sae = train_sae_model(
-            activations=concatenated_tensor,
-            input_dim=metadata["dimension"],
-            expansion_factor=args.expansion_factor,
-            top_k=args.top_k,
-            learning_rate=args.learning_rate,
-            num_epochs=args.num_of_epochs,
-            batch_size=args.batch_size,
+        # Prepare DataLoader
+        train_dataloader = DataLoader(trining_dataset, batch_size=args.batch_size, shuffle=True)
+        val_dataloader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=False)
+
+        # Initialize or load SAE
+        nb_concepts = input_dim * args.expansion_factor
+        sae = TopKSAE(input_dim, nb_concepts=nb_concepts, top_k=args.top_k, device=device)
+        sae = sae.to(device)
+
+        sae_path = Path(args.sae_path)
+        if sae_path.exists():
+            print(f"Loading existing SAE from: {sae_path}")
+            sae.load_state_dict(torch.load(sae_path, map_location=device))
+        else:
+            print(f"Creating new SAE (file does not exist: {sae_path})")
+
+        # Define optimizer
+        optimizer = torch.optim.Adam(sae.parameters(), lr=args.learning_rate)
+
+        # Train SAE
+        print("\nStarting SAE training...")
+        results_logs = train_sae_val(
+            model=sae,
+            train_dataloader=train_dataloader,
+            criterion=criterion_laux,
+            optimizer=optimizer,
+            val_dataloader=val_dataloader,
+            nb_epochs=args.num_epochs,
             device=device,
         )
+        # train_sae(sae, dataloader, criterion_laux, optimizer, nb_epochs=args.num_epochs, device=device)
+        sae = sae.eval()
+        print("\n✓ SAE training completed.")
+
+        # Log to wandb
+        if not args.skip_wandb:
+            system_metrics_end = get_system_metrics(device)
+
+            for epoch in range(args.num_epochs):
+                log_dict = {
+                    "epoch": epoch + 1,
+                    "train/avg_loss": results_logs['train']['avg_loss'][epoch],
+                    "train/r2": results_logs['train']['r2'][epoch],
+                    "train/z_sparsity": results_logs['train']['z_sparsity'][epoch],
+                    "train/dead_features": results_logs['train']['dead_features'][epoch],
+                    "train/time_epoch": results_logs['train']['time_epoch'][epoch],
+
+                    "val/avg_loss": results_logs['val']['avg_loss'][epoch],
+                    "val/r2": results_logs['val']['r2'][epoch],
+                    "val/z_sparsity": results_logs['val']['z_sparsity'][epoch],
+                    "val/dead_features": results_logs['val']['dead_features'][epoch],
+
+                    "train_dataset": Path(args.train_dataset_path).name,
+                    "val_dataset": Path(args.test_dataset_path).name,
+                }
+                log_dict.update(system_metrics_end)
+                wandb.log(log_dict)
 
         # Save the trained model
-        model_path = root_path / "SAE"
-        learning_rate_str = f"{args.learning_rate:.5e}".replace("-", "m").replace("+", "p")
-        model_path /= f"sae_exp{args.expansion_factor}_topk{args.top_k}_lr{learning_rate_str}_epochs{args.num_of_epochs}_batch{args.batch_size}.pt"
-
+        sae_path.parent.mkdir(parents=True, exist_ok=True)
         print("\n" + "=" * 80)
         print("SAVING MODEL")
         print("=" * 80)
-        print(f"Saving trained SAE model to: {model_path}")
-        torch.save(sae.state_dict(), model_path)
+        print(f"Saving trained SAE model to: {sae_path}")
+        torch.save(sae.state_dict(), sae_path)
         print("✓ Model saved successfully")
 
         print("\n" + "=" * 80)

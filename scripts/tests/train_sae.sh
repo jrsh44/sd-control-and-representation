@@ -73,17 +73,23 @@ echo ""
 # Python script
 PYTHON_SCRIPT="src/tests/test_sae_train.py"
 
-# SAE model parameters
+# Datasets parameters
 MODEL_TYPE="sd_1_5"
 LAYER_NAME="enum_layer_2"
+TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_TYPE}/${LAYER_NAME}"
+TEST_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_TYPE}/${LAYER_NAME}"
 
-# SAE training parameters
+# SAE model parameters
 EXPANSION_FACTOR=15
 TOP_K=32
 LEARNING_RATE=1e-3
 NUM_EPOCHS=5
 BATCH_SIZE=1024
 
+# Compute SAE path
+ROOT_PATH="${RESULTS_DIR:-results}/${MODEL_TYPE}/${LAYER_NAME}"
+LEARNING_RATE_STR=$(echo "${LEARNING_RATE}" | sed 's/e-/em/g' | sed 's/e+/ep/g' | sed 's/\.//g')
+SAE_PATH="${ROOT_PATH}/SAE/sae_exp${EXPANSION_FACTOR}_topk${TOP_K}_lr${LEARNING_RATE_STR}_epochs${NUM_EPOCHS}_batch${BATCH_SIZE}.pt"
 
 #==============================================================================
 # RUN TRAINING
@@ -93,12 +99,13 @@ echo "=========================================="
 
 # Run the training script using uv (recommended) or python directly
 uv run python ${PYTHON_SCRIPT} \
-    --model_type ${MODEL_TYPE} \
-    --layer_name ${LAYER_NAME} \
+    --train_dataset_path ${DATASET_PATH} \
+    --test_dataset_path ${DATASET_PATH} \
+    --sae_path ${SAE_PATH} \
     --expansion_factor ${EXPANSION_FACTOR} \
     --top_k ${TOP_K} \
     --learning_rate ${LEARNING_RATE} \
-    --num_of_epochs ${NUM_EPOCHS} \
+    --num_epochs ${NUM_EPOCHS} \
     --batch_size ${BATCH_SIZE}
 
 # Capture exit code
