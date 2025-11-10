@@ -32,10 +32,10 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
-from diffusers import StableDiffusionPipeline  # noqa: E402
-
 from src.data import RepresentationCache, load_prompts_from_directory  # noqa: E402
+from src.models.config import ModelRegistry  # noqa: E402
 from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
+from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
 
 
@@ -160,15 +160,10 @@ def main():
 
     # Load model
     print("\nLoading model...")
-    model_id = "sd-legacy/stable-diffusion-v1-5"
-    variant = "fp16" if device == "cuda" else "fp32"
-
     model_load_start = time.time()
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id,
-        variant=variant,
-        safety_checker=None,
-    ).to(device)
+    model_enum = ModelRegistry.FINETUNED_SAEURON
+    loader = ModelLoader(model_enum=model_enum)
+    pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f}s")
 
@@ -179,7 +174,7 @@ def main():
             project="sd-control-representation",
             entity="bartoszjezierski28-warsaw-university-of-technology",
             config={
-                "model": model_id,
+                "model": model_enum.model_id,
                 "device": device,
                 "style": args.style,
                 "batch_size": args.batch_size,
