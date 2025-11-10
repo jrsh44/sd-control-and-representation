@@ -176,7 +176,7 @@ def main():
             project="sd-control-representation",
             entity="bartoszjezierski28-warsaw-university-of-technology",
             config={
-                "model": "name",
+                "model": model_name,
                 "device": device,
                 "style": args.style or "no_style",
                 "guidance_scale": args.guidance_scale,
