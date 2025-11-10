@@ -141,7 +141,7 @@ def main():
     print(f"Model loaded in {model_load_time:.2f}s")
 
     # Build cache path: {results_dir}/{model_name}/cached_representations/
-    model_name = model_enum.value.name
+    model_name = model_enum.name
     cache_dir = results_dir / model_name / "cached_representations"
 
     # Setup device
