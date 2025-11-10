@@ -4,17 +4,22 @@
 # Purpose: Generate cached representations for multiple styles in parallel
 #
 # Usage:
-#   sbatch scripts/generate_cache.sh
+#   sbatch scripts/sd_v1_5/generate_cache.sh
 #
 # Description:
 #   This script runs parallel tasks to generate representation caches:
 #   - Each task processes one artistic style
 #   - Captures multiple layer representations from SD 1.5
-#   - Saves to Parquet format for efficient SAE training
+#   - Saves to Parquet format 
+#   - Each prompt saved immediately to separate file
 #   
 #   Results are saved to:
-#   - Cache: results/cache/sd_1_5/{layer_name}/
-#   - Logs: logs/cache_gen_{JOB_ID}_{TASK_ID}.log
+#   - Cache: {RESULTS_DIR}/{model_name}/cached_representations/{layer_name}/
+#   - Logs: {LOGS_DIR}/sd_1_5_cache_gen_{JOB_ID}_{TASK_ID}.log
+#
+#   Metadata saved per representation:
+#   - object, style, prompt_nr, prompt_text
+#   - num_steps, guidance_scale
 ################################################################################
 
 #==============================================================================
@@ -24,19 +29,19 @@
 
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sd_1_5_cache_gen         # Name in queue
-#SBATCH --time 0-02:00:00                   # Max 2 hours per style
+#SBATCH --time 0-5:00:00                   # Max 5 hours per style
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
 #SBATCH --cpus-per-task 12                   # CPU cores for data processing
-#SBATCH --mem 80G                           # 80GB RAM (for large batches)
+#SBATCH --mem 40G                           # 40GB RAM (for large batches)
 #SBATCH --partition short                   # Queue name
 #SBATCH --output ../logs/sd_1_5_cache_gen_%A_%a.log   # %A=job ID, %a=task ID
 #SBATCH --array 0-1%2                       # 2 styles, max 2 running at once
 
 # Optional: email notifications
-# #SBATCH --mail-user 01180706@pw.edu.pl
-# #SBATCH --mail-type FAIL,END
+#SBATCH --mail-user 01180706@pw.edu.pl
+#SBATCH --mail-type FAIL,END
 
 #==============================================================================
 # ERROR HANDLING
@@ -59,15 +64,14 @@ echo "=========================================="
 # Navigate to project directory
 cd /mnt/evafs/groups/mi2lab/mjarosz/sd-control-and-representation
 
-# Create directories
-mkdir -p ../logs
-mkdir -p ../results
-
-
 # Load environment variables
 if [ -f .env ]; then
   export $(cat .env | grep -v '^#' | xargs)
 fi
+
+# Create directories
+mkdir -p "../logs"
+mkdir -p ${RESULTS_DIR:-../results}
 
 echo ""
 echo "Environment Configuration:"
@@ -83,32 +87,27 @@ echo ""
 PYTHON_SCRIPT="scripts/sd_v1_5/generate_cache.py"
 
 # Prompts directory
-PROMPTS_DIR="data/unlearn_canvas/prompts/test"
+PROMPTS_DIR="data/unlearn_canvas/prompts"
 
 # Styles to process
 STYLES=(
-    "Impressionism"
-    "Cubism"
     "Surrealism"
-    "Abstract_Expressionism"
-    "Pop_Art"
+    ""
 )
 
 # Layers to capture
 LAYERS=(
     "TEXT_EMBEDDING_FINAL"
-    "UNET_UP_2_ATT_2"
-    "UNET_UP_3_ATT_2"
+    "UNET_UP_1_ATT_1"
 )
 
 # Generation parameters
-BATCH_SIZE=20              # Save every 20 representations
 GUIDANCE_SCALE=7.5
-NUM_STEPS=50
+NUM_STEPS=(50 100)
 SEED=42
 
 # WandB settings
-SKIP_WANDB=true           # Set to true to disable WandB logging
+SKIP_WANDB=false
 
 #==============================================================================
 # TASK MAPPING
@@ -117,6 +116,7 @@ SKIP_WANDB=true           # Set to true to disable WandB logging
 
 # Get style for this task
 CURRENT_STYLE=${STYLES[$SLURM_ARRAY_TASK_ID]}
+CURRENT_NUM_STEPS=${NUM_STEPS[$SLURM_ARRAY_TASK_ID]}
 
 # Convert layers array to space-separated string
 LAYERS_STR="${LAYERS[@]}"
@@ -126,7 +126,6 @@ echo "  Script: ${PYTHON_SCRIPT}"
 echo "  Style: ${CURRENT_STYLE}"
 echo "  Prompts: ${PROMPTS_DIR}"
 echo "  Layers: ${LAYERS_STR}"
-echo "  Batch Size: ${BATCH_SIZE}"
 echo "  Guidance Scale: ${GUIDANCE_SCALE}"
 echo "  Steps: ${NUM_STEPS}"
 echo "  Seed: ${SEED}"
@@ -156,12 +155,15 @@ echo ""
 # Build command
 CMD="uv run ${PYTHON_SCRIPT} \
     --prompts-dir ${PROMPTS_DIR} \
-    --style ${CURRENT_STYLE} \
     --layers ${LAYERS_STR} \
-    --batch-size ${BATCH_SIZE} \
     --guidance-scale ${GUIDANCE_SCALE} \
-    --steps ${NUM_STEPS} \
+    --steps ${CURRENT_NUM_STEPS} \
     --seed ${SEED}"
+
+# Add --style flag only if not empty
+if [ -n "${CURRENT_STYLE}" ]; then
+    CMD="${CMD} --style ${CURRENT_STYLE}"
+fi
 
 # Add --skip-wandb flag if requested
 if [ "${SKIP_WANDB}" = true ]; then
@@ -179,32 +181,10 @@ EXIT_CODE=$?
 #==============================================================================
 
 echo ""
-echo "=========================================="
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "✓ SUCCESS"
-    echo "Style: ${CURRENT_STYLE}"
-    echo ""
-    
-    # Show cache statistics if available
-    CACHE_DIR="${RESULTS_DIR:-results}/cache/sd_1_5"
-    if [ -d "${CACHE_DIR}" ]; then
-        echo "Cache Statistics:"
-        for layer in "${LAYERS[@]}"; do
-            layer_lower=$(echo "${layer}" | tr '[:upper:]' '[:lower:]')
-            layer_path="${CACHE_DIR}/${layer_lower}"
-            if [ -d "${layer_path}" ]; then
-                size=$(du -sh "${layer_path}" | cut -f1)
-                echo "  ${layer}: ${size}"
-            fi
-        done
-    fi
+    echo "✓ SUCCESS - Style: ${CURRENT_STYLE} - $(date)"
 else
-    echo "✗ FAILED (exit code: ${EXIT_CODE})"
-    echo "Style: ${CURRENT_STYLE}"
-    echo "Check logs for details: logs/cache_gen_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}.log"
+    echo "✗ FAILED (exit code: ${EXIT_CODE}) - Style: ${CURRENT_STYLE} - $(date)"
 fi
-echo ""
-echo "End: $(date)"
-echo "=========================================="
 
 exit $EXIT_CODE
