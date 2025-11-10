@@ -33,8 +33,8 @@ if str(project_root) not in sys.path:
 load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data import RepresentationCache, load_prompts_from_directory  # noqa: E402
+from src.models.config import ModelRegistry  # noqa: E402
 from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
-from src.utils.model_enum import ModelEnum  # noqa: E402
 from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
 
@@ -133,15 +133,15 @@ def main():
     # Load model to get model name
     print("\nLoading model...")
     model_load_start = time.time()
-    model_enum = ModelEnum.FINETUNED_SAEURON
-    loader = ModelLoader(model_enum=model_enum)
+    model_registry = ModelRegistry.FINETUNED_SAEURON
+    loader = ModelLoader(model_enum=model_registry)
     device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f}s")
 
     # Build cache path: {results_dir}/{model_name}/cached_representations/
-    model_name = model_enum.name
+    model_name = model_registry.name
     cache_dir = results_dir / model_name / "cached_representations"
 
     # Setup device
