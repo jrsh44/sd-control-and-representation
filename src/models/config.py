@@ -12,10 +12,10 @@ class ModelConfig(NamedTuple):
     model_id: str
     source: str
     name: str
-    pipeline_type: Literal["sd", "sd3"] = "sd"
+    pipeline_type: Literal["sd_v1_5", "sd_v3"] = "sd_v1_5"
 
 
-class ModelEnum(Enum):
+class ModelRegistry(Enum):
     """Enum containing available model configurations."""
 
     # Hugging Face SDv1.5
@@ -23,7 +23,7 @@ class ModelEnum(Enum):
         model_id="sd-legacy/stable-diffusion-v1-5",
         source="huggingface",
         name="sd_v1_5",
-        pipeline_type="sd",
+        pipeline_type="sd_v1_5",
     )
 
     # Model From Saeuron
@@ -31,15 +31,15 @@ class ModelEnum(Enum):
         model_id="https://drive.google.com/drive/folders/14_ckUo_JLOt8opkIXPVmjk6nSuKjFm-C",
         source="gdrive",
         name="finetuned_sd_saeuron",
-        pipeline_type="sd",
+        pipeline_type="sd_v1_5",
     )
 
     # SD 3 Model
-    SD_3 = ModelConfig(
+    SD_V3 = ModelConfig(
         model_id="stabilityai/stable-diffusion-3-medium-diffusers",
         source="huggingface",
-        name="sd_3",
-        pipeline_type="sd3",
+        name="sd_v3",
+        pipeline_type="sd_v3",
     )
 
     @property
@@ -55,5 +55,5 @@ class ModelEnum(Enum):
         return self.value.name
 
     @property
-    def pipeline_type(self) -> Literal["sd", "sd3"]:
+    def pipeline_type(self) -> Literal["sd_v1_5", "sd_v3"]:
         return self.value.pipeline_type
