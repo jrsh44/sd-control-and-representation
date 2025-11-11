@@ -10,11 +10,12 @@
 #   This script runs parallel tasks to generate representation caches:
 #   - Each task processes one artistic style
 #   - Captures multiple layer representations from SD 1.5
-#   - Saves to Arrow format 
+#   - Saves to Arrow format
 #   - Each prompt saved immediately to separate file
-#   
+#
 #   Results are saved to:
-#   - Cache: {RESULTS_DIR}/{model_name}/cached_representations/{layer_name}/
+#   - Training cache (with style): {RESULTS_DIR}/{model_name}/cached_representations/{layer_name}/
+#   - Validation cache (no style): {RESULTS_DIR}/validation/{layer_name}/
 #   - Logs: {LOGS_DIR}/sd_1_5_cache_gen_{JOB_ID}_{TASK_ID}.log
 #
 #   Metadata saved per representation:
