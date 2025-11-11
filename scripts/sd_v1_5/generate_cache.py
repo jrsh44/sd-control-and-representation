@@ -140,9 +140,14 @@ def main():
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f}s")
 
-    # Build cache path: {results_dir}/{model_name}/cached_representations/
+    # Build cache path:
+    # - With style: {results_dir}/{model_name}/cached_representations/
+    # - No style: {results_dir}/{model_name}/validation/
     model_name = model_registry.name
-    cache_dir = results_dir / model_name / "cached_representations"
+    if args.style:
+        cache_dir = results_dir / model_name / "cached_representations"
+    else:
+        cache_dir = results_dir / model_name / "validation"
 
     # Setup device
     device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
@@ -153,8 +158,9 @@ def main():
     print("=" * 70)
     print(f"Model: {model_name}")
     print(f"Cache Dir: {cache_dir}")
+    print(f"Cache Type: {'Validation (no style)' if not args.style else 'Training (with style)'}")
     print(f"Prompts: {prompts_dir}")
-    print(f"Style: {args.style}")
+    print(f"Style: {args.style if args.style else 'None (validation)'}")
     print(f"Layers: {', '.join(layer.name for layer in layers_to_capture)}")
     print(f"Device: {device}")
     print("=" * 70)
