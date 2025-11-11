@@ -10,7 +10,7 @@
 #   This script runs parallel tasks to generate representation caches:
 #   - Each task processes one artistic style
 #   - Captures multiple layer representations from SD 1.5
-#   - Saves to Parquet format 
+#   - Saves to Arrow format 
 #   - Each prompt saved immediately to separate file
 #   
 #   Results are saved to:

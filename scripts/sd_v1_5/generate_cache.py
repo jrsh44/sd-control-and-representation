@@ -9,7 +9,7 @@ EXAMPLE:
 uv run scripts/sd_v1_5/generate_cache.py \
     --prompts-dir data/unlearn_canvas/prompts/test \
     --style Impressionism \
-    --layers TEXT_EMBEDDING_FINAL UNET_UP_3_ATT_2 UNET_UP_2_ATT_2 \
+    --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
     --skip-wandb
 """
 
@@ -182,10 +182,10 @@ def main():
                 "guidance_scale": args.guidance_scale,
                 "steps": args.steps,
                 "base_seed": args.seed,
-                "storage_format": "parquet_zstd",
+                "storage_format": "arrow_hf_datasets",
                 "layers": [layer.name for layer in layers_to_capture],
             },
-            tags=["parquet", "zstd", "cache_generation", args.style or "no_style"],
+            tags=["arrow", "cache_generation", args.style or "no_style"],
         )
 
     # Generation statistics
