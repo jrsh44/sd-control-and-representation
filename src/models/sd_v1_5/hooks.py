@@ -63,7 +63,9 @@ def capture_layer_representations(
         f"hook_{i}": [] for i in range(len(layer_paths))
     }
     hook_handles: List[Any] = []
-    current_timestep = [0]  # Mutable counter for timestep tracking
+
+    # Check if classifier-free guidance is enabled
+    do_classifier_free_guidance = guidance_scale > 1.0
 
     def create_capture_hook(name: str):
         """Factory function to create a hook that captures module output at each timestep."""
@@ -74,8 +76,18 @@ def capture_layer_representations(
             else:
                 tensor = output.detach().cpu()
 
-            # Append this timestep's representation
-            captured_representations[name].append(tensor)
+            # Handle classifier-free guidance: split batch and keep only conditional
+            if do_classifier_free_guidance:
+                # With CFG, batch contains [unconditional, conditional]
+                # We only want the conditional part (second half)
+                batch_size = tensor.shape[0]
+                if batch_size == 2:
+                    # Keep only conditional (index 1)
+                    tensor = tensor[1:2]  # Keep batch dim: [1, ...]
+                captured_representations[name].append(tensor)
+            else:
+                # No CFG, capture as-is
+                captured_representations[name].append(tensor)
 
         return hook
 
@@ -106,7 +118,7 @@ def capture_layer_representations(
     for handle in hook_handles:
         handle.remove()
 
-    # Stack timesteps into single tensor per layer: [timesteps, ...]
+    # Stack timesteps and flatten spatial dimensions: [timesteps, batch, spatial, features]
     results = []
     for i in range(len(layer_paths)):
         hook_name = f"hook_{i}"
@@ -114,6 +126,13 @@ def capture_layer_representations(
             # Stack all timesteps into first dimension
             timestep_tensors = captured_representations[hook_name]
             stacked = torch.stack(timestep_tensors, dim=0)  # [timesteps, batch, ...]
+
+            # Flatten spatial dimensions if present
+            if stacked.dim() == 5:
+                # [timesteps, batch, h, w, features] -> [timesteps, batch, h*w, features]
+                t, b, h, w, f = stacked.shape
+                stacked = stacked.reshape(t, b, h * w, f)
+
             results.append(stacked)
         else:
             results.append(None)
