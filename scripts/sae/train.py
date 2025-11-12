@@ -40,7 +40,6 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.training import criterion_laux, train_sae_val  # noqa: E402
-from src.utils.wandb import get_system_metrics  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -211,7 +210,7 @@ def main() -> int:
 
         # Train SAE
         print("\nStarting SAE training...")
-        results_logs = train_sae_val(
+        train_sae_val(
             model=sae,
             train_dataloader=train_dataloader,
             criterion=criterion_laux,
@@ -221,39 +220,10 @@ def main() -> int:
             device=device,
             use_amp=True,
             log_interval=10,
+            wandb_enabled=not args.skip_wandb,
         )
         sae = sae.eval()
         print("\n✓ SAE training completed.")
-
-        # Log to wandb
-        if not args.skip_wandb:
-            system_metrics_end = get_system_metrics(device)
-
-            for epoch in range(args.num_epochs):
-                log_dict = {
-                    "epoch": epoch + 1,
-                    "train/avg_loss": results_logs["train"]["avg_loss"][epoch],
-                    "train/r2": results_logs["train"]["r2"][epoch],
-                    "train/z_sparsity": results_logs["train"]["z_sparsity"][epoch],
-                    "train/dead_features": results_logs["train"]["dead_features"][epoch],
-                    "train/time_epoch": results_logs["train"]["time_epoch"][epoch],
-                    "train_dataset": Path(args.train_dataset_path).name,
-                }
-
-                # Add validation metrics only if validation was performed
-                if "val" in results_logs and results_logs["val"] is not None:
-                    log_dict.update(
-                        {
-                            "val/avg_loss": results_logs["val"]["avg_loss"][epoch],
-                            "val/r2": results_logs["val"]["r2"][epoch],
-                            "val/z_sparsity": results_logs["val"]["z_sparsity"][epoch],
-                            "val/dead_features": results_logs["val"]["dead_features"][epoch],
-                            "val_dataset": Path(args.test_dataset_path).name,
-                        }
-                    )
-
-                log_dict.update(system_metrics_end)
-                wandb.log(log_dict)
 
         # Save the trained model
         sae_path.parent.mkdir(parents=True, exist_ok=True)
