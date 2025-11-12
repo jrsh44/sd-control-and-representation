@@ -3,8 +3,6 @@ from collections import defaultdict
 
 import torch
 from einops import rearrange
-from torch.amp.grad_scaler import GradScaler
-
 from overcomplete.metrics import l0_eps, l2, r2_score
 from overcomplete.sae.trackers import DeadCodeTracker
 
@@ -91,20 +89,21 @@ def _compute_reconstruction_error(x, x_hat):
 
     Returns
     -------
-    float
-        Reconstruction error.
+    torch.Tensor
+        Reconstruction error (R2 score) as a tensor on the same device.
     """
     if len(x.shape) == 4 and len(x_hat.shape) == 2:
         x_flatten = rearrange(x, "n c w h -> (n w h) c")
     elif len(x.shape) == 3 and len(x_hat.shape) == 2:
         x_flatten = rearrange(x, "n t c -> (n t) c")
     else:
-        assert x.shape == x_hat.shape, "Input and output shapes must match."
+        if x.shape != x_hat.shape:
+            raise ValueError("Input and output shapes must match.")
         x_flatten = x
 
     r2 = r2_score(x_flatten, x_hat)
 
-    return r2.item()
+    return r2
 
 
 def _log_metrics(monitoring, logs, model, z, loss, optimizer):
@@ -236,11 +235,15 @@ def train_sae_val(
 
         model.train()
         start_time = time.time()
-        epoch_loss = epoch_error = epoch_sparsity = 0.0
+
+        epoch_loss_tensor = torch.tensor(0.0, device=device)
+        epoch_error_tensor = torch.tensor(0.0, device=device)
+        epoch_sparsity_tensor = torch.tensor(0.0, device=device)
         batch_count = 0
-        last_logged_progress = 0
+        metric_samples = 0
 
         for batch_idx, batch in enumerate(train_dataloader):
+            batch_start = time.time()
             batch_count += 1
             x = extract_input(batch).to(device, non_blocking=True)
 
@@ -279,52 +282,47 @@ def train_sae_val(
                 dead_tracker.update(z.detach())
 
             if monitoring:
-                epoch_loss += loss.item()
+                epoch_loss_tensor += loss.detach()
                 # Compute expensive metrics periodically
                 if batch_idx % log_interval == 0:
+                    metric_samples += 1
                     with torch.no_grad():
-                        epoch_error += _compute_reconstruction_error(x, x_hat)
-                        epoch_sparsity += l0_eps(z.detach(), 0).sum().item()
+                        epoch_error_tensor += _compute_reconstruction_error(x, x_hat)
+                        epoch_sparsity_tensor += l0_eps(z.detach(), 0).sum()
 
                 # Log detailed metrics periodically
                 if monitoring > 1 and batch_idx % log_interval == 0:
                     _log_metrics(monitoring, train_logs, model, z.detach(), loss, optimizer)
 
-            # Update progress every 10%
-            progress = (batch_idx + 1) / len(train_dataloader)
-            progress_percent = int(progress * 100)
+            # Track batch time and show immediate feedback
+            batch_time = time.time() - batch_start
+            elapsed = time.time() - start_time
+            avg_time_per_batch = elapsed / (batch_idx + 1)
+            remaining_batches = len(train_dataloader) - (batch_idx + 1)
+            eta_seconds = avg_time_per_batch * remaining_batches
+            eta_minutes = int(eta_seconds // 60)
+            eta_secs = int(eta_seconds % 60)
 
-            if (
-                progress_percent >= last_logged_progress + 10
-                or batch_idx == len(train_dataloader) - 1
-            ):
-                elapsed = time.time() - start_time
-                avg_time_per_batch = elapsed / (batch_idx + 1)
-                remaining_batches = len(train_dataloader) - (batch_idx + 1)
-                eta_seconds = avg_time_per_batch * remaining_batches
-                eta_minutes = int(eta_seconds // 60)
-                eta_secs = int(eta_seconds % 60)
+            progress_percent = int(((batch_idx + 1) / len(train_dataloader)) * 100)
 
-                print(
-                    f"   [{progress_percent:3d}%] "
-                    f"Batch {batch_idx + 1}/{len(train_dataloader)} | "
-                    f"Loss: {loss.item():.4f} | "
-                    f"Time remaining: {eta_minutes}m {eta_secs:02d}s "
-                    f"({avg_time_per_batch:.2f}s/batch)"
-                )
-
-                last_logged_progress = progress_percent
+            print(
+                f"   [{progress_percent:3d}%] "
+                f"Batch {batch_idx + 1}/{len(train_dataloader)} | "
+                f"Loss: {loss.item():.4f} | "
+                f"Time: {batch_time:.2f}s | "
+                f"ETA: {eta_minutes}m {eta_secs:02d}s "
+                f"(avg {avg_time_per_batch:.2f}s/batch)"
+            )
 
         train_time = time.time() - start_time
 
         # ==================== TRAINING METRICS ====================
         if monitoring and batch_count > 0:
-            train_logs["avg_loss"].append(epoch_loss / batch_count)
+            train_logs["avg_loss"].append((epoch_loss_tensor / batch_count).item())
             # Adjust for periodic sampling
-            samples_collected = (batch_count + log_interval - 1) // log_interval
-            if samples_collected > 0:
-                train_logs["r2"].append(epoch_error / samples_collected)
-                train_logs["z_sparsity"].append(epoch_sparsity / samples_collected)
+            if metric_samples > 0:
+                train_logs["r2"].append((epoch_error_tensor / metric_samples).item())
+                train_logs["z_sparsity"].append((epoch_sparsity_tensor / metric_samples).item())
             if dead_tracker is not None:
                 train_logs["dead_features"].append(dead_tracker.get_dead_ratio())
             train_logs["time_epoch"].append(train_time)
@@ -341,18 +339,22 @@ def train_sae_val(
         if val_dataloader is not None:
             print("   🔍 Validation phase...")
             model.eval()
-            val_loss = val_error = val_sparsity = 0.0
+
+            val_loss_tensor = torch.tensor(0.0, device=device)
+            val_error_tensor = torch.tensor(0.0, device=device)
+            val_sparsity_tensor = torch.tensor(0.0, device=device)
             val_batch_count = 0
+
             if dead_tracker is not None:
                 val_dead_tracker = DeadCodeTracker(z.shape[1], device)
             else:
                 val_dead_tracker = None
 
             val_start_time = time.time()
-            last_logged_progress = 0
 
             with torch.no_grad():
                 for batch_idx, batch in enumerate(val_dataloader):
+                    val_batch_start = time.time()
                     val_batch_count += 1
                     x = extract_input(batch).to(device, non_blocking=True)
 
@@ -365,42 +367,36 @@ def train_sae_val(
                         z_pre, z, x_hat = model(x)
                         loss = criterion(x, x_hat, z_pre, z, model.get_dictionary())
 
-                    val_loss += loss.item()
-                    val_error += _compute_reconstruction_error(x, x_hat)
-                    val_sparsity += l0_eps(z, 0).sum().item()
+                    val_loss_tensor += loss.detach()
+                    val_error_tensor += _compute_reconstruction_error(x, x_hat)
+                    val_sparsity_tensor += l0_eps(z, 0).sum()
 
                     if val_dead_tracker is not None:
                         val_dead_tracker.update(z)
 
-                    # Update progress every 10%
-                    progress = (batch_idx + 1) / len(val_dataloader)
-                    progress_percent = int(progress * 100)
+                    val_batch_time = time.time() - val_batch_start
+                    val_elapsed = time.time() - val_start_time
+                    avg_time_per_batch = val_elapsed / (batch_idx + 1)
+                    remaining_batches = len(val_dataloader) - (batch_idx + 1)
+                    eta_seconds = avg_time_per_batch * remaining_batches
+                    eta_minutes = int(eta_seconds // 60)
+                    eta_secs = int(eta_seconds % 60)
 
-                    if (
-                        progress_percent >= last_logged_progress + 10
-                        or batch_idx == len(val_dataloader) - 1
-                    ):
-                        val_elapsed = time.time() - val_start_time
-                        avg_time_per_batch = val_elapsed / (batch_idx + 1)
-                        remaining_batches = len(val_dataloader) - (batch_idx + 1)
-                        eta_seconds = avg_time_per_batch * remaining_batches
-                        eta_minutes = int(eta_seconds // 60)
-                        eta_secs = int(eta_seconds % 60)
+                    progress_percent = int(((batch_idx + 1) / len(val_dataloader)) * 100)
 
-                        print(
-                            f"   [{progress_percent:3d}%] "
-                            f"Batch {batch_idx + 1}/{len(val_dataloader)} | "
-                            f"Loss: {loss.item():.4f} | "
-                            f"Time remaining: {eta_minutes}m {eta_secs:02d}s "
-                            f"({avg_time_per_batch:.2f}s/batch)"
-                        )
-
-                        last_logged_progress = progress_percent
+                    print(
+                        f"   [{progress_percent:3d}%] "
+                        f"Batch {batch_idx + 1}/{len(val_dataloader)} | "
+                        f"Loss: {loss.item():.4f} | "
+                        f"Time: {val_batch_time:.2f}s | "
+                        f"ETA: {eta_minutes}m {eta_secs:02d}s "
+                        f"(avg {avg_time_per_batch:.2f}s/batch)"
+                    )
 
             if val_batch_count > 0 and val_logs is not None:
-                val_logs["avg_loss"].append(val_loss / val_batch_count)
-                val_logs["r2"].append(val_error / val_batch_count)
-                val_logs["z_sparsity"].append(val_sparsity / val_batch_count)
+                val_logs["avg_loss"].append((val_loss_tensor / val_batch_count).item())
+                val_logs["r2"].append((val_error_tensor / val_batch_count).item())
+                val_logs["z_sparsity"].append((val_sparsity_tensor / val_batch_count).item())
                 val_logs["dead_features"].append(
                     val_dead_tracker.get_dead_ratio() if val_dead_tracker else 0.0
                 )
