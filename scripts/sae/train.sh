@@ -13,23 +13,22 @@
 #
 # Results are saved to:
 #   - Model: results/sae_models/<layer_name>_sae.pt
-#   - Logs: logs/train_sae_<JOB_ID>.log
+#   - Logs: logs/sae_train_<JOB_ID>.log
 ################################################################################
 
 #==============================================================================
 # RESOURCE ALLOCATION
 #==============================================================================
 #SBATCH --account mi2lab                    # Your compute account
-#SBATCH --job-name sae_train
-#SBATCH --time 0-23:00:00                   # Max 23 hours
+#SBATCH --job-name sae_train                # Name in queue
+#SBATCH --time 0-18:00:00                   # Max 18 hours
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
-#SBATCH --cpus-per-task 12                   # CPU cores for data processing
-#SBATCH --mem 40G                           # 40GB RAM (for large batches)
+#SBATCH --cpus-per-task 32                  # CPU cores for data processing
+#SBATCH --mem 64G                           # 64GB RAM (for large batches)
 #SBATCH --partition short                   # Queue name
-#SBATCH --output ../logs/sd_1_5_cache_gen_%A_%a.log   # %A=job ID, %a=task ID
-#SBATCH --array 0-1%2                       # 2 styles, max 2 running at once
+#SBATCH --output ../logs/sae_train_%A_%a.log  # %A=job ID, %a=task ID
 
 
 # Optional email notification
@@ -78,10 +77,11 @@ PYTHON_SCRIPT="scripts/sae/train.py"
 
 # Dataset paths - Update these to your cached representation directories
 LAYER_NAME="unet_up_1_att_1"
-TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/cached_representations/${LAYER_NAME}"
+MODEL_NAME="finetuned_sd_saeuron"
+TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
 
 # Optional: Validation dataset (comment out or leave empty to train without validation)
-TEST_DATASET_PATH="${RESULTS_DIR:-results}/cached_representations/${LAYER_NAME}"
+TEST_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/validation/${LAYER_NAME}"
 # TEST_DATASET_PATH=""  # Uncomment to disable validation
 
 # SAE model parameters
@@ -89,7 +89,7 @@ EXPANSION_FACTOR=16
 TOP_K=32
 LEARNING_RATE=1e-4
 NUM_EPOCHS=5
-BATCH_SIZE=1024
+BATCH_SIZE=4096
 
 # Compute SAE path
 SAE_DIR="${RESULTS_DIR:-results}/sae_models"
@@ -113,7 +113,7 @@ echo "  Batch size: ${BATCH_SIZE}"
 echo "=========================================="
 
 # Build command with required arguments
-CMD="uv run python ${PYTHON_SCRIPT} \
+CMD="uv run ${PYTHON_SCRIPT} \
     --train_dataset_path ${TRAIN_DATASET_PATH} \
     --sae_path ${SAE_PATH} \
     --expansion_factor ${EXPANSION_FACTOR} \
