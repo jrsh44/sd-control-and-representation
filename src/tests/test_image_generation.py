@@ -24,7 +24,8 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from diffusers import StableDiffusionPipeline  # noqa: E402
 
-from src.utils.reprezentation import LayerPath, capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
 
 
 def main():
