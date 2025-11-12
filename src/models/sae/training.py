@@ -5,6 +5,14 @@ import torch
 from einops import rearrange
 from overcomplete.metrics import l0_eps, l2, r2_score
 from overcomplete.sae.trackers import DeadCodeTracker
+from torch.amp.grad_scaler import GradScaler
+
+try:
+    import wandb
+
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
 
 
 def criterion_laux(x, x_hat, pre_codes, codes, dictionary):
@@ -160,6 +168,7 @@ def train_sae_val(
     device="cpu",
     use_amp=True,
     log_interval=10,
+    wandb_enabled=False,
 ):
     """
     Train a Sparse Autoencoder (SAE) model with optional validation set.
@@ -190,6 +199,8 @@ def train_sae_val(
         Use automatic mixed precision training (default: True).
     log_interval : int, optional
         Update progress every N batches (default: 10).
+    wandb_enabled : bool, optional
+        Enable wandb logging (default: False).
 
     Returns
     -------
@@ -407,6 +418,43 @@ def train_sae_val(
                     f"L0: {val_logs['z_sparsity'][-1]:.2f} | "
                     f"Dead: {val_logs['dead_features'][-1] * 100:.1f}%"
                 )
+
+        if wandb_enabled and WANDB_AVAILABLE:
+            log_dict = {
+                "epoch": epoch + 1,
+                "train/loss": (train_logs["avg_loss"][-1] if train_logs["avg_loss"] else 0.0),
+                "train/r2": train_logs["r2"][-1] if train_logs["r2"] else 0.0,
+                "train/l0_sparsity": (
+                    train_logs["z_sparsity"][-1] if train_logs["z_sparsity"] else 0.0
+                ),
+                "train/dead_features_ratio": (
+                    train_logs["dead_features"][-1] if train_logs["dead_features"] else 0.0
+                ),
+                "train/time_seconds": (
+                    train_logs["time_epoch"][-1] if train_logs["time_epoch"] else 0.0
+                ),
+                "learning_rate": optimizer.param_groups[0]["lr"],
+            }
+
+            if val_dataloader is not None and val_logs is not None:
+                if val_logs["avg_loss"]:
+                    log_dict.update(
+                        {
+                            "val/loss": val_logs["avg_loss"][-1],
+                            "val/r2": val_logs["r2"][-1],
+                            "val/l0_sparsity": val_logs["z_sparsity"][-1],
+                            "val/dead_features_ratio": val_logs["dead_features"][-1],
+                        }
+                    )
+
+            if device.type == "cuda":
+                log_dict["gpu/memory_allocated_mb"] = torch.cuda.memory_allocated(device) / 1024**2
+                log_dict["gpu/memory_reserved_mb"] = torch.cuda.memory_reserved(device) / 1024**2
+                log_dict["gpu/max_memory_allocated_mb"] = (
+                    torch.cuda.max_memory_allocated(device) / 1024**2
+                )
+
+            wandb.log(log_dict)
 
         print()  # Empty line between epochs
 
