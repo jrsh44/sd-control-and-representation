@@ -17,8 +17,7 @@ EXAMPLE USAGE:
         --top_k 32 \
         --learning_rate 1e-4 \
         --num_epochs 5 \
-        --batch_size 1024 \
-        --skip-wandb
+        --batch_size 4096
 """
 
 import argparse
@@ -168,8 +167,8 @@ def main() -> int:
             batch_size=args.batch_size,
             shuffle=True,
             pin_memory=is_cuda,
-            num_workers=4 if is_cuda else 0,
-            prefetch_factor=2 if is_cuda else None,
+            num_workers=32 if is_cuda else 0,
+            prefetch_factor=8 if is_cuda else None,
             persistent_workers=is_cuda,
         )
 
@@ -181,8 +180,8 @@ def main() -> int:
                 batch_size=args.batch_size,
                 shuffle=False,
                 pin_memory=is_cuda,
-                num_workers=4 if is_cuda else 0,
-                prefetch_factor=2 if is_cuda else None,
+                num_workers=32 if is_cuda else 0,
+                prefetch_factor=8 if is_cuda else None,
                 persistent_workers=is_cuda,
             )
 
@@ -202,6 +201,10 @@ def main() -> int:
             sae.load_state_dict(torch.load(sae_path, map_location=device))
         else:
             print(f"Creating new SAE (file does not exist: {sae_path})")
+
+        print("Compiling model with torch.compile() (first epoch will be slower)...")
+        sae = torch.compile(sae)
+        print("✓ Model compiled successfully")
 
         # Define optimizer
         optimizer = torch.optim.Adam(sae.parameters(), lr=args.learning_rate)
