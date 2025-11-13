@@ -113,10 +113,14 @@ def main() -> int:
                 name=f"SAE_{Path(args.sae_path).stem}",
                 config={
                     "sae_path": args.sae_path,
-                    "top_k": args.top_k,
+                    "dataset_path": args.dataset_path,
+                    "concept": args.concept,
+                    "concept_value": args.concept_value,
+                    "epsilon": args.epsilon,
+                    "batch_size": args.batch_size,
                 },
                 tags=["sae", "feature_selection"],
-                notes="Trained incrementally on multiple train datasets, single validation set.",
+                notes="Feature selection using pretrained SAE",
             )
 
         # Load SAE → infer config
