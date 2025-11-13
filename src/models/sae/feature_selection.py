@@ -1,8 +1,12 @@
 import torch
-from torch.utils.data import DataLoader
-from pathlib import Path
-import sys
 from overcomplete.sae import TopKSAE
+
+# try:
+#     import wandb
+
+#     WANDB_AVAILABLE = True
+# except ImportError:
+#     WANDB_AVAILABLE = False
 
 
 def select_features(
@@ -71,9 +75,6 @@ def infer_sae_config(sae: TopKSAE):
     }
 
 
-# ------------------------------------------------------------------
-# 2. SAE forward → middle-layer activations (the “codes”)
-# ------------------------------------------------------------------
 @torch.no_grad()
 def get_codes(sae, x, device):
     _, z, _ = sae(x.to(device))
