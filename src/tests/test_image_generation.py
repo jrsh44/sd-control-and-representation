@@ -22,10 +22,11 @@ if str(project_root) not in sys.path:
 # Load .env from project root
 load_dotenv(dotenv_path=project_root / ".env")
 
-from diffusers import StableDiffusionPipeline  # noqa: E402
 
+from src.models.config import ModelRegistry  # noqa: E402
 from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
 from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
+from src.utils.model_loader import ModelLoader  # noqa: E402
 
 
 def main():
@@ -82,16 +83,9 @@ def main():
     #############################################
     # MODEL
     #############################################
-    model_id = "sd-legacy/stable-diffusion-v1-5"
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-
-    print("\nLoading model...")
     model_load_start = time.time()
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id,
-        torch_dtype=dtype,
-        safety_checker=None,
-    ).to(device)
+    loader = ModelLoader(model_enum=ModelRegistry.FINETUNED_SAEURON)
+    pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f} seconds")
 
