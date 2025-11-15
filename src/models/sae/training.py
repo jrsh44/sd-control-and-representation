@@ -256,7 +256,15 @@ def train_sae_val(
         for batch_idx, batch in enumerate(train_dataloader):
             batch_start = time.time()
             batch_count += 1
+
+            # Measure data loading time (DataLoader gives us the batch)
+            # This measures how long it took DataLoader workers to fetch all items
+            data_load_start = time.time()
             x = extract_input(batch).to(device, non_blocking=True)
+            data_load_time = time.time() - data_load_start
+
+            # Note: The actual time to load batch items happens in DataLoader workers
+            # before this point. This only measures the transfer to GPU.
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -305,6 +313,10 @@ def train_sae_val(
                 if monitoring > 1 and batch_idx % log_interval == 0:
                     _log_metrics(monitoring, train_logs, model, z.detach(), loss, optimizer)
 
+            # Synchronize GPU before timing (get real execution time, not just CPU scheduling time)
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+
             # Track batch time and show immediate feedback
             batch_time = time.time() - batch_start
             elapsed = time.time() - start_time
@@ -316,14 +328,17 @@ def train_sae_val(
 
             progress_percent = int(((batch_idx + 1) / len(train_dataloader)) * 100)
 
-            print(
-                f"   [{progress_percent:3d}%] "
-                f"Batch {batch_idx + 1}/{len(train_dataloader)} | "
-                f"Loss: {loss.item():.4f} | "
-                f"Time: {batch_time:.2f}s | "
-                f"ETA: {eta_minutes}m {eta_secs:02d}s "
-                f"(avg {avg_time_per_batch:.2f}s/batch)"
-            )
+            # Only show progress every log_interval batches to avoid overhead
+            if batch_idx % log_interval == 0 or batch_idx == len(train_dataloader) - 1:
+                compute_time = batch_time - data_load_time
+                print(
+                    f"   [{progress_percent:3d}%] "
+                    f"Batch {batch_idx + 1}/{len(train_dataloader)} | "
+                    f"Loss: {loss.item():.4f} | "
+                    f"Total: {batch_time:.2f}s "
+                    f"(Load: {data_load_time:.3f}s, Compute: {compute_time:.2f}s) | "
+                    f"ETA: {eta_minutes}m {eta_secs:02d}s"
+                )
 
         train_time = time.time() - start_time
 
@@ -367,7 +382,11 @@ def train_sae_val(
                 for batch_idx, batch in enumerate(val_dataloader):
                     val_batch_start = time.time()
                     val_batch_count += 1
+
+                    # Measure data loading time
+                    val_data_load_start = time.time()
                     x = extract_input(batch).to(device, non_blocking=True)
+                    val_data_load_time = time.time() - val_data_load_start
 
                     # Use AMP for validation too
                     if scaler is not None:
@@ -385,6 +404,10 @@ def train_sae_val(
                     if val_dead_tracker is not None:
                         val_dead_tracker.update(z)
 
+                    # Synchronize GPU before timing to get real execution time
+                    if device.type == "cuda":
+                        torch.cuda.synchronize()
+
                     val_batch_time = time.time() - val_batch_start
                     val_elapsed = time.time() - val_start_time
                     avg_time_per_batch = val_elapsed / (batch_idx + 1)
@@ -395,13 +418,15 @@ def train_sae_val(
 
                     progress_percent = int(((batch_idx + 1) / len(val_dataloader)) * 100)
 
+                    val_compute_time = val_batch_time - val_data_load_time
                     print(
                         f"   [{progress_percent:3d}%] "
                         f"Batch {batch_idx + 1}/{len(val_dataloader)} | "
                         f"Loss: {loss.item():.4f} | "
-                        f"Time: {val_batch_time:.2f}s | "
-                        f"ETA: {eta_minutes}m {eta_secs:02d}s "
-                        f"(avg {avg_time_per_batch:.2f}s/batch)"
+                        f"Total: {val_batch_time:.2f}s "
+                        f"(Load: {val_data_load_time:.3f}s, "
+                        f"Compute: {val_compute_time:.2f}s) | "
+                        f"ETA: {eta_minutes}m {eta_secs:02d}s"
                     )
 
             if val_batch_count > 0 and val_logs is not None:
