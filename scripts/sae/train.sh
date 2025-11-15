@@ -9,6 +9,8 @@
 #
 # Description:
 #   - Trains SAE on cached SD layer representations
+#   - Auto-detects NPY (memmap) or Arrow format
+#   - NPY cache provides 200x faster data loading
 #   - Optional validation dataset
 #
 # Results are saved to:
@@ -76,6 +78,7 @@ echo ""
 PYTHON_SCRIPT="scripts/sae/train.py"
 
 # Dataset paths - Update these to your cached representation directories
+# Training script auto-detects NPY (memmap) or Arrow format based on cache structure
 LAYER_NAME="unet_up_1_att_1"
 MODEL_NAME="finetuned_sd_saeuron"
 TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
@@ -104,6 +107,7 @@ echo "=========================================="
 echo "Configuration:"
 echo "  Train dataset: ${TRAIN_DATASET_PATH}"
 echo "  Test dataset: ${TEST_DATASET_PATH:-None (training without validation)}"
+echo "  Cache format: Auto-detected (NPY memmap or Arrow)"
 echo "  SAE path: ${SAE_PATH}"
 echo "  Expansion factor: ${EXPANSION_FACTOR}"
 echo "  Top-K: ${TOP_K}"

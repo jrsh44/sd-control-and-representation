@@ -5,11 +5,19 @@ Generate cached representations for Stable Diffusion v1.5.
 Structure: {results_dir}/{model_name}/cached_representations/{layer_name}/
 Each dataset contains: object, style, prompt_nr, prompt_text, representation
 
-EXAMPLE:
+EXAMPLE (Arrow format - default):
 uv run scripts/sd_v1_5/generate_cache.py \
     --prompts-dir data/unlearn_canvas/prompts/test \
     --style Impressionism \
     --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
+    --skip-wandb
+
+EXAMPLE (NPY memmap - 200x faster):
+uv run scripts/sd_v1_5/generate_cache.py \
+    --prompts-dir data/unlearn_canvas/prompts/test \
+    --style Impressionism \
+    --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
+    --use-npy-cache \
     --skip-wandb
 """
 
@@ -32,7 +40,9 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
-from src.data import RepresentationCache, load_prompts_from_directory  # noqa: E402
+from src.data import load_prompts_from_directory  # noqa: E402
+from src.data.cache import RepresentationCache  # noqa: E402
+from src.data.cache_npy import NPYCache  # noqa: E402
 from src.models.config import ModelRegistry  # noqa: E402
 from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
 from src.utils.model_loader import ModelLoader  # noqa: E402
@@ -104,6 +114,11 @@ def main():
         action="store_true",
         help="Skip checking if representations already exist (regenerate all)",
     )
+    parser.add_argument(
+        "--use-npy-cache",
+        action="store_true",
+        help="Use NPY memmap cache (200x faster) instead of Arrow format",
+    )
 
     args = parser.parse_args()
 
@@ -163,10 +178,14 @@ def main():
     print(f"Style: {args.style if args.style else 'None (validation)'}")
     print(f"Layers: {', '.join(layer.name for layer in layers_to_capture)}")
     print(f"Device: {device}")
+    print(f"Cache Format: {'NPY (memmap)' if args.use_npy_cache else 'Arrow (HF datasets)'}")
     print("=" * 70)
 
     # Initialize cache
-    cache = RepresentationCache(cache_dir)
+    if args.use_npy_cache:
+        cache = NPYCache(cache_dir, use_fp16=True)
+    else:
+        cache = RepresentationCache(cache_dir)
 
     # Load prompts
     print("\nLoading prompts...")
@@ -174,6 +193,21 @@ def main():
     if not prompts_by_object:
         print("ERROR: No prompts loaded")
         return 1
+
+    # For NPY cache: estimate total samples needed and pre-initialize
+    if args.use_npy_cache:
+        print("\n📊 Calculating dataset size for NPY cache...")
+        # Count total prompts
+        total_prompts = sum(len(prompts) for prompts in prompts_by_object.values())
+
+        # Each prompt generates representations with shape [timesteps, 1, spatial, features]
+        # We need to know timesteps and spatial dimensions
+        # For SD 1.5 with 50 steps: typically 50 timesteps
+        # Spatial dimension depends on layer (e.g., 4096 for attention layers)
+        # We'll initialize after first generation to get actual dimensions
+        print(f"  Total prompts: {total_prompts}")
+        print(f"  Layers: {len(layers_to_capture)}")
+        print(f"  NOTE: Will initialize layers dynamically after first generation")
 
     # Initialize wandb
     if not args.skip_wandb:
@@ -188,7 +222,7 @@ def main():
                 "guidance_scale": args.guidance_scale,
                 "steps": args.steps,
                 "base_seed": args.seed,
-                "storage_format": "arrow_hf_datasets",
+                "storage_format": "npy_memmap" if args.use_npy_cache else "arrow_hf_datasets",
                 "layers": [layer.name for layer in layers_to_capture],
             },
             tags=["arrow", "cache_generation", args.style or "no_style"],
@@ -252,6 +286,27 @@ def main():
                 save_start = time.time()
                 for layer, tensor in zip(layers_to_capture, representations, strict=True):
                     if tensor is not None:
+                        # For NPY: auto-initialize layer on first save
+                        if isinstance(cache, NPYCache) and layer.name not in cache._active_memmaps:
+                            # Calculate total samples for this layer
+                            # tensor shape: [timesteps, 1, spatial, features]
+                            n_timesteps, _, n_spatial, n_features = tensor.shape
+                            samples_per_prompt = n_timesteps * n_spatial
+                            total_samples_estimate = total_prompts * samples_per_prompt
+
+                            print(f"\n  📦 Initializing layer '{layer.name}'")
+                            print(
+                                f"     Shape per prompt: [{n_timesteps}, {n_spatial}, {n_features}]"
+                            )
+                            print(f"     Samples per prompt: {samples_per_prompt}")
+                            print(f"     Estimated total: {total_samples_estimate:,}")
+
+                            cache.initialize_layer(
+                                layer_name=layer.name,
+                                total_samples=total_samples_estimate,
+                                feature_dim=n_features,
+                            )
+
                         cache.save_representation(
                             layer_name=layer.name,
                             object_name=object_name,
@@ -307,11 +362,18 @@ def main():
                 traceback.print_exc()
 
     # Save all accumulated metadata
-    print("\n💾 Saving metadata...")
+    print("\n💾 Finalizing cache...")
     metadata_save_start = time.time()
-    cache.save_metadata()
+    if isinstance(cache, NPYCache):
+        # Finalize all layers (trim memmaps, save index files)
+        print("  Finalizing NPY cache layers...")
+        for layer in layers_to_capture:
+            if layer.name in cache._active_memmaps:
+                cache.finalize_layer(layer.name)
+    else:
+        cache.save_metadata()
     metadata_save_time = time.time() - metadata_save_start
-    print(f"✅ Metadata saved in {metadata_save_time:.2f}s")
+    print(f"✅ Cache finalized in {metadata_save_time:.2f}s")
 
     # Print summary
     print("\n" + "=" * 70)

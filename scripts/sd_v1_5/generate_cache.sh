@@ -10,17 +10,19 @@
 #   This script runs parallel tasks to generate representation caches:
 #   - Each task processes one artistic style
 #   - Captures multiple layer representations from SD 1.5
-#   - Saves to Arrow format
-#   - Each prompt saved immediately to separate file
+#   - Saves to NPY memmap format (200x faster loading than Arrow)
+#   - Metadata saved once at the end (fast incremental writes)
 #
 #   Results are saved to:
 #   - Training cache (with style): {RESULTS_DIR}/{model_name}/cached_representations/{layer_name}/
 #   - Validation cache (no style): {RESULTS_DIR}/validation/{layer_name}/
 #   - Logs: {LOGS_DIR}/sd_1_5_cache_gen_{JOB_ID}_{TASK_ID}.log
 #
-#   Metadata saved per representation:
-#   - object, style, prompt_nr, prompt_text
-#   - num_steps, guidance_scale
+#   NPY cache files generated:
+#   - data.npy: memmap array of representations
+#   - metadata.pkl: full metadata with prompts
+#   - index.json: lightweight metadata for fast filtering
+#   - info.json: dataset info
 ################################################################################
 
 #==============================================================================
@@ -30,7 +32,7 @@
 
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sd_1_5_cache_gen         # Name in queue
-#SBATCH --time 0-5:00:00                   # Max 5 hours per style
+#SBATCH --time 0-6:00:00                   # Max 6 hours per style
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
@@ -107,6 +109,9 @@ GUIDANCE_SCALE=7.5
 NUM_STEPS=(50 100)
 SEED=42
 
+# Cache format (NPY memmap = 200x faster loading)
+USE_NPY_CACHE=true
+
 # WandB settings
 SKIP_WANDB=false
 
@@ -127,6 +132,7 @@ echo "  Script: ${PYTHON_SCRIPT}"
 echo "  Style: ${CURRENT_STYLE}"
 echo "  Prompts: ${PROMPTS_DIR}"
 echo "  Layers: ${LAYERS_STR}"
+echo "  Cache Format: $([ "${USE_NPY_CACHE}" = true ] && echo "NPY (memmap)" || echo "Arrow (HF)")"
 echo "  Guidance Scale: ${GUIDANCE_SCALE}"
 echo "  Steps: ${NUM_STEPS}"
 echo "  Seed: ${SEED}"
@@ -164,6 +170,11 @@ CMD="uv run ${PYTHON_SCRIPT} \
 # Add --style flag only if not empty
 if [ -n "${CURRENT_STYLE}" ]; then
     CMD="${CMD} --style ${CURRENT_STYLE}"
+fi
+
+# Add --use-npy-cache flag if requested
+if [ "${USE_NPY_CACHE}" = true ]; then
+    CMD="${CMD} --use-npy-cache"
 fi
 
 # Add --skip-wandb flag if requested

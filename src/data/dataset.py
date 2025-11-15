@@ -3,6 +3,8 @@ PyTorch Dataset wrapper for cached representations.
 Works with Arrow storage format from cache.py (HuggingFace datasets compatible).
 """
 
+import threading
+import time
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -10,6 +12,35 @@ import pandas as pd
 import torch
 from datasets import load_from_disk
 from torch.utils.data import Dataset
+
+
+# Thread-local storage for timing statistics
+_thread_local = threading.local()
+
+
+def _get_timing_stats():
+    """Get or create timing stats for current thread."""
+    if not hasattr(_thread_local, "timing_stats"):
+        _thread_local.timing_stats = {
+            "total_time": 0.0,
+            "record_time": 0.0,
+            "extract_time": 0.0,
+            "transform_time": 0.0,
+            "count": 0,
+        }
+    return _thread_local.timing_stats
+
+
+def _reset_timing_stats():
+    """Reset timing stats for current thread."""
+    if hasattr(_thread_local, "timing_stats"):
+        _thread_local.timing_stats = {
+            "total_time": 0.0,
+            "record_time": 0.0,
+            "extract_time": 0.0,
+            "transform_time": 0.0,
+            "count": 0,
+        }
 
 
 class RepresentationDataset(Dataset):
@@ -48,14 +79,18 @@ class RepresentationDataset(Dataset):
 
         # Load HuggingFace dataset
         print(f"Loading dataset from {dataset_path}...")
+        load_start = time.time()
         self.hf_dataset = load_from_disk(str(dataset_path))
-        print(f"Loaded {len(self.hf_dataset)} records")
+        load_time = time.time() - load_start
+        print(f"Loaded {len(self.hf_dataset)} records in {load_time:.2f}s")
 
         # Apply filtering if needed
         if filter_fn is not None:
             print(f"Filtering dataset... (original size: {len(self.hf_dataset)})")
+            filter_start = time.time()
             self.hf_dataset = self.hf_dataset.filter(filter_fn)
-            print(f"Filtered dataset size: {len(self.hf_dataset)}")
+            filter_time = time.time() - filter_start
+            print(f"Filtered dataset size: {len(self.hf_dataset)} in {filter_time:.2f}s")
 
         # Get feature dimension from first sample
         if len(self.hf_dataset) > 0:
@@ -64,6 +99,8 @@ class RepresentationDataset(Dataset):
             print(f"Feature dimension: {self.feature_dim}")
         else:
             raise ValueError("Dataset is empty")
+
+        self.hf_dataset.with_format("torch")
 
     def __len__(self):
         return len(self.hf_dataset)
@@ -76,16 +113,45 @@ class RepresentationDataset(Dataset):
             If return_metadata=True: (representation, metadata) tuple
             If return_metadata=False: representation tensor only
         """
+        item_start = time.time()
+        stats = _get_timing_stats()
+
         # Get record from HuggingFace dataset
+        record_start = time.time()
         record = self.hf_dataset[idx]
+        record_time = time.time() - record_start
 
         # Extract features
+        extract_start = time.time()
         features = record["list_of_features"]
         rep = torch.tensor(features, dtype=torch.float32)
+        extract_time = time.time() - extract_start
 
         # Apply transform
+        transform_time = 0.0
         if self.transform is not None:
+            transform_start = time.time()
             rep = self.transform(rep)
+            transform_time = time.time() - transform_start
+
+        total_time = time.time() - item_start
+
+        # Accumulate stats
+        stats["total_time"] += total_time
+        stats["record_time"] += record_time
+        stats["extract_time"] += extract_time
+        stats["transform_time"] += transform_time
+        stats["count"] += 1
+
+        # Log detailed timing for first 10 samples
+        if idx < 10:
+            print(
+                f"[Dataset __getitem__ idx={idx}] "
+                f"Total: {total_time * 1000:.2f}ms "
+                f"(record: {record_time * 1000:.2f}ms, "
+                f"extract: {extract_time * 1000:.2f}ms, "
+                f"transform: {transform_time * 1000:.2f}ms)"
+            )
 
         if not self.return_metadata:
             return rep
@@ -103,6 +169,16 @@ class RepresentationDataset(Dataset):
         }
 
         return (rep, metadata)
+
+    @staticmethod
+    def get_timing_stats():
+        """Get accumulated timing statistics for current thread."""
+        return _get_timing_stats()
+
+    @staticmethod
+    def reset_timing_stats():
+        """Reset accumulated timing statistics for current thread."""
+        _reset_timing_stats()
 
     @staticmethod
     def get_available_values(dataset_path: Path, column: str) -> List[str]:
