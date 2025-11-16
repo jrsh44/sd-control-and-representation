@@ -252,19 +252,16 @@ def train_sae_val(
         epoch_sparsity_tensor = torch.tensor(0.0, device=device)
         batch_count = 0
         metric_samples = 0
+        iteration_start = time.time()  # Track when we start waiting for next batch
 
         for batch_idx, batch in enumerate(train_dataloader):
-            batch_start = time.time()
+            # Batch is now ready - measure how long DataLoader took
+            batch_ready = time.time()
             batch_count += 1
 
-            # Measure data loading time (DataLoader gives us the batch)
-            # This measures how long it took DataLoader workers to fetch all items
-            data_load_start = time.time()
+            # Start GPU work timer
+            gpu_work_start = time.time()
             x = extract_input(batch).to(device, non_blocking=True)
-            data_load_time = time.time() - data_load_start
-
-            # Note: The actual time to load batch items happens in DataLoader workers
-            # before this point. This only measures the transfer to GPU.
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -317,8 +314,16 @@ def train_sae_val(
             if device.type == "cuda":
                 torch.cuda.synchronize()
 
-            # Track batch time and show immediate feedback
-            batch_time = time.time() - batch_start
+            # Calculate timing breakdown
+            gpu_work_end = time.time()
+            loading_time = batch_ready - iteration_start  # Time waiting for DataLoader
+            gpu_time = gpu_work_end - gpu_work_start  # Time for GPU work (transfer + compute)
+            total_batch_time = gpu_work_end - iteration_start  # Total time for this iteration
+
+            # Update iteration start for next batch
+            iteration_start = time.time()
+
+            # Track overall progress
             elapsed = time.time() - start_time
             avg_time_per_batch = elapsed / (batch_idx + 1)
             remaining_batches = len(train_dataloader) - (batch_idx + 1)
@@ -330,13 +335,12 @@ def train_sae_val(
 
             # Only show progress every log_interval batches to avoid overhead
             if batch_idx % log_interval == 0 or batch_idx == len(train_dataloader) - 1:
-                compute_time = batch_time - data_load_time
                 print(
                     f"   [{progress_percent:3d}%] "
                     f"Batch {batch_idx + 1}/{len(train_dataloader)} | "
                     f"Loss: {loss.item():.4f} | "
-                    f"Total: {batch_time:.2f}s "
-                    f"(Load: {data_load_time:.3f}s, Compute: {compute_time:.2f}s) | "
+                    f"Total: {total_batch_time:.3f}s "
+                    f"(Loading: {loading_time:.3f}s, GPU: {gpu_time:.3f}s) | "
                     f"ETA: {eta_minutes}m {eta_secs:02d}s"
                 )
 
@@ -377,16 +381,16 @@ def train_sae_val(
                 val_dead_tracker = None
 
             val_start_time = time.time()
+            val_iteration_start = time.time()
 
             with torch.no_grad():
                 for batch_idx, batch in enumerate(val_dataloader):
-                    val_batch_start = time.time()
+                    val_batch_ready = time.time()
                     val_batch_count += 1
 
-                    # Measure data loading time
-                    val_data_load_start = time.time()
+                    # Start GPU work
+                    val_gpu_work_start = time.time()
                     x = extract_input(batch).to(device, non_blocking=True)
-                    val_data_load_time = time.time() - val_data_load_start
 
                     # Use AMP for validation too
                     if scaler is not None:
@@ -408,7 +412,13 @@ def train_sae_val(
                     if device.type == "cuda":
                         torch.cuda.synchronize()
 
-                    val_batch_time = time.time() - val_batch_start
+                    val_gpu_work_end = time.time()
+                    val_loading_time = val_batch_ready - val_iteration_start
+                    val_gpu_time = val_gpu_work_end - val_gpu_work_start
+                    val_total_batch_time = val_gpu_work_end - val_iteration_start
+
+                    val_iteration_start = time.time()
+
                     val_elapsed = time.time() - val_start_time
                     avg_time_per_batch = val_elapsed / (batch_idx + 1)
                     remaining_batches = len(val_dataloader) - (batch_idx + 1)
@@ -418,14 +428,13 @@ def train_sae_val(
 
                     progress_percent = int(((batch_idx + 1) / len(val_dataloader)) * 100)
 
-                    val_compute_time = val_batch_time - val_data_load_time
                     print(
                         f"   [{progress_percent:3d}%] "
                         f"Batch {batch_idx + 1}/{len(val_dataloader)} | "
                         f"Loss: {loss.item():.4f} | "
-                        f"Total: {val_batch_time:.2f}s "
-                        f"(Load: {val_data_load_time:.3f}s, "
-                        f"Compute: {val_compute_time:.2f}s) | "
+                        f"Total: {val_total_batch_time:.3f}s "
+                        f"(Loading: {val_loading_time:.3f}s, "
+                        f"GPU: {val_gpu_time:.3f}s) | "
                         f"ETA: {eta_minutes}m {eta_secs:02d}s"
                     )
 

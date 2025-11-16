@@ -9,8 +9,7 @@
 #
 # Description:
 #   - Trains SAE on cached SD layer representations
-#   - Auto-detects NPY (memmap) or Arrow format
-#   - NPY cache provides 200x faster data loading
+#   - Uses memmap format for fast data loading
 #   - Optional validation dataset
 #
 # Results are saved to:
@@ -28,7 +27,7 @@
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
 #SBATCH --cpus-per-task 32                  # CPU cores for data processing
-#SBATCH --mem 64G                           # 64GB RAM (for large batches)
+#SBATCH --mem 100G                          # 100GB RAM (for large batches)
 #SBATCH --partition short                   # Queue name
 #SBATCH --output ../logs/sae_train_%A_%a.log  # %A=job ID, %a=task ID
 
@@ -52,7 +51,7 @@ echo "Start: $(date)"
 echo "=========================================="
 
 # Navigate to your project directory
-cd /mnt/evafs/groups/mi2lab/mjarosz/sd-control-and-representation
+cd /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation
 
 # Create required directories
 mkdir -p logs
@@ -78,7 +77,6 @@ echo ""
 PYTHON_SCRIPT="scripts/sae/train.py"
 
 # Dataset paths - Update these to your cached representation directories
-# Training script auto-detects NPY (memmap) or Arrow format based on cache structure
 LAYER_NAME="unet_up_1_att_1"
 MODEL_NAME="finetuned_sd_saeuron"
 TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
@@ -90,7 +88,7 @@ TEST_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/validation/${LAYER_NAME
 # SAE model parameters
 EXPANSION_FACTOR=16
 TOP_K=32
-LEARNING_RATE=1e-4
+LEARNING_RATE=4e-4
 NUM_EPOCHS=5
 BATCH_SIZE=4096
 
@@ -107,7 +105,7 @@ echo "=========================================="
 echo "Configuration:"
 echo "  Train dataset: ${TRAIN_DATASET_PATH}"
 echo "  Test dataset: ${TEST_DATASET_PATH:-None (training without validation)}"
-echo "  Cache format: Auto-detected (NPY memmap or Arrow)"
+echo "  Cache format: Memmap"
 echo "  SAE path: ${SAE_PATH}"
 echo "  Expansion factor: ${EXPANSION_FACTOR}"
 echo "  Top-K: ${TOP_K}"
