@@ -10,7 +10,7 @@
 #   This script runs parallel tasks to generate representation caches:
 #   - Each task processes one artistic style
 #   - Captures multiple layer representations from SD 1.5
-#   - Saves to NPY memmap format (200x faster loading than Arrow)
+#   - Saves to memmap format for 100x faster loading
 #   - Metadata saved once at the end (fast incremental writes)
 #
 #   Results are saved to:
@@ -18,7 +18,7 @@
 #   - Validation cache (no style): {RESULTS_DIR}/validation/{layer_name}/
 #   - Logs: {LOGS_DIR}/sd_1_5_cache_gen_{JOB_ID}_{TASK_ID}.log
 #
-#   NPY cache files generated:
+#   Memmap cache files generated:
 #   - data.npy: memmap array of representations
 #   - metadata.pkl: full metadata with prompts
 #   - index.json: lightweight metadata for fast filtering
@@ -32,18 +32,18 @@
 
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sd_1_5_cache_gen         # Name in queue
-#SBATCH --time 0-6:00:00                   # Max 6 hours per style
+#SBATCH --time 0-6:00:00                    # Max 6 hours per style
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
-#SBATCH --cpus-per-task 12                   # CPU cores for data processing
-#SBATCH --mem 40G                           # 40GB RAM (for large batches)
+#SBATCH --cpus-per-task 12                  # CPU cores for data processing
+#SBATCH --mem 64G                           # 64GB RAM (for large batches)
 #SBATCH --partition short                   # Queue name
 #SBATCH --output ../logs/sd_1_5_cache_gen_%A_%a.log   # %A=job ID, %a=task ID
 #SBATCH --array 0-1%2                       # 2 styles, max 2 running at once
 
 # Optional: email notifications
-#SBATCH --mail-user 01180706@pw.edu.pl
+#SBATCH --mail-user 01180707@pw.edu.pl
 #SBATCH --mail-type FAIL,END
 
 #==============================================================================
@@ -65,7 +65,7 @@ echo "Start: $(date)"
 echo "=========================================="
 
 # Navigate to project directory
-cd /mnt/evafs/groups/mi2lab/mjarosz/sd-control-and-representation
+cd /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation
 
 # Load environment variables
 if [ -f .env ]; then
@@ -109,9 +109,6 @@ GUIDANCE_SCALE=7.5
 NUM_STEPS=(50 100)
 SEED=42
 
-# Cache format (NPY memmap = 200x faster loading)
-USE_NPY_CACHE=true
-
 # WandB settings
 SKIP_WANDB=false
 
@@ -132,7 +129,7 @@ echo "  Script: ${PYTHON_SCRIPT}"
 echo "  Style: ${CURRENT_STYLE}"
 echo "  Prompts: ${PROMPTS_DIR}"
 echo "  Layers: ${LAYERS_STR}"
-echo "  Cache Format: $([ "${USE_NPY_CACHE}" = true ] && echo "NPY (memmap)" || echo "Arrow (HF)")"
+echo "  Cache Format: Memmap"
 echo "  Guidance Scale: ${GUIDANCE_SCALE}"
 echo "  Steps: ${NUM_STEPS}"
 echo "  Seed: ${SEED}"
@@ -170,11 +167,6 @@ CMD="uv run ${PYTHON_SCRIPT} \
 # Add --style flag only if not empty
 if [ -n "${CURRENT_STYLE}" ]; then
     CMD="${CMD} --style ${CURRENT_STYLE}"
-fi
-
-# Add --use-npy-cache flag if requested
-if [ "${USE_NPY_CACHE}" = true ]; then
-    CMD="${CMD} --use-npy-cache"
 fi
 
 # Add --skip-wandb flag if requested
