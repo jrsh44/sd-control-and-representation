@@ -10,14 +10,15 @@ without validation.
 
 EXAMPLE USAGE:
 
-    uv run scripts/sae/train.py \
-        --train_dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
-        --sae_path ../results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
-        --expansion_factor 16 \
-        --top_k 32 \
-        --learning_rate 1e-5 \
-        --num_epochs 5 \
-        --batch_size 4096
+    uv run scripts/sae/train.py         \
+    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1        \
+    --sae_path ../results/sae/unet_up_1_att_1_sae.pt         \
+    --expansion_factor 16         \
+    --top_k 32         \
+    --learning_rate 4e-4         \
+    --num_epochs 5         \
+    --batch_size 4096         \
+    --log_interval 10
 """
 
 import argparse
@@ -39,27 +40,7 @@ if str(project_root) not in sys.path:
 load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.dataset import RepresentationDataset  # noqa: E402
-from src.data.dataset_npy import NPYDataset  # noqa: E402
 from src.models.sae.training import criterion_laux, train_sae_val  # noqa: E402
-
-
-def detect_dataset_format(dataset_path: Path) -> str:
-    """
-    Auto-detect dataset format (NPY or Arrow).
-
-    Returns:
-        'npy' if NPY format detected, 'arrow' otherwise
-    """
-    # Check for NPY format markers
-    if (dataset_path / "data.npy").exists() and (dataset_path / "info.json").exists():
-        return "npy"
-
-    # Check for Arrow format markers
-    if (dataset_path / "dataset_info.json").exists() or list(dataset_path.glob("*.arrow")):
-        return "arrow"
-
-    # Default to arrow for backward compatibility
-    return "arrow"
 
 
 def parse_args() -> argparse.Namespace:
@@ -117,12 +98,13 @@ def parse_args() -> argparse.Namespace:
         default=1024,
         help="Batch size for SAE training",
     )
-    parser.add_argument("--skip-wandb", action="store_true")
     parser.add_argument(
-        "--use-npy-cache",
-        action="store_true",
-        help="Force use of NPY cache format (auto-detected by default)",
+        "--log_interval",
+        type=int,
+        default=10,
+        help="Log progress every N batches (default: 10)",
     )
+    parser.add_argument("--skip-wandb", action="store_true")
     return parser.parse_args()
 
 
@@ -171,44 +153,24 @@ def main() -> int:
         dataset_load_end = torch.cuda.Event(enable_timing=True)
         dataset_load_start.record()
 
-        # Auto-detect or force NPY format
+        # Train dataset path should point directly to the layer directory
+        # e.g., /path/to/cached_representations/unet_up_1_att_1
+        # Split into cache_dir and layer_name for RepresentationDataset
         train_path = Path(args.train_dataset_path)
-        train_format = detect_dataset_format(train_path)
+        train_cache_dir = train_path.parent
+        train_layer_name = train_path.name
 
-        if args.use_npy_cache:
-            train_format = "npy"
-
-        print(f"\n🔍 Detected format: {train_format.upper()}")
-
-        if train_format == "npy":
-            print("⚡ Using NPY memmap cache (200x faster than Arrow!)")
-            # Extract cache_dir and layer_name from path
-            cache_dir = train_path.parent
-            layer_name = train_path.name
-
-            training_dataset = NPYDataset(
-                cache_dir=cache_dir,
-                layer_name=layer_name,
-                return_metadata=False,
-                # Example filters (uncomment to use):
-                # filter_fn=lambda x: x["style"] == "van_gogh",
-                # filter_fn=lambda x: x["timestep"] < 500,
-                # filter_fn=lambda x: x["object"] in ["cat", "dog"],
-            )
-            input_dim = training_dataset._full_data.shape[1]
-        else:
-            print("📦 Using Arrow/HuggingFace format")
-            print("   💡 Tip: Convert to NPY for 200x faster loading:")
-            print(
-                f"   python scripts/convert_arrow_to_npy.py "
-                f"--arrow_path {train_path} --output_dir {train_path.parent}_npy"
-            )
-
-            training_dataset = RepresentationDataset(
-                dataset_path=train_path,
-                return_metadata=False,
-            )
-            input_dim = training_dataset.feature_dim
+        print("\n⚡ Using memmap cache for fast loading...")
+        training_dataset = RepresentationDataset(
+            cache_dir=train_cache_dir,
+            layer_name=train_layer_name,
+            return_metadata=False,
+            # Example filters (uncomment to use):
+            # filter_fn=lambda x: x["style"] == "van_gogh",
+            # filter_fn=lambda x: x["timestep"] < 500,
+            # filter_fn=lambda x: x["object"] in ["cat", "dog"],
+        )
+        input_dim = training_dataset._full_data.shape[1]
 
         print(f"Loaded training dataset: {len(training_dataset)} samples, input_dim={input_dim}")
 
@@ -216,24 +178,14 @@ def main() -> int:
         validation_dataset = None
         if args.test_dataset_path:
             test_path = Path(args.test_dataset_path)
-            test_format = detect_dataset_format(test_path)
+            test_cache_dir = test_path.parent
+            test_layer_name = test_path.name
 
-            if args.use_npy_cache:
-                test_format = "npy"
-
-            if test_format == "npy":
-                cache_dir = test_path.parent
-                layer_name = test_path.name
-                validation_dataset = NPYDataset(
-                    cache_dir=cache_dir,
-                    layer_name=layer_name,
-                    return_metadata=False,
-                )
-            else:
-                validation_dataset = RepresentationDataset(
-                    dataset_path=test_path,
-                    return_metadata=False,
-                )
+            validation_dataset = RepresentationDataset(
+                cache_dir=test_cache_dir,
+                layer_name=test_layer_name,
+                return_metadata=False,
+            )
 
             print(f"Loaded validation dataset: {len(validation_dataset)} samples")
         else:
@@ -247,46 +199,16 @@ def main() -> int:
         # Prepare DataLoader
         is_cuda = device == "cuda"
 
-        # Use timing collate only for Arrow format (to measure bottleneck)
-        collate_fn = None
-        if train_format == "arrow":
-            # Custom collate function to measure batch assembly time
-            def collate_with_timing(batch_list):
-                """Collate function that measures timing and returns standard batch."""
-                from torch.utils.data import default_collate
-
-                from src.data.dataset import RepresentationDataset
-
-                stats = RepresentationDataset.get_timing_stats()
-                if stats["count"] > 0:
-                    avg_total = (stats["total_time"] / stats["count"]) * 1000
-                    avg_record = (stats["record_time"] / stats["count"]) * 1000
-                    avg_extract = (stats["extract_time"] / stats["count"]) * 1000
-
-                    print(
-                        f"[DataLoader Batch Stats] {stats['count']} items | "
-                        f"Avg per item: {avg_total:.2f}ms total "
-                        f"({avg_record:.2f}ms record, {avg_extract:.2f}ms extract) | "
-                        f"Total batch load time: {stats['total_time'] * 1000:.0f}ms"
-                    )
-
-                # Reset stats for next batch
-                RepresentationDataset.reset_timing_stats()
-
-                # Return default collated batch
-                return default_collate(batch_list)
-
-            collate_fn = collate_with_timing
+        num_workers = 10 if is_cuda else 0
 
         train_dataloader = DataLoader(
             training_dataset,
             batch_size=args.batch_size,
             shuffle=True,
             pin_memory=is_cuda,
-            num_workers=32 if is_cuda else 0,  # Zwiększone z 8 do 32
-            prefetch_factor=8 if is_cuda else None,
-            persistent_workers=is_cuda,
-            collate_fn=collate_fn,
+            num_workers=num_workers,
+            prefetch_factor=2 if num_workers > 0 else None,
+            persistent_workers=False,  # Avoid worker overhead for large datasets
         )
 
         # Create validation dataloader only if validation dataset exists
@@ -297,9 +219,9 @@ def main() -> int:
                 batch_size=args.batch_size,
                 shuffle=False,
                 pin_memory=is_cuda,
-                num_workers=8 if is_cuda else 0,
-                prefetch_factor=8 if is_cuda else None,
-                persistent_workers=is_cuda,
+                num_workers=num_workers,
+                prefetch_factor=2 if num_workers > 0 else None,
+                persistent_workers=False,
             )
 
         # Initialize or load SAE
@@ -319,9 +241,26 @@ def main() -> int:
         else:
             print(f"Creating new SAE (file does not exist: {sae_path})")
 
-        print("Compiling model with torch.compile() (first epoch will be slower)...")
-        sae = torch.compile(sae)
-        print("✓ Model compiled successfully")
+        # Check GPU capability for torch.compile()
+        if device == "cuda":
+            gpu_capability = torch.cuda.get_device_capability(0)
+            gpu_name = torch.cuda.get_device_name(0)
+            print(f"GPU: {gpu_name} (Capability: {gpu_capability[0]}.{gpu_capability[1]})")
+
+            if gpu_capability[0] >= 7:
+                print("Compiling model with torch.compile() (first epoch will be slower)...")
+                sae = torch.compile(sae)
+                print("✓ Model compiled successfully")
+            else:
+                print(
+                    f"⚠️  Skipping torch.compile() - GPU capability "
+                    f"{gpu_capability[0]}.{gpu_capability[1]} < 7.0 (Triton requires >= 7.0)"
+                )
+                print(
+                    "   Training will proceed without compilation (slightly slower but still works)"
+                )
+        else:
+            print("CPU mode - skipping torch.compile()")
 
         # Define optimizer
         optimizer = torch.optim.Adam(sae.parameters(), lr=args.learning_rate)
@@ -337,7 +276,7 @@ def main() -> int:
             nb_epochs=args.num_epochs,
             device=device,
             use_amp=True,
-            log_interval=10,
+            log_interval=args.log_interval,
             wandb_enabled=not args.skip_wandb,
         )
         sae = sae.eval()
