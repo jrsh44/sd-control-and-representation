@@ -18,7 +18,7 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
-#SBATCH --time 0-12:00:00
+#SBATCH --time 0-24:00:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
@@ -64,20 +64,24 @@ echo ""
 #==============================================================================
 
 # Python script
-PYTHON_SCRIPT="scripts/sae/select_features.py"
+PYTHON_SCRIPT="scripts/sae/feature_selection.py"
 
 # Dataset & SAE
 LAYER_NAME="unet_up_1_att_1"
 MODEL_NAME="finetuned_sd_saeuron"
-DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
+# DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
+DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1"
+  
+TOP_K=32
 
 # Concept to analyze
 CONCEPT_NAME="object"        # e.g., object, style, timestep
-CONCEPT_VALUE="cat"          # e.g., cat, dog, Impressionism
+CONCEPT_VALUE="cats"          # e.g., cat, dog, Impressionism
 
 # SAE model (must exist)
-SAE_DIR="${RESULTS_DIR:-results}/sae_models"
-SAE_PATH="${SAE_DIR}/${LAYER_NAME}_exp16_topk32_lr1em4_epochs5_batch4096.pt"
+# SAE_DIR="${RESULTS_DIR:-results}/sae_models"
+# SAE_PATH="${SAE_DIR}/${LAYER_NAME}_exp16_topk32_lr1em4_epochs5_batch4096.pt"
+SAE_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt"
 
 # Output scores
 SCORES_DIR="${RESULTS_DIR:-results}/sae_scores"
@@ -113,6 +117,8 @@ echo "  SAE: ${SAE_PATH}"
 echo "  Concept: '${CONCEPT_NAME}' == '${CONCEPT_VALUE}'"
 echo "  Output: ${SCORES_PATH}"
 echo "  Batch size: ${BATCH_SIZE}"
+echo "  Epsilon: ${EPSILON}"
+echo "  Top-k: ${TOP_K}"
 echo "=========================================="
 
 CMD="uv run ${PYTHON_SCRIPT} \
@@ -122,7 +128,8 @@ CMD="uv run ${PYTHON_SCRIPT} \
     --sae_path \"${SAE_PATH}\" \
     --feature_scores_path \"${SCORES_PATH}\" \
     --batch_size ${BATCH_SIZE} \
-    --epsilon ${EPSILON}"
+    --epsilon ${EPSILON} \
+    --top_k ${TOP_K}"
 
 # Optional: skip wandb
 # CMD="${CMD} --skip-wandb"

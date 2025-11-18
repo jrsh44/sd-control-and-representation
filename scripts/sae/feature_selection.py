@@ -1,4 +1,16 @@
 #!/usr/bin/env python3
+""" 
+Example usage:
+    python scripts/sae/feature_selection.py \
+        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
+        --concept object \
+        --concept_value cats \
+        --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
+        --feature_scores_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cat.npy \
+        --epsilon 1e-8 \
+        --batch_size 4096
+
+"""
 
 import argparse
 import sys
@@ -22,7 +34,6 @@ from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.feature_selection import (  # noqa: E402
     compute_sums,
     concept_filtering_function,
-    infer_sae_config,
 )
 
 
@@ -81,6 +92,13 @@ def parse_args() -> argparse.Namespace:
         required=False,
         help="Batch size for DataLoader",
     )
+    # top_k
+    parser.add_argument(
+        "--top_k",
+        type=int,
+        required=True,
+        help="Top-k sparsity for SAE",
+    )
     # skip wandb
     parser.add_argument("--skip-wandb", action="store_true")
     return parser.parse_args()
@@ -110,7 +128,7 @@ def main() -> int:
             wandb.init(
                 project="sd-control-representation",
                 entity="bartoszjezierski28-warsaw-university-of-technology",
-                name=f"SAE_{Path(args.sae_path).stem}",
+                name=f"feature_selection_SAE_{Path(args.sae_path).stem}",
                 config={
                     "sae_path": args.sae_path,
                     "dataset_path": args.dataset_path,
@@ -128,75 +146,92 @@ def main() -> int:
         if not sae_path.exists():
             raise FileNotFoundError(f"SAE not found: {sae_path}")
 
-        print(f"Loading SAE from {sae_path}...")
+        # Load state dict
         state_dict = torch.load(sae_path, map_location="cpu")
 
-        # Create dummy model to infer shapes
-        dummy_sae = TopKSAE(input_dim=1, nb_concepts=1, top_k=1, device=device)
-        dummy_sae.load_state_dict(state_dict, strict=False)  # partial load to get shapes
+        # Automatyczne wykrycie i usunięcie prefiksu _orig_mod.
+        if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
+            print("Detected torch.compile() prefix → removing '_orig_mod.'")
+            state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
 
-        config = infer_sae_config(dummy_sae)
-        print("Inferred SAE config:")
-        for k, v in config.items():
-            print(f"  {k}: {v}")
+        # Wnioskowanie wymiarów
+        enc_weight = state_dict["encoder.final_block.0.weight"]
+        input_shape = enc_weight.shape[1]
+        nb_concepts = enc_weight.shape[0]
+        print(f"Inferred input_dim={input_shape}, nb_concepts={nb_concepts}")
 
-        # Re-create the *real* model with correct dims
+        # Tworzymy model i ładujemy wagi
         sae = TopKSAE(
-            input_dim=config["input_dim"],
-            nb_concepts=config["nb_concepts"],
-            top_k=config["top_k"],
+            input_shape=input_shape,
+            nb_concepts=nb_concepts,
+            top_k=args.top_k,
             device=device,
         )
-        sae.load_state_dict(state_dict)  # now full load
+        sae.load_state_dict(state_dict)  # teraz działa idealnie
         sae = sae.to(device)
         sae.eval()
         print("SAE loaded and moved to device")
 
-        print("Compiling model with torch.compile() (first epoch will be slower)...")
-        sae = torch.compile(sae)
-        print("✓ Model compiled successfully")
-
-        # Load dataset
-        dataset_concept_true = RepresentationDataset(
-            dataset_path=args.dataset_path,
-            flatten=True,  # you already flatten
-            filter_fn=concept_filtering_function(args.concept, args.concept_value),
-            return_metadata=False,
-        )
-        n_samples_true = dataset_concept_true.feature_dim
-        print(f"Loaded dataset: {len(dataset_concept_true)} samples, input_dim={n_samples_true}")
-
-        dataset_concept_false = RepresentationDataset(
-            dataset_path=args.dataset_path,
-            flatten=True,  # you already flatten
-            filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
-            return_metadata=False,
-        )
-        n_samples_false = dataset_concept_false.feature_dim
-        print(f"Loaded dataset: {len(dataset_concept_false)} samples, input_dim={n_samples_false}")
-
-        # Prepare DataLoader
+        # Prepare dataloader functions
         is_cuda = device == "cuda"
 
         def make_loader(dataset, batch_size, is_cuda):
-            return DataLoader(
-                dataset,
-                batch_size=batch_size,
-                shuffle=False,  # order doesn't matter
-                pin_memory=is_cuda,
-                num_workers=32 if is_cuda else 0,
-                prefetch_factor=8 if is_cuda else None,
-                persistent_workers=is_cuda,
-            )
+            if torch.cuda.is_available() and hasattr(torch._dynamo.external_utils, "is_compiled"):
+                # Jeśli model jest skompilowany – wyłącz wieloprocesowość (unikamy deadlocka)
+                print("torch.compile() detected → using num_workers=0 to avoid deadlock")
+                return DataLoader(
+                    dataset,
+                    batch_size=batch_size,
+                    shuffle=False,
+                    pin_memory=True,
+                    num_workers=0,  # ← KLUCZOWA ZMIANA
+                )
+            else:
+                return DataLoader(
+                    dataset,
+                    batch_size=batch_size,
+                    shuffle=False,
+                    pin_memory=is_cuda,
+                    num_workers=6 if is_cuda else 0,
+                    prefetch_factor=2 if is_cuda else None,
+                    persistent_workers=is_cuda,
+                )
+
+        # Load dataset
+        dataset_path = Path(args.dataset_path)
+        cache_dir = dataset_path.parent
+        layer_name = dataset_path.name
+
+        # === CONCEPT FALSE ===
+        dataset_concept_false = RepresentationDataset(
+            cache_dir=cache_dir,
+            layer_name=layer_name,
+            filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
+            return_metadata=False,
+        )
+        n_samples_false = dataset_concept_false._full_data.shape[0]
+        print(f"Loaded dataset: {len(dataset_concept_false)} samples, input_dim={n_samples_false}")
+
+        print("\nComputing activations for 'concept=false'...")
+        loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
+        sum_false = compute_sums(loader_false, sae, device, nb_concepts)
+        print("Sums for 'concept=false' computed")
+
+        # === CONCEPT TRUE ===
+        dataset_concept_true = RepresentationDataset(
+            cache_dir=cache_dir,
+            layer_name=layer_name,
+            filter_fn=concept_filtering_function(args.concept, args.concept_value),
+            return_metadata=False,
+        )
+        n_samples_true = dataset_concept_true._full_data.shape[0]
+        print(f"Loaded dataset: {len(dataset_concept_true)} samples, input_dim={n_samples_true}")
 
         # Compute sequentially
         print("Computing activations for 'concept=true'...")
         loader_true = make_loader(dataset_concept_true, args.batch_size, is_cuda)
-        sum_true = compute_sums(loader_true, sae, device, config["nb_concepts"])
-
-        print("\nComputing activations for 'concept=false'...")
-        loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
-        sum_false = compute_sums(loader_false, sae, device, config["nb_concepts"])
+        sum_true = compute_sums(loader_true, sae, device, nb_concepts)
+        print("Sums for 'concept=true' computed")
 
         # Calculate score
         epsilon = args.epsilon
