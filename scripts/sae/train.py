@@ -11,7 +11,7 @@ without validation.
 EXAMPLE USAGE:
 
     uv run scripts/sae/train.py         \
-    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1        \
+    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
     --sae_path ../results/sae/unet_up_1_att_1_sae.pt         \
     --expansion_factor 16         \
     --top_k 32         \
@@ -19,7 +19,7 @@ EXAMPLE USAGE:
     --num_epochs 5         \
     --batch_size 4096         \
     --log_interval 10
-"""
+"""  # noqa: E501
 
 import argparse
 import sys
