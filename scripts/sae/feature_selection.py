@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-""" 
+"""
 Example usage:
     python scripts/sae/feature_selection.py \
         --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
@@ -10,7 +10,7 @@ Example usage:
         --epsilon 1e-8 \
         --batch_size 4096
 
-"""
+"""  # noqa: E501
 
 import argparse
 import sys
