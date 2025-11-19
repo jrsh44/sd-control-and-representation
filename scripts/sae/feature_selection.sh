@@ -18,11 +18,11 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
-#SBATCH --time 0-24:00:00
+#SBATCH --time 0-12:00:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
-#SBATCH --cpus-per-task 32
+#SBATCH --cpus-per-task 16
 #SBATCH --mem 64G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
@@ -46,7 +46,8 @@ echo "Start: $(date)"
 echo "=========================================="
 
 cd /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation
-mkdir -p logs
+source .venv/bin/activate
+mkdir -p ../logs
 
 # Load .env
 if [ -f .env ]; then
