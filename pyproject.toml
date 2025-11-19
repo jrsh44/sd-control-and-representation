@@ -15,6 +15,7 @@ dependencies = [
     "ipykernel>=7.0.1",
     "jupyterlab>=4.4.10",
     "matplotlib>=3.10.7",
+    "nudenet>=3.4.2",
     "overcomplete>=0.2.8",
     "psutil>=7.1.2",
     "torch>=2.9.0",
