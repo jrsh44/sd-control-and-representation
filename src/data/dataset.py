@@ -4,6 +4,7 @@ Fast memmap-based dataset for representations.
 
 import json
 import os
+import signal
 import shutil
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -11,7 +12,6 @@ from typing import Callable, List, Optional
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-
 
 class RepresentationDataset(Dataset):
     """
@@ -62,6 +62,8 @@ class RepresentationDataset(Dataset):
             if self._local_copy_path != data_path:  # Copy succeeded
                 data_path = self._local_copy_path
                 print(f"  ✓ Using local copy: {data_path}")
+                # Register cleanup to ensure it runs even on keyboard interrupt
+                self._register_cleanup()
         elif disable_copy:
             print("  ℹ️  Local copy disabled via NPY_DISABLE_LOCAL_COPY environment variable")
 
@@ -233,14 +235,27 @@ class RepresentationDataset(Dataset):
 
         return tmp_path
 
+    def _register_cleanup(self):
+        """Register cleanup handlers for signals"""
+
+        # Register for common signals (SIGINT = Ctrl+C, SIGTERM = kill)
+        def signal_handler(signum, frame):
+            self.__del__()
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
     def __del__(self):
         """Cleanup local copy on dataset destruction"""
         if hasattr(self, "_local_copy_path") and self._local_copy_path:
             try:
-                # Only clean up it's job's tmp file
                 if "/tmp/npy_cache_" in str(self._local_copy_path):  # noqa: S108
                     tmp_dir = self._local_copy_path.parent
                     if tmp_dir.exists():
                         shutil.rmtree(tmp_dir, ignore_errors=True)
+                        print(f"\n  🧹 Cleaned up local copy: {tmp_dir}")
+                        self._local_copy_path = None
             except Exception:  # noqa: S110
                 pass  # Ignore cleanup errors
