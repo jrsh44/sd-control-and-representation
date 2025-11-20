@@ -8,7 +8,8 @@ Example usage:
         --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
         --feature_scores_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cat.npy \
         --epsilon 1e-8 \
-        --batch_size 4096
+        --batch_size 4096 \
+        --top_k 32
 
 """  # noqa: E501
 
@@ -39,7 +40,7 @@ from src.models.sae.feature_selection import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Train SAE on representations from SD layer using RepresentationDataset."
+        description="Feature selection using pretrained Sparse Autoencoder (SAE) given a concept",
     )
     # Dataset parameters
     parser.add_argument(
@@ -98,6 +99,14 @@ def parse_args() -> argparse.Namespace:
         type=int,
         required=True,
         help="Top-k sparsity for SAE",
+    )
+    # log every
+    parser.add_argument(
+        "--log_every",
+        type=int,
+        default=50,
+        required=False,
+        help="Log every N batches",
     )
     # skip wandb
     parser.add_argument("--skip-wandb", action="store_true")
@@ -214,7 +223,9 @@ def main() -> int:
 
         print("\nComputing activations for 'concept=false'...")
         loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
-        sum_false = compute_sums(loader_false, sae, device, nb_concepts)
+        sum_false = compute_sums(
+            loader_false, sae, device, nb_concepts, args.log_every, "compute_sums_false"
+        )  # noqa: E501
         print("Sums for 'concept=false' computed")
 
         # === CONCEPT TRUE ===
@@ -230,7 +241,9 @@ def main() -> int:
         # Compute sequentially
         print("Computing activations for 'concept=true'...")
         loader_true = make_loader(dataset_concept_true, args.batch_size, is_cuda)
-        sum_true = compute_sums(loader_true, sae, device, nb_concepts)
+        sum_true = compute_sums(
+            loader_true, sae, device, nb_concepts, args.log_every, "compute_sums_true"
+        )  # noqa: E501
         print("Sums for 'concept=true' computed")
 
         # Calculate score
