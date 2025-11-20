@@ -88,7 +88,8 @@ def compute_sums(
                         f"{phase_name}/processed_batches": i + 1,
                         f"{phase_name}/processed_samples": total_samples,
                     },
-                    commit=False,
+                    step=i,
+                    commit=True,
                 )  # commit=False – wyślemy wszystko naraz później
 
     total_time = time.time() - start_time
