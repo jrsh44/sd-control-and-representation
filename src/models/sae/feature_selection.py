@@ -29,11 +29,11 @@ def concept_filtering_function(
 
 
 @torch.no_grad()
-def compute_sums(
+def compute_means(
     loader, sae, device, nb_concepts, log_every: int = 50, phase_name: str = "compute_sums"
 ):
     """
-    Oblicza sumę aktywacji koncepcji i loguje do wandb czas przetwarzania batchy.
+    Oblicza średnią aktywacji koncepcji i loguje do wandb czas przetwarzania batchy.
 
     Args:
         loader: DataLoader
@@ -107,4 +107,4 @@ def compute_sums(
             }
         )
 
-    return total_sum
+    return total_sum / total_samples
