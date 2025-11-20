@@ -18,12 +18,12 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
-#SBATCH --time 0-24:00:00
+#SBATCH --time 0-5:00:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
-#SBATCH --cpus-per-task 32
-#SBATCH --mem 64G
+#SBATCH --cpus-per-task 16
+#SBATCH --mem 32G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
 
@@ -84,7 +84,7 @@ CONCEPT_VALUE="cats"          # e.g., cat, dog, Impressionism
 SAE_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt"
 
 # Output scores
-SCORES_DIR="${RESULTS_DIR:-results}/sae_scores"
+SCORES_DIR="${RESULTS_DIR:-results}/finetuned_sd_saeuron/sae_scores"
 SCORES_PATH="${SCORES_DIR}/${LAYER_NAME}_concept_${CONCEPT_NAME}_${CONCEPT_VALUE}.npy"
 
 # Runtime
