@@ -33,7 +33,7 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.feature_selection import (  # noqa: E402
-    compute_sums,
+    compute_means,
     concept_filtering_function,
 )
 
@@ -70,12 +70,12 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to .pt file for SAE weights (load if exists, create and save if not)",
     )
-    # feature score path
+    # feature means path
     parser.add_argument(
-        "--feature_scores_path",
+        "--feature_means_path",
         type=str,
         required=True,
-        help="Path to .npy file for feature scores (load if exists, create and save if not)",
+        help="Path to .npy file for feature means (load if exists, create and save if not)",
     )
     # epsilon
     parser.add_argument(
@@ -125,7 +125,7 @@ def main() -> int:
     print(f"Concept: {args.concept}")
     print(f"Concept value: {args.concept_value}")
     print(f"SAE path: {args.sae_path}")
-    print(f"Feature scores path: {args.feature_scores_path}")
+    print(f"Feature means path: {args.feature_means_path}")
     print(f"Epsilon: {args.epsilon}")
     print(f"Device: {device}")
     print("-" * 80)
@@ -223,10 +223,10 @@ def main() -> int:
 
         print("\nComputing activations for 'concept=false'...")
         loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
-        sum_false = compute_sums(
-            loader_false, sae, device, nb_concepts, args.log_every, "compute_sums_false"
+        mean_false = compute_means(
+            loader_false, sae, device, nb_concepts, args.log_every, "compute_means_false"
         )  # noqa: E501
-        print("Sums for 'concept=false' computed")
+        print("Means for 'concept=false' computed")
 
         # === CONCEPT TRUE ===
         dataset_concept_true = RepresentationDataset(
@@ -241,27 +241,24 @@ def main() -> int:
         # Compute sequentially
         print("Computing activations for 'concept=true'...")
         loader_true = make_loader(dataset_concept_true, args.batch_size, is_cuda)
-        sum_true = compute_sums(
-            loader_true, sae, device, nb_concepts, args.log_every, "compute_sums_true"
+        mean_true = compute_means(
+            loader_true, sae, device, nb_concepts, args.log_every, "compute_means_true"
         )  # noqa: E501
-        print("Sums for 'concept=true' computed")
+        print("Means for 'concept=true' computed")
 
-        # Calculate score
-        epsilon = args.epsilon
-        normalized_mean_true = sum_true / (sum_true.sum() + epsilon * sum_true.shape[0])
-        normalized_mean_false = sum_false / (sum_false.sum() + epsilon * sum_false.shape[0])
-        feature_scores = normalized_mean_true - normalized_mean_false
-        feature_scores_np = feature_scores.numpy()
-
-        # Save scores
-        feature_scores_path = Path(args.feature_scores_path)
-        feature_scores_path.parent.mkdir(parents=True, exist_ok=True)
+        # Save means
+        feature_means_path = Path(args.feature_means_path)
+        feature_means_path.parent.mkdir(parents=True, exist_ok=True)
+        feature_means = {
+            "mean_true": mean_true,
+            "mean_false": mean_false,
+        }
         print("\n" + "=" * 80)
-        print("SAVING FEATURE SCORES")
+        print("SAVING FEATURE MEANS")
         print("=" * 80)
-        print(f"Saving feature scores to {feature_scores_path}...")
-        torch.save(feature_scores_np, feature_scores_path)
-        print("✓ Feature scores saved successfully.")
+        print(f"Saving feature means to {feature_means_path}...")
+        torch.save(feature_means, feature_means_path)
+        print("✓ Feature means saved successfully.")
 
         print("\n" + "=" * 80)
         print("Done.")
