@@ -11,8 +11,8 @@ without validation.
 EXAMPLE USAGE:
 
     uv run scripts/sae/train.py         \
-    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1        \
-    --sae_path ../results/sae/unet_up_1_att_1_sae.pt         \
+    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results_tmp/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1        \
+    --sae_path ../results_tmp/sae/unet_up_1_att_1_sae.pt         \
     --expansion_factor 16         \
     --top_k 32         \
     --learning_rate 4e-4         \
@@ -199,7 +199,14 @@ def main() -> int:
         # Prepare DataLoader
         is_cuda = device == "cuda"
 
-        num_workers = 10 if is_cuda else 0
+        # Determine optimal number of workers based on available CPUs
+        if is_cuda:
+            import os
+            num_cpus = len(os.sched_getaffinity(0))  # Get available CPUs
+            num_workers = min(max(num_cpus - 1, 1), 16)
+            print(f"Available CPUs: {num_cpus}, using {num_workers} workers")
+        else:
+            num_workers = 0
 
         train_dataloader = DataLoader(
             training_dataset,
