@@ -126,7 +126,7 @@ CMD="uv run ${PYTHON_SCRIPT} \
     --concept \"${CONCEPT_NAME}\" \
     --concept_value \"${CONCEPT_VALUE}\" \
     --sae_path \"${SAE_PATH}\" \
-    --feature_scores_path \"${SCORES_PATH}\" \
+    --feature_means_path \"${SCORES_PATH}\" \
     --batch_size ${BATCH_SIZE} \
     --epsilon ${EPSILON} \
     --top_k ${TOP_K}"
