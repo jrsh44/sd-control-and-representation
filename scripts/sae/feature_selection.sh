@@ -18,7 +18,7 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
-#SBATCH --time 0-5:00:00
+#SBATCH --time 0-2:00:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
@@ -126,7 +126,7 @@ CMD="uv run ${PYTHON_SCRIPT} \
     --concept \"${CONCEPT_NAME}\" \
     --concept_value \"${CONCEPT_VALUE}\" \
     --sae_path \"${SAE_PATH}\" \
-    --feature_means_path \"${SCORES_PATH}\" \
+    --feature_sums_path \"${SCORES_PATH}\" \
     --batch_size ${BATCH_SIZE} \
     --epsilon ${EPSILON} \
     --top_k ${TOP_K}"
