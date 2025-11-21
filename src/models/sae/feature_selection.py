@@ -29,7 +29,7 @@ def concept_filtering_function(
 
 
 @torch.no_grad()
-def compute_means(
+def compute_sums(
     loader, sae, device, nb_concepts, log_every: int = 50, phase_name: str = "compute_sums"
 ):
     """
@@ -107,4 +107,4 @@ def compute_means(
             }
         )
 
-    return total_sum / total_samples
+    return total_sum
