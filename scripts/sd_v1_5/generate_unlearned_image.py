@@ -6,23 +6,30 @@ Structure: {results_dir}/{model_name}/cached_representations/{layer_name}/
 Each dataset contains: object, style, prompt_nr, prompt_text, representation
 
 EXAMPLE:
-uv run scripts/sd_v1_5/generate_cache.py \
-    --prompts-dir data/unlearn_canvas/prompts/test \
-    --style Impressionism \
-    --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
-    --skip-wandb
-"""
+uv run scripts/sd_v1_5/generate_unlearned_image.py \
+    --prompt "A photo of a cat sitting on a table" \
+    --preferred_device cuda \
+    --guidance_scale 7.5 \
+    --steps 50 \
+    --seed 42 \
+    --output_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
+    --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
+    --concept_means_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cats.npy \
+    --influence_factor 1.0 \
+    --features_number 25 \
+    --epsilon 1e-8 \
+"""  # noqa: E501
 
 import argparse
 import os
 import sys
 import time
 from datetime import datetime
-from email import parser
 from pathlib import Path
 from typing import List
 
 import torch
+from diffusers import StableDiffusionPipeline  # noqa: E402
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
 
@@ -37,14 +44,12 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 # from src.data import load_prompts_from_directory  # noqa: E402
 # from src.data.cache import RepresentationCache  # noqa: E402
-from src.models.config import ModelRegistry  # noqa: E402
-from src.models.sd_v1_5 import (  # noqa: E402
-    LayerPath,
-    capture_layer_representations_with_unlearning,
-)
-from src.utils.model_loader import ModelLoader  # noqa: E402
+# from src.models.config import ModelRegistry  # noqa: E402
+from src.models.sd_v1_5 import LayerPath  # noqa: E402
+from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearning  # noqa: E402
+
+# from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.RepresentationModifier import RepresentationModifier  # noqa: E402
-from src.utils.wandb import get_system_metrics  # noqa: E402
 
 
 def parse_layer_names(layer_names: List[str]) -> List[LayerPath]:
@@ -68,21 +73,21 @@ def parse_layer_names(layer_names: List[str]) -> List[LayerPath]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(  # noqa: F811
-        description="Generate images wi with Stable Diffusion on cluster"
+    parser = argparse.ArgumentParser(
+        description="Generate images with Stable Diffusion + SAE unlearning"
     )
     parser.add_argument("--prompt", type=str, required=True, help="Text prompt")
     parser.add_argument(
-        "--preferred-device",
+        "--preferred_device",
         type=str,
         default="cuda",
         help="Preferred device (e.g., 'cuda' or 'cpu')",
     )
-    parser.add_argument("--guidance-scale", type=float, default=7.5, help="Guidance scale")
+    parser.add_argument("--guidance_scale", type=float, default=7.5, help="Guidance scale")
     parser.add_argument("--steps", type=int, default=50, help="Number of denoising steps")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
-        "--output-dir",
+        "--output_dir",
         type=str,
         default=None,
         help="Custom output directory (optional, overrides default)",
@@ -90,14 +95,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sae_path",
         type=str,
-        default=None,
-        help="Path to .pt file for SAE weights (load if exists, create and save if not)",
+        required=True,  # lub default=None jeśli chcesz opcjonalny
+        help="Path to SAE weights (.pt)",
     )
     parser.add_argument(
         "--concept_means_path",
         type=str,
-        default=None,
-        help="Path to .npy file for concept scores (load if exists, create and save if not)",
+        required=True,
+        help="Path to concept means (true/false)",
     )
     parser.add_argument(
         "--influence_factor",
@@ -112,14 +117,13 @@ def parse_args() -> argparse.Namespace:
         help="Number of top features to unlearn",
     )
     parser.add_argument(
-        "epsilon",
+        "--epsilon",
         type=float,
-        required=False,
         default=1e-8,
-        help="Small value to avoid division by zero",
+        help="Small value to avoid division by zero (default: 1e-8)",
     )
+    parser.add_argument("--skip_wandb", action="store_true", help="Skip wandb logging")
 
-    parser.add_argument("--skip-wandb", action="store_true")
     return parser.parse_args()
 
 
@@ -176,8 +180,15 @@ def main():
         # MODEL
         #############################################
         model_load_start = time.time()
-        loader = ModelLoader(model_enum=ModelRegistry.FINETUNED_SAEURON)
-        pipe = loader.load_model(device=device)
+        # loader = ModelLoader(model_enum=ModelRegistry.FINETUNED_SAEURON)
+        # pipe = loader.load_model(device=device)
+        model_id = "sd-legacy/stable-diffusion-v1-5"
+        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_id,
+            torch_dtype=dtype,
+            safety_checker=None,  # None - to better analyze the behavior of the raw model
+        ).to(device)
         model_load_time = time.time() - model_load_start
         print(f"Model loaded in {model_load_time:.2f} seconds")
 
@@ -223,13 +234,13 @@ def main():
 
         # file is a disc {'true': tensor([...]), 'false': tensor([...])} saved in format .npy
         concept_means = torch.load(concept_scores_path, map_location="cpu")
-        if "true" not in concept_means or "false" not in concept_means:
-            raise ValueError("Concept means file must contain 'true' and 'false' keys.")
+        if "mean_true" not in concept_means or "mean_false" not in concept_means:
+            raise ValueError("Concept means file must contain 'mean_true' and 'mean_false' keys.")
 
         modifier = RepresentationModifier(
             sae=sae,
-            means_true=concept_means["true"].to(device),
-            means_false=concept_means["false"].to(device),
+            means_true=concept_means["mean_true"].to(device),
+            means_false=concept_means["mean_false"].to(device),
             influence_factor=args.influence_factor,
             features_number=args.features_number,
             epsilon=args.epsilon,
@@ -260,18 +271,17 @@ def main():
         representations, image = capture_layer_representations_with_unlearning(
             pipe=pipe,
             prompt=args.prompt,
-            layers_to_capture=layers_to_capture,
-            representation_modifier=modifier,
-            guidance_scale=args.guidance_scale,
+            layer_paths=layers_to_capture,
+            modifier=modifier,
             num_inference_steps=args.steps,
+            guidance_scale=args.guidance_scale,
             generator=generator,
-            device=device,
         )
 
         inference_time = time.time() - inference_start
         num_repr = len(representations)
         print(
-            f"Image generated and {num_repr} representations captured in {inference_time:.2f} seconds"
+            f"Image generated and {num_repr} representations captured in {inference_time:.2f} seconds"  # noqa: E501
         )
 
         #############################################
