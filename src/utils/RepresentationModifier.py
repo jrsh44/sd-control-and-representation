@@ -26,9 +26,9 @@ class RepresentationModifier:
         self.features_number = features_number
 
         # === 1. Oblicz średnie z sum i liczby obserwacji ===
-        sums_true = stats_dict["sums_true"].to(device)
+        sums_true = stats_dict["sum_true"].to(device)
         n_true = max(stats_dict["n_true"], 1)
-        sums_false = stats_dict["sums_false"].to(device)
+        sums_false = stats_dict["sum_false"].to(device)
         n_false = max(stats_dict["n_false"], 1)
 
         self.mean_true = sums_true / n_true
