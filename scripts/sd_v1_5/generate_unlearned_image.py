@@ -14,9 +14,9 @@ uv run scripts/sd_v1_5/generate_unlearned_image.py \
     --seed 42 \
     --output_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
     --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
-    --concept_means_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cats.npy \
-    --influence_factor 1.0 \
-    --features_number 25 \
+    --concept_means_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_test.npy \
+    --influence_factor 15.0 \
+    --features_number 2 \
     --epsilon 1e-8 \
 """  # noqa: E501
 
@@ -234,8 +234,16 @@ def main():
 
         # file is a disc {'true': tensor([...]), 'false': tensor([...])} saved in format .npy
         concept_means = torch.load(concept_scores_path, map_location="cpu")
-        if "sum_true" not in concept_means or "sum_false" not in concept_means:
-            raise ValueError("Concept means file must contain 'sum_true' and 'sum_false' keys.")
+        if (
+            "sums_true_per_timestep" not in concept_means
+            or "counts_true_per_timestep" not in concept_means
+            or "sums_false_per_timestep" not in concept_means
+            or "counts_false_per_timestep" not in concept_means
+            or "timesteps" not in concept_means
+        ):
+            raise ValueError(
+                "Concept means file must contain 'sums_true_per_timestep', 'counts_true_per_timestep', 'sums_false_per_timestep', 'counts_false_per_timestep', and 'timesteps' keys."
+            )
 
         modifier = RepresentationModifier(
             sae=sae,
