@@ -10,9 +10,7 @@ class RepresentationModifier:
     def __init__(
         self,
         sae: TopKSAE,
-        stats_dict: Dict[
-            str, Any
-        ],  # {"sums_true": Tensor, "n_true": int, "sums_false": Tensor, "n_false": int}
+        stats_dict: Dict[str, Any],
         features_number: int = 25,
         influence_factor: float = 1.0,
         epsilon: float = 1e-8,
@@ -25,17 +23,17 @@ class RepresentationModifier:
         self.epsilon = epsilon
         self.features_number = features_number
 
-        # === 1. Oblicz średnie z sum i liczby obserwacji ===
-        sums_true = stats_dict["sum_true"].to(device)
+        # === 1. Kluczowa poprawka: wymuś float32! ===
+        sums_true = stats_dict["sum_true"].to(device, dtype=torch.float32)
+        sums_false = stats_dict["sum_false"].to(device, dtype=torch.float32)
         n_true = max(stats_dict["n_true"], 1)
-        sums_false = stats_dict["sum_false"].to(device)
         n_false = max(stats_dict["n_false"], 1)
 
         self.mean_true = sums_true / n_true
         self.mean_false = sums_false / n_false
-        self.mean_all = (sums_true + sums_false) / (n_true + n_false)
+        self.mean_all = (sums_true + sums_false) / (n_true + n_false + self.epsilon)
 
-        # === 2. Wybór top-N cech najbardziej specyficznych dla konceptu ===
+        # === 2. Reszta bez zmian ===
         prob_true = self.mean_true / (self.mean_true.sum() + self.epsilon)
         prob_false = self.mean_false / (self.mean_false.sum() + self.epsilon)
         scores = prob_true - prob_false
@@ -43,15 +41,59 @@ class RepresentationModifier:
         _, top_indices = torch.topk(scores, k=features_number, largest=True)
         self.top_indices = top_indices.tolist()
 
-        # Przenosimy potrzebne tensory na GPU (do użycia w hooku)
-        self.mask_threshold = self.mean_all[self.top_indices].to(self.device)
-        self.mean_true_top = self.mean_true[self.top_indices].to(self.device)
+        # Zapisz jako float32!
+        self.mask_threshold = self.mean_all[self.top_indices].to(self.device, dtype=torch.float32)
+        self.mean_true_top = self.mean_true[self.top_indices].to(self.device, dtype=torch.float32)
 
-        print("RepresentationModifier initialized:")
-        print(f"  → Top {features_number} features to modify: {self.top_indices}")
-        print(f"  → Influence factor: {influence_factor}")
-        print("  → Using threshold: current_activation[i] > mean_true[i]")
-        print("  → Modification: code[i] = -factor * mean_true[i] * current_code[i]")
+        print("RepresentationModifier initialized (float32 mode):")
+        print(f"  → Top {features_number} features: {self.top_indices}")
+        print(f"  → Dtype: {self.mean_true_top.dtype}")
+
+    # def __init__(
+    #     self,
+    #     sae: TopKSAE,
+    #     stats_dict: Dict[
+    #         str, Any
+    #     ],  # {"sums_true": Tensor, "n_true": int, "sums_false": Tensor, "n_false": int}
+    #     features_number: int = 25,
+    #     influence_factor: float = 1.0,
+    #     epsilon: float = 1e-8,
+    #     device: str = "cuda",
+    # ):
+    #     self.sae = sae.to(device)
+    #     self.sae.eval()
+    #     self.device = device
+    #     self.influence_factor = influence_factor
+    #     self.epsilon = epsilon
+    #     self.features_number = features_number
+
+    #     # === 1. Oblicz średnie z sum i liczby obserwacji ===
+    #     sums_true = stats_dict["sum_true"].to(device)
+    #     n_true = max(stats_dict["n_true"], 1)
+    #     sums_false = stats_dict["sum_false"].to(device)
+    #     n_false = max(stats_dict["n_false"], 1)
+
+    #     self.mean_true = sums_true / n_true
+    #     self.mean_false = sums_false / n_false
+    #     self.mean_all = (sums_true + sums_false) / (n_true + n_false)
+
+    #     # === 2. Wybór top-N cech najbardziej specyficznych dla konceptu ===
+    #     prob_true = self.mean_true / (self.mean_true.sum() + self.epsilon)
+    #     prob_false = self.mean_false / (self.mean_false.sum() + self.epsilon)
+    #     scores = prob_true - prob_false
+
+    #     _, top_indices = torch.topk(scores, k=features_number, largest=True)
+    #     self.top_indices = top_indices.tolist()
+
+    #     # Przenosimy potrzebne tensory na GPU (do użycia w hooku)
+    #     self.mask_threshold = self.mean_all[self.top_indices].to(self.device)
+    #     self.mean_true_top = self.mean_true[self.top_indices].to(self.device)
+
+    #     print("RepresentationModifier initialized:")
+    #     print(f"  → Top {features_number} features to modify: {self.top_indices}")
+    #     print(f"  → Influence factor: {influence_factor}")
+    #     print("  → Using threshold: current_activation[i] > mean_true[i]")
+    #     print("  → Modification: code[i] = -factor * mean_true[i] * current_code[i]")
 
     def modification_hook(self, module: nn.Module, input: Any, output: Any) -> Any:
         if isinstance(output, tuple):
@@ -60,38 +102,71 @@ class RepresentationModifier:
             x = output
 
         original_dtype = x.dtype
-        x = x.float()
+        x = x.float()  # SAE używa float32
 
         b, t, d = x.shape
         x_flat = rearrange(x, "b t d -> (b t) d")
 
         with torch.no_grad():
-            _, codes = self.sae.encode(x_flat)  # [B*T, nb_concepts]
+            _, codes = self.sae.encode(x_flat)  # codes jest float32
 
-            # Wybierz tylko kody dla top-N neuronów
-            codes_top = codes[:, self.top_indices]  # [B*T, top_k]
+            codes_top = codes[:, self.top_indices]  # float32
 
-            # Maska: tylko gdy aktywacja > mean_true[i] (model "wie o koncepcie")
-            mask = (codes_top > self.mask_threshold).float()  # [B*T, top_k]
-
-            # Nowa wartość: -influence_factor * mean_true[i] * current_value
+            # Maska i obliczenia – wszystko w float32
+            mask = (codes_top > self.mask_threshold).float()
             new_values = -self.influence_factor * self.mean_true_top.unsqueeze(0) * codes_top
 
-            # Zastosuj tylko pod maską, reszta zostaje bez zmian
-            codes_top = codes_top * (1 - mask) + new_values * mask
+            codes_top_modified = codes_top * (1 - mask) + new_values * mask
 
-            # Wstaw z powrotem do pełnego wektora kodów
+            # Teraz bezpieczne przypisanie
             codes_modified = codes.clone()
-            codes_modified[:, self.top_indices] = codes_top
+            codes_modified[:, self.top_indices] = codes_top_modified  # oba float32 → OK
 
-            # Dekoduj
             x_recon = self.sae.decode(codes_modified)
             x_out = rearrange(x_recon, "(b t) d -> b t d", b=b, t=t)
             x_out = x_out.to(dtype=original_dtype)
 
-        if isinstance(output, tuple):
-            return (x_out,) + output[1:]
-        return x_out
+        return (x_out,) + output[1:] if isinstance(output, tuple) else x_out
+
+    # def modification_hook(self, module: nn.Module, input: Any, output: Any) -> Any:
+    #     if isinstance(output, tuple):
+    #         x = output[0]
+    #     else:
+    #         x = output
+
+    #     original_dtype = x.dtype
+    #     x = x.float()
+
+    #     b, t, d = x.shape
+    #     x_flat = rearrange(x, "b t d -> (b t) d")
+
+    #     with torch.no_grad():
+    #         _, codes = self.sae.encode(x_flat)  # [B*T, nb_concepts]
+
+    #         # Wybierz tylko kody dla top-N neuronów
+    #         codes_top = codes[:, self.top_indices]  # [B*T, top_k]
+
+    #         # Maska: tylko gdy aktywacja > mean_true[i] (model "wie o koncepcie")
+    #         mask = (codes_top > self.mask_threshold).float()  # [B*T, top_k]
+
+    #         # Nowa wartość: -influence_factor * mean_true[i] * current_value
+    #         new_values = -self.influence_factor * self.mean_true_top.unsqueeze(0) * codes_top
+
+    #         # Zastosuj tylko pod maską, reszta zostaje bez zmian
+    #         codes_top = codes_top * (1 - mask) + new_values * mask
+
+    #         # Wstaw z powrotem do pełnego wektora kodów
+    #         codes_modified = codes.clone()
+    #         codes_modified[:, self.top_indices] = codes_top
+
+    #         # Dekoduj
+    #         x_recon = self.sae.decode(codes_modified)
+    #         x_out = rearrange(x_recon, "(b t) d -> b t d", b=b, t=t)
+    #         x_out = x_out.to(dtype=original_dtype)
+
+    #     if isinstance(output, tuple):
+    #         return (x_out,) + output[1:]
+    #     return x_out
 
     def attach_to(self, pipe, layer_path) -> "RepresentationModifier":
         from src.models.sd_v1_5.hooks import get_nested_module
