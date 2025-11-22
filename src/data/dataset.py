@@ -98,6 +98,7 @@ class RepresentationDataset(Dataset):
 
         # Load lightweight index only if needed (for filtering or metadata)
         self._index = None
+        self.return_timestep = return_timestep  # NEW
         if filter_fn is not None or return_metadata or return_timestep or indices is not None:
             index_path = layer_dir / "index.json"
             if index_path.exists():

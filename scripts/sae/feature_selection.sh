@@ -18,12 +18,12 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
-#SBATCH --time 0-2:00:00
+#SBATCH --time 0-3:00:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
 #SBATCH --cpus-per-task 16
-#SBATCH --mem 32G
+#SBATCH --mem 64G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
 
