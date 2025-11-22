@@ -215,8 +215,7 @@ def main() -> int:
         dataset_concept_false = RepresentationDataset(
             cache_dir=cache_dir,
             layer_name=layer_name,
-            # filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
-            filter_fn=lambda x: x["object"] == "cats",
+            filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
             return_metadata=False,
             return_timestep=True,  # NEW
         )
@@ -234,8 +233,7 @@ def main() -> int:
         dataset_concept_true = RepresentationDataset(
             cache_dir=cache_dir,
             layer_name=layer_name,
-            # filter_fn=concept_filtering_function(args.concept, args.concept_value),
-            filter_fn=lambda x: x["object"] == "dogs",
+            filter_fn=concept_filtering_function(args.concept, args.concept_value),
             return_metadata=False,
             return_timestep=True,  # NEW
         )
