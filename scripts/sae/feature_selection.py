@@ -33,7 +33,7 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.feature_selection import (  # noqa: E402
-    compute_sums,
+    compute_sums_per_timestep,
     concept_filtering_function,
 )
 
@@ -215,25 +215,29 @@ def main() -> int:
         dataset_concept_false = RepresentationDataset(
             cache_dir=cache_dir,
             layer_name=layer_name,
-            filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
+            # filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
+            filter_fn=lambda x: x["object"] == "cats",
             return_metadata=False,
+            return_timestep=True,  # NEW
         )
         n_samples_false = dataset_concept_false._full_data.shape[0]
         print(f"Loaded dataset: {len(dataset_concept_false)} samples, input_dim={n_samples_false}")
 
         print("\nComputing activations for 'concept=false'...")
         loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
-        sum_false = compute_sums(
+        sums_false, counts_false = compute_sums_per_timestep(
             loader_false, sae, device, nb_concepts, args.log_every, "compute_sums_false"
-        )  # noqa: E501
+        )
         print("Sums for 'concept=false' computed")
 
         # === CONCEPT TRUE ===
         dataset_concept_true = RepresentationDataset(
             cache_dir=cache_dir,
             layer_name=layer_name,
-            filter_fn=concept_filtering_function(args.concept, args.concept_value),
+            # filter_fn=concept_filtering_function(args.concept, args.concept_value),
+            filter_fn=lambda x: x["object"] == "dogs",
             return_metadata=False,
+            return_timestep=True,  # NEW
         )
         n_samples_true = dataset_concept_true._full_data.shape[0]
         print(f"Loaded dataset: {len(dataset_concept_true)} samples, input_dim={n_samples_true}")
@@ -241,19 +245,20 @@ def main() -> int:
         # Compute sequentially
         print("Computing activations for 'concept=true'...")
         loader_true = make_loader(dataset_concept_true, args.batch_size, is_cuda)
-        sum_true = compute_sums(
+        sums_true, counts_true = compute_sums_per_timestep(
             loader_true, sae, device, nb_concepts, args.log_every, "compute_sums_true"
-        )  # noqa: E501
+        )
         print("Sums for 'concept=true' computed")
 
         # Save means
         feature_sums_path = Path(args.feature_sums_path)
         feature_sums_path.parent.mkdir(parents=True, exist_ok=True)
         feature_sums = {
-            "sum_true": sum_true,
-            "n_true": n_samples_true,
-            "sum_false": sum_false,
-            "n_false": n_samples_false,
+            "sums_true_per_timestep": sums_true,  # dict[int, Tensor]
+            "counts_true_per_timestep": counts_true,  # dict[int, int]
+            "sums_false_per_timestep": sums_false,  # dict[int, Tensor]
+            "counts_false_per_timestep": counts_false,  # dict[int, int]
+            "timesteps": sorted(set(sums_true.keys()) | set(sums_false.keys())),
         }
         print("\n" + "=" * 80)
         print("SAVING FEATURE SUMS")

@@ -27,6 +27,7 @@ class RepresentationDataset(Dataset):
         layer_name: str,
         transform: Optional[Callable] = None,
         return_metadata: bool = False,
+        return_timestep: bool = False,  # NEW
         filter_fn: Optional[Callable] = None,
         indices: Optional[List[int]] = None,
         use_local_copy: bool = True,
@@ -97,7 +98,7 @@ class RepresentationDataset(Dataset):
 
         # Load lightweight index only if needed (for filtering or metadata)
         self._index = None
-        if filter_fn is not None or return_metadata or indices is not None:
+        if filter_fn is not None or return_metadata or return_timestep or indices is not None:
             index_path = layer_dir / "index.json"
             if index_path.exists():
                 with open(index_path, "r") as f:
@@ -169,33 +170,61 @@ class RepresentationDataset(Dataset):
         return len(self.indices)
 
     def __getitem__(self, idx):
-        # Map filtered index to original index
         if self.use_direct_indexing:
-            real_idx = idx  # Direct access - no indirection!
+            real_idx = idx
         else:
             real_idx = self.indices[idx]
 
-        # Optimized memmap access:
-        # .copy() creates writable array (PyTorch requires writable tensors)
-        # Then convert to fp32 in ONE step - avoids double allocation
         rep_fp16 = self._full_data[real_idx].copy()
-        rep = torch.from_numpy(rep_fp16).float()  # Single fp16->fp32 conversion
+        rep = torch.from_numpy(rep_fp16).float()
 
         if self.transform is not None:
             rep = self.transform(rep)
 
+        # NEW: Return timestep if requested
+        if self.return_timestep:
+            timestep = self._index[real_idx]["timestep"]
+            if self.return_metadata:
+                return (
+                    rep,
+                    timestep,
+                    self._full_metadata[real_idx] if self._full_metadata else self._index[real_idx],
+                )
+            return rep, timestep
+
         if not self.return_metadata:
             return rep
 
-        # Return with metadata (if loaded)
-        if self._full_metadata is not None:
-            return rep, self._full_metadata[real_idx]
-        elif self._index is not None:
-            # Return lightweight index entry
-            return rep, self._index[real_idx]
-        else:
-            # No metadata available
-            return rep, {}
+    # ... existing metadata return logic ...
+
+    # def __getitem__(self, idx):
+    #     # Map filtered index to original index
+    #     if self.use_direct_indexing:
+    #         real_idx = idx  # Direct access - no indirection!
+    #     else:
+    #         real_idx = self.indices[idx]
+
+    #     # Optimized memmap access:
+    #     # .copy() creates writable array (PyTorch requires writable tensors)
+    #     # Then convert to fp32 in ONE step - avoids double allocation
+    #     rep_fp16 = self._full_data[real_idx].copy()
+    #     rep = torch.from_numpy(rep_fp16).float()  # Single fp16->fp32 conversion
+
+    #     if self.transform is not None:
+    #         rep = self.transform(rep)
+
+    #     if not self.return_metadata:
+    #         return rep
+
+    #     # Return with metadata (if loaded)
+    #     if self._full_metadata is not None:
+    #         return rep, self._full_metadata[real_idx]
+    #     elif self._index is not None:
+    #         # Return lightweight index entry
+    #         return rep, self._index[real_idx]
+    #     else:
+    #         # No metadata available
+    #         return rep, {}
 
     def _is_network_fs(self, path: Path) -> bool:
         """Check if path is on network filesystem (Lustre, NFS, etc.)"""
