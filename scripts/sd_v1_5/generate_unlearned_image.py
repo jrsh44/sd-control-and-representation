@@ -234,13 +234,12 @@ def main():
 
         # file is a disc {'true': tensor([...]), 'false': tensor([...])} saved in format .npy
         concept_means = torch.load(concept_scores_path, map_location="cpu")
-        if "mean_true" not in concept_means or "mean_false" not in concept_means:
-            raise ValueError("Concept means file must contain 'mean_true' and 'mean_false' keys.")
+        if "sum_true" not in concept_means or "sum_false" not in concept_means:
+            raise ValueError("Concept means file must contain 'sum_true' and 'sum_false' keys.")
 
         modifier = RepresentationModifier(
             sae=sae,
-            means_true=concept_means["mean_true"].to(device),
-            means_false=concept_means["mean_false"].to(device),
+            stats_dict=concept_means,
             influence_factor=args.influence_factor,
             features_number=args.features_number,
             epsilon=args.epsilon,
