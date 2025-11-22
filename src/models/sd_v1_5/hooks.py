@@ -166,6 +166,9 @@ def capture_layer_representations_with_unlearning(
     Returns:s
         (list_of_activations_per_layer, generated_image)
     """
+    # === 0. Zresetowanie modyfikatora (indeks timestepów) ===
+    modifier.reset_timestep()
+
     # === 1. Hooki do przechwytywania aktywacji (wszystkie warstwy) ===
     captured = {f"hook_{i}": [] for i in range(len(layer_paths))}
     capture_handles = []
