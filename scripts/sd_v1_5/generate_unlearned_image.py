@@ -7,17 +7,19 @@ Each dataset contains: object, style, prompt_nr, prompt_text, representation
 
 EXAMPLE:
 uv run scripts/sd_v1_5/generate_unlearned_image.py \
-    --prompt "A photo of a cat sitting on a table" \
+    --prompt "A black cat sitting in grass next to a red toy car." \
     --preferred_device cuda \
-    --guidance_scale 7.5 \
+    --guidance_scale 4 \
     --steps 50 \
     --seed 42 \
     --output_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
     --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
-    --concept_means_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_test.npy \
-    --influence_factor 15.0 \
+    --concept_means_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cats.npy \
+    --influence_factor 50.0 \
     --features_number 2 \
     --epsilon 1e-8 \
+    --ignore_modification true \
+    --skip_wandb \
 """  # noqa: E501
 
 import argparse
@@ -122,6 +124,12 @@ def parse_args() -> argparse.Namespace:
         default=1e-8,
         help="Small value to avoid division by zero (default: 1e-8)",
     )
+    parser.add_argument(
+        "--ignore_modification",
+        type=str,
+        default="true",
+        help="Type of generation: 'true' (no modification), 'false' (with modification)",  # noqa: E501
+    )
     parser.add_argument("--skip_wandb", action="store_true", help="Skip wandb logging")
 
     return parser.parse_args()
@@ -143,7 +151,7 @@ def main():
                     "concept_means_path": args.concept_means_path,
                     "epsilon": args.epsilon,
                 },
-                tags=["sae", "feature_selection"],
+                tags=["cache_generation", "sae", "feature_selection"],
                 notes="Image generation with Stable Diffusion and SAE unlearning",
             )
 
@@ -226,7 +234,7 @@ def main():
         print("SAE loaded and moved to device")
 
         #############################################
-        # Prepare concept vector
+        # Prepare modifier
         #############################################
         concept_scores_path = Path(args.concept_means_path)
         if not concept_scores_path.exists():
@@ -242,7 +250,7 @@ def main():
             or "timesteps" not in concept_means
         ):
             raise ValueError(
-                "Concept means file must contain 'sums_true_per_timestep', 'counts_true_per_timestep', 'sums_false_per_timestep', 'counts_false_per_timestep', and 'timesteps' keys."
+                "Concept means file must contain 'sums_true_per_timestep', 'counts_true_per_timestep', 'sums_false_per_timestep', 'counts_false_per_timestep', and 'timesteps' keys."  # noqa: E501
             )
 
         modifier = RepresentationModifier(
@@ -251,6 +259,7 @@ def main():
             influence_factor=args.influence_factor,
             features_number=args.features_number,
             epsilon=args.epsilon,
+            ignore_modification=args.ignore_modification,
         )
         modifier.attach_to(pipe, sae_layer_path)
 
