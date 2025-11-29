@@ -2,7 +2,8 @@
 """
 Generate cached representations for Stable Diffusion v1.5 using memmap format.
 
-Structure: {results_dir}/{model_name}/cached_representations/{layer_name}/
+Structure: {results_dir}/{model_name}/{dataset_name}/representations/
+    {train|validation}/{layer_name}/
 Each dataset contains: object, style, prompt_nr, prompt_text, representation
 
 EXAMPLE:
@@ -84,6 +85,12 @@ def parse_args() -> argparse.Namespace:
         help="Path to directory containing .txt prompt files",
     )
     parser.add_argument(
+        "--dataset-name",
+        type=str,
+        default="unlearn_canvas",
+        help="Name of the dataset (used for organization and WandB logging)",
+    )
+    parser.add_argument(
         "--style",
         type=str,
         default=None,
@@ -132,7 +139,7 @@ def main():
         print("ERROR: No valid layers specified")
         return 1
 
-    # Setup results directory with model_name/cached_representations subdirectory
+    # Setup results directory with model_name/dataset_name/representations subdirectory
     if args.results_dir:
         results_dir = Path(args.results_dir)
     elif os.environ.get("RESULTS_DIR"):
@@ -165,12 +172,12 @@ def main():
     # 3. Setup Cache Paths
     # --------------------------------------------------------------------------
     # Build cache path:
-    # - With style: {results_dir}/{model_name}/cached_representations/
-    # - No style: {results_dir}/{model_name}/validation/
+    # - With style: {results_dir}/{model_name}/{dataset_name}/representations/train/
+    # - No style: {results_dir}/{model_name}/{dataset_name}/representations/validation/
     if args.style:
-        cache_dir = results_dir / model_name / "cached_representations"
+        cache_dir = results_dir / model_name / args.dataset_name / "representations" / "train"
     else:
-        cache_dir = results_dir / model_name / "validation"
+        cache_dir = results_dir / model_name / args.dataset_name / "representations" / "validation"
 
     print("=" * 80)
     print("CONFIGURATION")
@@ -208,13 +215,16 @@ def main():
 
         # Create a run name
         style_suffix = f"_{args.style}" if args.style else "_validation"
-        run_name = f"Cache_{model_name}_{style_suffix}_{len(layers_to_capture)}layers"
+        run_name = (
+            f"Cache_{args.dataset_name}_{model_name}_{style_suffix}_{len(layers_to_capture)}layers"
+        )
 
         gpu_name = torch.cuda.get_device_name(0) if device == "cuda" else "Unknown"
 
         # Structured Configuration
         config = {
             "dataset": {
+                "name": args.dataset_name,
                 "prompts_dir": str(prompts_dir),
                 "style": args.style or "no_style",
                 "cache_type": "validation" if not args.style else "training",
@@ -248,9 +258,9 @@ def main():
             entity="bartoszjezierski28-warsaw-university-of-technology",
             name=run_name,
             config=config,
-            group=f"cache_{model_name}",
+            group=f"cache_{args.dataset_name}_{model_name}",
             job_type="generate_cache",
-            tags=["cache", "generation", "memmap", args.style or "validation"]
+            tags=["cache", "generation", "memmap", args.dataset_name, args.style or "validation"]
             + [layer.name.lower() for layer in layers_to_capture],
             notes="Generated cached representations for SD layers using memmap format.",
         )

@@ -70,8 +70,11 @@ PYTHON_SCRIPT="scripts/sae/feature_selection.py"
 LAYER_NAME="unet_up_1_att_1"
 MODEL_NAME="finetuned_sd_saeuron"
 # DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
-DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1"
-  
+DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/${DATASET_NAME}/representations/train/unet_up_1_att_1"
+
+# Dataset name (used for WandB logging and organization)
+DATASET_NAME="unlearn_canvas"
+
 TOP_K=32
 
 # Concept to analyze
@@ -123,6 +126,7 @@ echo "=========================================="
 
 CMD="uv run ${PYTHON_SCRIPT} \
     --dataset_path \"${DATASET_PATH}\" \
+    --dataset_name \"${DATASET_NAME}\" \
     --concept \"${CONCEPT_NAME}\" \
     --concept_value \"${CONCEPT_VALUE}\" \
     --sae_path \"${SAE_PATH}\" \
