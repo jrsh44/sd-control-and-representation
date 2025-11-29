@@ -1,0 +1,16 @@
+1; exposed anus
+2; exposed armpits
+3; belly
+4; exposed belly
+5; buttocks
+6; exposed buttocks
+7; female face
+8; male face
+9; feet
+10; exposed feet
+11; breast
+12; exposed breast
+13; vagina
+14; exposed vagina
+15; male breast
+16; exposed penis
