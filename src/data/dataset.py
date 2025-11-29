@@ -1,11 +1,11 @@
 """
 Fast memmap-based dataset for representations.
-200x faster than Arrow format for random access patterns.
 """
 
 import json
 import os
 import shutil
+import signal
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -17,8 +17,6 @@ from torch.utils.data import Dataset
 class RepresentationDataset(Dataset):
     """
     Fast memmap-based dataset with filtering support.
-    Uses lightweight index file for fast filtering without loading full metadata.
-    Compatible with DataLoader shuffling.
     """
 
     def __init__(
@@ -43,27 +41,29 @@ class RepresentationDataset(Dataset):
             indices: Pre-computed indices to use (overrides filter_fn)
             use_local_copy: If True and data is on network FS, copy to /tmp for fast access
         """
+        self.return_metadata = return_metadata
+        self.transform = transform
+
         layer_dir = cache_dir / layer_name
 
         if not layer_dir.exists():
             raise ValueError(f"Layer not found: {layer_dir}")
 
-        # Load as memmap - INSTANT, no RAM used!
         data_path = layer_dir / "data.npy"
 
-        # Check if data is on slow network filesystem (Lustre, NFS, etc.)
+        # Check if data is on slow network filesystem
         # Can be disabled via environment variable: NPY_DISABLE_LOCAL_COPY=1
         self._local_copy_path = None
         disable_copy = os.environ.get("NPY_DISABLE_LOCAL_COPY", "0") == "1"
 
         if use_local_copy and not disable_copy and self._is_network_fs(data_path):
-            print(
-                "  ⚡ Detected network filesystem - copying to local /tmp for 100x faster access..."
-            )
+            print("  ⚡ Detected network filesystem - copying to local /tmp for faster access...")
             self._local_copy_path = self._copy_to_local_tmp(data_path, layer_name)
             if self._local_copy_path != data_path:  # Copy succeeded
                 data_path = self._local_copy_path
                 print(f"  ✓ Using local copy: {data_path}")
+                # Register cleanup to ensure it runs even on keyboard interrupt
+                self._register_cleanup()
         elif disable_copy:
             print("  ℹ️  Local copy disabled via NPY_DISABLE_LOCAL_COPY environment variable")
 
@@ -87,7 +87,7 @@ class RepresentationDataset(Dataset):
         else:
             dtype = np.float32  # fallback
 
-        # Load as pure memmap (zero RAM usage)
+        # Load as pure memmap
         self._full_data = np.memmap(
             str(data_path),
             dtype=dtype,
@@ -96,44 +96,16 @@ class RepresentationDataset(Dataset):
         )
         print(f"  ✓ Loaded memmap: {total_samples} x {feature_dim}, dtype={dtype}")
 
-        # Load lightweight index only if needed (for filtering or metadata)
-        self._index = None
+        # Load metadata from info.json if needed (for filtering or metadata)
+        self._metadata = None
         self.return_timestep = return_timestep  # NEW
-        if filter_fn is not None or return_metadata or return_timestep or indices is not None:
-            index_path = layer_dir / "index.json"
-            if index_path.exists():
-                with open(index_path, "r") as f:
-                    self._index = json.load(f)
-            else:
-                # Fallback: create index from metadata
-                import pickle
-
-                meta_path = layer_dir / "metadata.pkl"
-                with open(meta_path, "rb") as f:
-                    full_metadata = pickle.load(f)  # noqa: S301
-
-                self._index = [
-                    {
-                        "timestep": m["timestep"],
-                        "spatial": m["spatial"],
-                        "object": m["object"],
-                        "style": m["style"],
-                        "prompt_nr": m["prompt_nr"],
-                        "num_steps": m["num_steps"],
-                        "guidance_scale": m["guidance_scale"],
-                    }
-                    for m in full_metadata
-                ]
+        if filter_fn is not None or return_metadata or indices is not None:
+            # Load metadata from info.json
+            self._metadata = info.get("metadata", [])
+            if not self._metadata:
+                raise ValueError(f"No metadata found in {info_path}")
         else:
-            print("  Skipping index load (no filtering/metadata needed) - faster startup")
-
-        # Load full metadata only if needed
-        self._full_metadata = None
-        self.return_metadata = return_metadata
-        if return_metadata:
-            meta_path = layer_dir / "metadata.pkl"
-            with open(meta_path, "rb") as f:
-                self._full_metadata = pickle.load(f)  # noqa: S301
+            print("  Skipping metadata load (no filtering/metadata needed) - faster startup")
 
         # Apply filtering
         if indices is not None:
@@ -142,21 +114,19 @@ class RepresentationDataset(Dataset):
             self.use_direct_indexing = False
             print(f"  Using {len(indices)} pre-filtered indices")
         elif filter_fn is not None:
-            # Apply filter on lightweight index
-            if self._index is None:
-                raise ValueError("Index not loaded but filter_fn provided")
-            print("  Applying filter function on index...")
-            self.indices = [i for i, entry in enumerate(self._index) if filter_fn(entry)]
+            # Apply filter on metadata
+            if self._metadata is None:
+                raise ValueError("Metadata not loaded but filter_fn provided")
+            print("  Applying filter function on metadata...")
+            self.indices = [i for i, entry in enumerate(self._metadata) if filter_fn(entry)]
             self.use_direct_indexing = False
-            print(f"  Filtered: {len(self.indices)}/{len(self._index)} samples")
+            print(f"  Filtered: {len(self.indices)}/{len(self._metadata)} samples")
         else:
-            # No filtering - use direct indexing (much faster, zero memory overhead)
+            # No filtering - use direct indexing
             self.indices = None
             self.use_direct_indexing = True
             self.total_samples = len(self._full_data)
-            print("  Using direct indexing (no filter) - zero memory overhead")
-
-        self.transform = transform
+            print("  Using direct indexing (no filter)")
 
         print(f"Loaded NPY dataset from {data_path}")
         print(f"  Total samples: {len(self._full_data)}")
@@ -196,37 +166,6 @@ class RepresentationDataset(Dataset):
         if not self.return_metadata:
             return rep
 
-    # ... existing metadata return logic ...
-
-    # def __getitem__(self, idx):
-    #     # Map filtered index to original index
-    #     if self.use_direct_indexing:
-    #         real_idx = idx  # Direct access - no indirection!
-    #     else:
-    #         real_idx = self.indices[idx]
-
-    #     # Optimized memmap access:
-    #     # .copy() creates writable array (PyTorch requires writable tensors)
-    #     # Then convert to fp32 in ONE step - avoids double allocation
-    #     rep_fp16 = self._full_data[real_idx].copy()
-    #     rep = torch.from_numpy(rep_fp16).float()  # Single fp16->fp32 conversion
-
-    #     if self.transform is not None:
-    #         rep = self.transform(rep)
-
-    #     if not self.return_metadata:
-    #         return rep
-
-    #     # Return with metadata (if loaded)
-    #     if self._full_metadata is not None:
-    #         return rep, self._full_metadata[real_idx]
-    #     elif self._index is not None:
-    #         # Return lightweight index entry
-    #         return rep, self._index[real_idx]
-    #     else:
-    #         # No metadata available
-    #         return rep, {}
-
     def _is_network_fs(self, path: Path) -> bool:
         """Check if path is on network filesystem (Lustre, NFS, etc.)"""
         try:
@@ -254,31 +193,25 @@ class RepresentationDataset(Dataset):
             print(f"  ✓ Local copy already exists: {tmp_path}")
             return tmp_path
 
-        # SAFETY CHECK: Verify /tmp has enough space
+        # Verify /tmp has enough space
         file_size_bytes = source_path.stat().st_size
         file_size_gb = file_size_bytes / 1e9
 
-        try:
-            stat = os.statvfs("/tmp")  # noqa: S108
-            available_bytes = stat.f_bavail * stat.f_frsize
-            available_gb = available_bytes / 1e9
+        stat = os.statvfs("/tmp")  # noqa: S108
+        available_bytes = stat.f_bavail * stat.f_frsize
+        available_gb = available_bytes / 1e9
 
-            # Require 20% margin for safety
-            required_gb = file_size_gb * 1.2
+        # 20% margin for safety
+        required_gb = file_size_gb * 1.2
 
-            if available_gb < required_gb:
-                print("  ⚠️  WARNING: Insufficient /tmp space!")
-                print(f"     Need: {required_gb:.1f}GB, Available: {available_gb:.1f}GB")
-                print("     Skipping local copy - will use network storage (slower)")
-                print("     TIP: Request node with more /tmp space or use smaller dataset")
-                return source_path  # Fall back to network storage
+        if available_gb < required_gb:
+            print("  ⚠️  WARNING: Insufficient /tmp space!")
+            print(f"     Need: {required_gb:.1f}GB, Available: {available_gb:.1f}GB")
+            print("     Skipping local copy - will use network storage (slower)")
+            print("     Request node with more /tmp space or use smaller dataset")
+            return source_path  # Fall back to network storage
 
-            print(
-                f"  ✓ /tmp space check: {available_gb:.1f}GB available, {required_gb:.1f}GB needed"
-            )
-        except Exception as e:
-            print(f"  ⚠️  Could not check /tmp space: {e}")
-            print("     Proceeding with copy anyway...")
+        print(f"  ✓ /tmp space check: {available_gb:.1f}GB available, {required_gb:.1f}GB needed")
 
         # Copy file with progress
         print(f"  📦 Copying {file_size_gb:.2f}GB to local /tmp...")
@@ -303,54 +236,27 @@ class RepresentationDataset(Dataset):
 
         return tmp_path
 
+    def _register_cleanup(self):
+        """Register cleanup handlers for signals"""
+
+        # Register for common signals (SIGINT = Ctrl+C, SIGTERM = kill)
+        def signal_handler(signum, frame):
+            self.__del__()
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
     def __del__(self):
         """Cleanup local copy on dataset destruction"""
         if hasattr(self, "_local_copy_path") and self._local_copy_path:
             try:
-                # Only clean up if it's our job's tmp file
                 if "/tmp/npy_cache_" in str(self._local_copy_path):  # noqa: S108
                     tmp_dir = self._local_copy_path.parent
                     if tmp_dir.exists():
                         shutil.rmtree(tmp_dir, ignore_errors=True)
+                        print(f"\n  🧹 Cleaned up local copy: {tmp_dir}")
+                        self._local_copy_path = None
             except Exception:  # noqa: S110
                 pass  # Ignore cleanup errors
-
-    def get_available_values(self, column: str) -> List[str]:
-        """
-        Get all unique values for a metadata column.
-
-        Args:
-            column: Column name ('style', 'object', 'timestep', etc.)
-
-        Returns:
-            List of unique values sorted
-        """
-        if column not in self._index[0]:
-            raise ValueError(
-                f"Column '{column}' not found. Available: {list(self._index[0].keys())}"
-            )
-
-        unique_values = {entry[column] for entry in self._index}
-        return sorted(unique_values)
-
-    def get_metadata_summary(self) -> dict:
-        """
-        Get summary statistics for metadata columns.
-
-        Returns:
-            Dict with stats for each column
-        """
-        from collections import Counter
-
-        summary = {}
-        for key in self._index[0].keys():
-            values = [entry[key] for entry in self._index]
-            counter = Counter(values)
-
-            summary[key] = {
-                "unique_values": len(counter),
-                "top_5": dict(counter.most_common(5)),
-                "total_count": len(values),
-            }
-
-        return summary
