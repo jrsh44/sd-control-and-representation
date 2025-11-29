@@ -11,7 +11,7 @@ without validation.
 EXAMPLE USAGE:
 
     uv run scripts/sae/train.py         \
-    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
+    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/unlearn_canvas/representations/train/unet_up_1_att_1 \
     --sae_path ../results/sae/unet_up_1_att_1_sae.pt         \
     --expansion_factor 16         \
     --top_k 32         \
@@ -60,6 +60,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=True,
         help="Path to training dataset directory (e.g., results/sd_1_5/unet_mid_att)",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default="unlearn_canvas",
+        help="Name of the dataset (used for WandB logging and organization)",
     )
     parser.add_argument(
         "--test_dataset_path",
@@ -148,13 +154,16 @@ def main() -> int:
         wandb.login()
 
         # Create a run name
-        run_name = f"SAE_{train_layer_name}_exp{args.expansion_factor}_k{args.top_k}"
+        run_name = (
+            f"SAE_{args.dataset_name}_{train_layer_name}_exp{args.expansion_factor}_k{args.top_k}"
+        )
 
         gpu_name = torch.cuda.get_device_name(0) if is_cuda else "Unknown"
 
         # Structured Configuration
         config = {
             "dataset": {
+                "name": args.dataset_name,
                 "layer_name": train_layer_name,
                 "train_path": str(train_path),
                 "val_path": str(args.test_dataset_path) if args.test_dataset_path else "None",
@@ -190,9 +199,15 @@ def main() -> int:
             entity="bartoszjezierski28-warsaw-university-of-technology",
             name=run_name,
             config=config,
-            group=train_layer_name,
+            group=f"{args.dataset_name}_{train_layer_name}",
             job_type="train",
-            tags=["sae", "train", train_layer_name, f"exp{args.expansion_factor}"],
+            tags=[
+                "sae",
+                "train",
+                args.dataset_name,
+                train_layer_name,
+                f"exp{args.expansion_factor}",
+            ],
             notes="Trained incrementally on cached representations.",
         )
         print(f"🚀 WandB Initialized: {run_name}")

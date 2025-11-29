@@ -2,7 +2,7 @@
 """
 Example usage:
     python scripts/sae/feature_selection.py \
-        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
+        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/unlearn_canvas/representations/train/unet_up_1_att_1 \
         --concept object \
         --concept_value cats \
         --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
@@ -49,6 +49,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=True,
         help="Path to training dataset directory (e.g., results/sd_1_5/unet_mid_att)",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default="unlearn_canvas",
+        help="Name of the dataset (used for WandB logging and organization)",
     )
     # concept
     parser.add_argument(
@@ -141,13 +147,16 @@ def main() -> int:
 
         # Create a run name
         sae_stem = Path(args.sae_path).stem
-        run_name = f"FeatureSelection_{sae_stem}_{args.concept}_{args.concept_value}"
+        run_name = (
+            f"FeatureSelection_{args.dataset_name}_{sae_stem}_{args.concept}_{args.concept_value}"
+        )
 
         gpu_name = torch.cuda.get_device_name(0) if is_cuda else "Unknown"
 
         # Structured Configuration
         config = {
             "dataset": {
+                "name": args.dataset_name,
                 "path": args.dataset_path,
                 "layer_name": Path(args.dataset_path).name,
             },
@@ -180,9 +189,9 @@ def main() -> int:
             entity="bartoszjezierski28-warsaw-university-of-technology",
             name=run_name,
             config=config,
-            group=f"feature_selection_{args.concept}",
+            group=f"feature_selection_{args.dataset_name}_{args.concept}",
             job_type="feature_selection",
-            tags=["sae", "feature_selection", args.concept, args.concept_value],
+            tags=["sae", "feature_selection", args.dataset_name, args.concept, args.concept_value],
             notes="Feature selection using pretrained SAE for concept analysis.",
         )
         print(f"🚀 WandB Initialized: {run_name}")
