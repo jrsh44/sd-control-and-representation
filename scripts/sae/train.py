@@ -23,6 +23,7 @@ EXAMPLE USAGE:
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 import torch
@@ -149,9 +150,7 @@ def main() -> int:
 
         # Load dataset
         print("\n📂 Loading datasets...")
-        dataset_load_start = torch.cuda.Event(enable_timing=True)
-        dataset_load_end = torch.cuda.Event(enable_timing=True)
-        dataset_load_start.record()
+        dataset_load_start = time.time()
 
         # Train dataset path should point directly to the layer directory
         # e.g., /path/to/cached_representations/unet_up_1_att_1
@@ -191,15 +190,22 @@ def main() -> int:
         else:
             print("No validation dataset provided - training without validation")
 
-        dataset_load_end.record()
-        torch.cuda.synchronize()
-        dataset_load_time = dataset_load_start.elapsed_time(dataset_load_end) / 1000
+        dataset_load_time = time.time() - dataset_load_start
+
         print(f"✓ Total dataset loading time: {dataset_load_time:.2f}s\n")
 
         # Prepare DataLoader
         is_cuda = device == "cuda"
 
-        num_workers = 10 if is_cuda else 0
+        # Determine optimal number of workers based on available CPUs
+        if is_cuda:
+            import os
+
+            num_cpus = len(os.sched_getaffinity(0))  # Get available CPUs
+            num_workers = min(max(num_cpus - 1, 1), 16)
+            print(f"Available CPUs: {num_cpus}, using {num_workers} workers")
+        else:
+            num_workers = 0
 
         train_dataloader = DataLoader(
             training_dataset,

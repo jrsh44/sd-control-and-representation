@@ -185,7 +185,6 @@ def main():
     # We initialize layers dynamically after first generation to get actual dimensions
     print(f"  Total prompts: {total_prompts}")
     print(f"  Layers: {len(layers_to_capture)}")
-    print("  NOTE: Will initialize layers dynamically after first generation")
 
     # Initialize wandb
     if not args.skip_wandb:
