@@ -1,11 +1,15 @@
 import time
 from collections import defaultdict
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
+import torch.optim as optim
 from einops import rearrange
 from overcomplete.metrics import l0_eps, l2, r2_score
 from overcomplete.sae.trackers import DeadCodeTracker
 from torch.amp.grad_scaler import GradScaler
+from torch.utils.data import DataLoader
 
 try:
     import wandb
@@ -17,75 +21,79 @@ except ImportError:
 
 def compute_avg_max_cosine_similarity(weight_matrix: torch.Tensor) -> float:
     """
-    Compute the average maximum cosine similarity for a weight matrix.
-
-    For each feature (row) in the weight matrix, computes its cosine similarity
-    with all other features, finds the maximum similarity (excluding self),
-    and returns the average of these maximum similarities.
+    For each row (feature) in weight_matrix, find its maximum cosine
+    similarity to any other row (excluding itself) and return the average.
 
     Args:
-        weight_matrix (torch.Tensor): Weight matrix of shape (nb_features, feature_dim)
+        weight_matrix: 2D tensor of shape (num_features, feature_dim)
 
     Returns:
-        float: Average maximum cosine similarity across all features
+        Average of maximum cosine similarities across all features.
     """
     if weight_matrix.shape[0] > 10000:
-        # Avoid OOM for very large dictionaries by doing it on CPU or in chunks if needed
-        # For now, we try on device but detach to save graph memory
         weight_matrix = weight_matrix.detach()
 
-    # Normalize weights to unit norm (L2 normalize each row)
     normalized = torch.nn.functional.normalize(weight_matrix, p=2, dim=1)
-
-    # Compute absolute pairwise cosine similarities (nb_features x nb_features)
-    # Using .mm instead of @ for clarity with tensors
     cos_sim = torch.mm(normalized, normalized.t()).abs()
-
-    # Set diagonal to -inf to exclude self-similarity when finding max
     cos_sim.fill_diagonal_(-float("inf"))
-
-    # For each feature, find max similarity with other features, then average
     avg_max_cos = cos_sim.max(dim=1)[0].mean().item()
-
     return avg_max_cos
 
 
-def criterion_laux(x, x_hat, pre_codes, codes, dictionary):
+def criterion_laux(
+    x: torch.Tensor,
+    x_hat: torch.Tensor,
+    pre_codes: torch.Tensor,
+    codes: torch.Tensor,
+    dictionary: torch.Tensor,
+) -> torch.Tensor:
     """
-    Custom criterion function for Sparse Autoencoder (SAE) training.
+    MSE reconstruction loss plus a small auxiliary loss that
+    encourages low-activation features to contribute more.
+
+    Args:
+        x: Original input tensor.
+        x_hat: Reconstructed output tensor.
+        pre_codes: Pre-activation codes (unused).
+        codes: Latent codes/activations.
+        dictionary: Decoder dictionary matrix.
+
+    Returns:
+        Combined loss as a scalar tensor.
     """
     n = x.shape[1]
-
-    # Compute reconstruction MSE
     mse = torch.mean((x - x_hat) ** 2)
 
-    # Hyperparameters
-    alpha = 1 / 32  # Scaling factor for auxiliary loss
-    k_aux = n // 2  # Number of least active features for auxiliary loss
+    alpha = 1 / 32
+    k_aux = n // 2
 
-    # Compute mean activation per feature across the batch
     feature_acts = codes.mean(dim=0)
-
-    # Select indices of k_aux features with the lowest mean activations
     low_act_indices = torch.topk(feature_acts, k_aux, largest=False)[1]
 
-    # Create a masked codes tensor using only the low-activation features
     codes_aux = torch.zeros_like(codes)
     codes_aux[:, low_act_indices] = codes[:, low_act_indices]
 
-    # Reconstruct using only these features
     x_aux = torch.matmul(codes_aux, dictionary)
-
-    # Compute auxiliary MSE on this partial reconstruction
     l_aux = torch.mean((x - x_aux) ** 2)
 
-    # Total metric: MSE + alpha * L_aux
-    metric = mse + alpha * l_aux
-
-    return metric
+    return mse + alpha * l_aux
 
 
-def extract_input(batch) -> torch.Tensor:
+def extract_input(batch: Any) -> torch.Tensor:
+    """
+    Extract the input data tensor from a batch.
+
+    Supports batches yielded as Tuples, Lists, or Dictionaries.
+
+    Args:
+        batch (Any): Input batch from DataLoader.
+
+    Returns:
+        torch.Tensor: Extracted input data tensor.
+
+    Raises:
+        ValueError: If batch is a dict but does not contain a 'data' key.
+    """
     if isinstance(batch, (tuple, list)):
         return batch[0]
     elif isinstance(batch, dict):
@@ -97,7 +105,20 @@ def extract_input(batch) -> torch.Tensor:
         return batch
 
 
-def _compute_reconstruction_error(x, x_hat):
+def _compute_reconstruction_error(x: torch.Tensor, x_hat: torch.Tensor) -> torch.Tensor:
+    """
+    Compute R² reconstruction error between input x and output x_hat.
+
+    Supports 2D flattened outputs as well as 3D/4D inputs by flattening
+    them before calculation.
+
+    Args:
+        x (torch.Tensor): Original input tensor.
+        x_hat (torch.Tensor): Reconstructed output tensor.
+
+    Returns:
+        torch.Tensor: R² score as a scalar tensor.
+    """
     if len(x.shape) == 4 and len(x_hat.shape) == 2:
         x_flatten = rearrange(x, "n c w h -> (n w h) c")
     elif len(x.shape) == 3 and len(x_hat.shape) == 2:
@@ -111,7 +132,27 @@ def _compute_reconstruction_error(x, x_hat):
     return r2
 
 
-def _log_metrics(monitoring, logs, model, z, loss, optimizer):
+def _log_metrics(
+    monitoring: int,
+    logs: Dict[str, List[float]],
+    model: nn.Module,
+    z: torch.Tensor,
+    loss: torch.Tensor,
+    optimizer: optim.Optimizer,
+) -> None:
+    """
+    Log granular training metrics based on the monitoring level.
+
+    Updates the `logs` dictionary in-place.
+
+    Args:
+        monitoring (int): Level of monitoring (0=none, 1=basic, 2=detailed).
+        logs (Dict[str, List[float]]): Dictionary to append metrics to.
+        model (nn.Module): The SAE model.
+        z (torch.Tensor): Latent codes/activations.
+        loss (torch.Tensor): Current loss scalar.
+        optimizer (optim.Optimizer): Optimizer to fetch learning rate.
+    """
     if monitoring == 0:
         return
 
@@ -124,8 +165,9 @@ def _log_metrics(monitoring, logs, model, z, loss, optimizer):
         logs["z"].append(z.detach()[::10])
         logs["z_l2"].append(l2(z).item())
 
-        logs["dictionary_sparsity"].append(l0_eps(model.get_dictionary()).mean().item())
-        logs["dictionary_norms"].append(l2(model.get_dictionary(), -1).mean().item())
+        dict_weights = model.get_dictionary()
+        logs["dictionary_sparsity"].append(l0_eps(dict_weights).mean().item())
+        logs["dictionary_norms"].append(l2(dict_weights, -1).mean().item())
 
         for name, param in model.named_parameters():
             if param.grad is not None:
@@ -134,25 +176,51 @@ def _log_metrics(monitoring, logs, model, z, loss, optimizer):
 
 
 def _train_one_epoch(
-    model,
-    dataloader,
-    criterion,
-    optimizer,
-    scaler,
-    scheduler,
-    dead_tracker,
-    device,
-    clip_grad,
-    log_interval,
-    monitoring,
-    wandb_enabled,
-    epoch,
-    nb_epochs,
-    train_logs,
-):
+    model: nn.Module,
+    dataloader: DataLoader,
+    criterion: Callable,
+    optimizer: optim.Optimizer,
+    scaler: Optional[GradScaler],
+    scheduler: Optional[Any],
+    dead_tracker: Optional[DeadCodeTracker],
+    device: torch.device,
+    clip_grad: Optional[float],
+    log_interval: int,
+    monitoring: int,
+    wandb_enabled: bool,
+    epoch: int,
+    nb_epochs: int,
+    train_logs: Dict[str, List[float]],
+) -> Tuple[DeadCodeTracker, float, Dict[str, float], Dict[str, float]]:
     """
     Handles the training loop for a single epoch.
-    Logs metrics to WandB every `log_interval` batches.
+
+    Performs forward/backward passes, updates weights, and logs training metrics
+    to WandB every `log_interval` batches.
+
+    Args:
+        model: SAE model to train.
+        dataloader: Training dataloader.
+        criterion: Loss function.
+        optimizer: PyTorch optimizer.
+        scaler: GradScaler for AMP (None if disabled).
+        scheduler: Learning rate scheduler (None if unused).
+        dead_tracker: Tracker for dead neurons.
+        device: Calculation device (cuda/cpu).
+        clip_grad: Gradient clipping norm (None/0 to disable).
+        log_interval: Number of batches between logging.
+        monitoring: Monitoring level (int).
+        wandb_enabled: Whether to log to WandB.
+        epoch: Current epoch index (0-based).
+        nb_epochs: Total number of epochs.
+        train_logs: Dictionary to store aggregated epoch metrics.
+
+    Returns:
+        Tuple containing:
+            - dead_tracker: Updated DeadCodeTracker.
+            - train_time: Time taken for the epoch (seconds).
+            - params_norms: Dictionary of parameter L2 norms.
+            - params_grad_norms: Dictionary of gradient L2 norms.
     """
     print(f"Epoch [{epoch + 1}/{nb_epochs}]")
     print("-" * 80)
@@ -222,7 +290,6 @@ def _train_one_epoch(
                 with torch.no_grad():
                     z_detached = z.detach()
                     current_r2 = _compute_reconstruction_error(x, x_hat).item()
-                    # l0_eps returns counts per feature, sum to get total, divide by batch size for average
                     current_l0 = l0_eps(z_detached, 0).sum().item() / x.shape[0]
 
                     epoch_error_tensor += current_r2
@@ -278,10 +345,7 @@ def _train_one_epoch(
                             ):
                                 encoder_weights = model.encoder.linear.weight
                             elif hasattr(model.encoder, "final_block"):
-                                try:
-                                    encoder_weights = model.encoder.final_block[0].weight
-                                except:
-                                    pass
+                                encoder_weights = model.encoder.final_block[0].weight
 
                             if encoder_weights is not None:
                                 step_log["train/encoder_avg_max_cos"] = (
@@ -319,7 +383,7 @@ def _train_one_epoch(
                 f"Batch {batch_idx + 1}/{len(dataloader)} | "
                 f"Loss: {loss.item():.4f} | "
                 f"Total: {total_batch_time:.3f}s "
-                f"(Loading: {loading_time:.3f}s, GPU: {gpu_time:.3f}s) | "
+                f"(Loading: {loading_time:.3f}s, Calculations: {gpu_time:.3f}s)"
                 f"ETA: {eta_minutes}m {eta_secs:02d}s"
             )
 
@@ -359,13 +423,34 @@ def _train_one_epoch(
             f"Dead: {train_logs['dead_features'][-1] * 100:.1f}%"
         )
 
+    if dead_tracker is None:
+        raise RuntimeError("DeadCodeTracker was not initialized (dataloader empty?).")
+
     return dead_tracker, train_time, params_norms, params_grad_norms
 
 
-def _validate_one_epoch(model, dataloader, criterion, scaler, device, val_logs, log_interval):
+def _validate_one_epoch(
+    model: nn.Module,
+    dataloader: DataLoader,
+    criterion: Callable,
+    scaler: Optional[GradScaler],
+    device: torch.device,
+    val_logs: Dict[str, List[float]],
+    log_interval: int,
+) -> None:
     """
     Handles the validation loop for a single epoch.
-    Calculates metrics for the entire validation set.
+
+    Calculates metrics for the entire validation set and updates `val_logs` in-place.
+
+    Args:
+        model: SAE model to evaluate.
+        dataloader: Validation dataloader.
+        criterion: Loss function.
+        scaler: GradScaler for AMP (None if disabled).
+        device: Calculation device.
+        val_logs: Dictionary to append validation metrics to.
+        log_interval: Interval for printing progress (logging to console).
     """
     print("   🔍 Validation phase...")
     model.eval()
@@ -374,9 +459,9 @@ def _validate_one_epoch(model, dataloader, criterion, scaler, device, val_logs, 
     val_error_tensor = torch.tensor(0.0, device=device)
     val_sparsity_tensor = torch.tensor(0.0, device=device)
     val_batch_count = 0
-    val_active_features_accum = None
+    val_active_features_accum: Optional[torch.Tensor] = None
     val_total_samples = 0
-    val_dead_tracker = None
+    val_dead_tracker: Optional[DeadCodeTracker] = None
 
     val_start_time = time.time()
     val_iteration_start = time.time()
@@ -407,6 +492,7 @@ def _validate_one_epoch(model, dataloader, criterion, scaler, device, val_logs, 
 
             val_dead_tracker.update(z)
 
+            # --- Active Feature Accumulation ---
             if val_active_features_accum is None:
                 val_active_features_accum = torch.zeros(z.shape[1], device="cpu")
 
@@ -451,7 +537,7 @@ def _validate_one_epoch(model, dataloader, criterion, scaler, device, val_logs, 
         )
 
         # --- Advanced Metrics Calculation (Validation) ---
-        if val_total_samples > 0:
+        if val_total_samples > 0 and val_active_features_accum is not None:
             feature_active_frac = val_active_features_accum / val_total_samples
             thresholds = [0.5, 0.4, 0.3, 0.2, 0.1]
             for t in thresholds:
@@ -474,10 +560,7 @@ def _validate_one_epoch(model, dataloader, criterion, scaler, device, val_logs, 
             elif hasattr(model.encoder, "linear") and hasattr(model.encoder.linear, "weight"):
                 encoder_weights = model.encoder.linear.weight
             elif hasattr(model.encoder, "final_block"):
-                try:
-                    encoder_weights = model.encoder.final_block[0].weight
-                except:
-                    pass
+                encoder_weights = model.encoder.final_block[0].weight
 
         if encoder_weights is not None:
             encoder_cos_sim = compute_avg_max_cosine_similarity(encoder_weights)
@@ -495,17 +578,33 @@ def _validate_one_epoch(model, dataloader, criterion, scaler, device, val_logs, 
 
 
 def _log_epoch_wandb(
-    epoch, optimizer, params_norms, params_grad_norms, val_logs, wandb_enabled, device
-):
+    epoch: int,
+    optimizer: optim.Optimizer,
+    params_norms: Dict[str, float],
+    params_grad_norms: Dict[str, float],
+    val_logs: Optional[Dict[str, List[float]]],
+    wandb_enabled: bool,
+    device: torch.device,
+) -> None:
     """
     Logs end-of-epoch metrics to WandB.
-    This includes Validation metrics (once per epoch) and
-    parameter/gradient norms (collected at end of epoch).
+
+    This includes Validation metrics (logged once per epoch) and
+    parameter/gradient norms (collected at the end of the epoch).
+
+    Args:
+        epoch (int): Current epoch index.
+        optimizer (optim.Optimizer): Optimizer to fetch learning rate.
+        params_norms (Dict[str, float]): Dictionary of parameter norms.
+        params_grad_norms (Dict[str, float]): Dictionary of gradient norms.
+        val_logs (Optional[Dict[str, List[float]]]): Validation metrics dictionary.
+        wandb_enabled (bool): Whether WandB logging is active.
+        device (torch.device): Device to check memory usage.
     """
     if not (wandb_enabled and WANDB_AVAILABLE):
         return
 
-    log_dict = {
+    log_dict: Dict[str, Any] = {
         "epoch": epoch + 1,
         "learning_rate": optimizer.param_groups[0]["lr"],
     }
@@ -546,35 +645,56 @@ def _log_epoch_wandb(
 
 
 def train_sae_val(
-    model,
-    train_dataloader,
-    criterion,
-    optimizer,
-    val_dataloader=None,
-    scheduler=None,
-    nb_epochs=20,
-    clip_grad=1.0,
-    monitoring=1,
-    device="cpu",
-    use_amp=True,
-    log_interval=10,
-    wandb_enabled=False,
-):
+    model: nn.Module,
+    train_dataloader: DataLoader,
+    criterion: Callable,
+    optimizer: optim.Optimizer,
+    val_dataloader: Optional[DataLoader] = None,
+    scheduler: Optional[Any] = None,
+    nb_epochs: int = 20,
+    clip_grad: float = 1.0,
+    monitoring: int = 1,
+    device: Union[str, torch.device] = "cpu",
+    use_amp: bool = True,
+    log_interval: int = 10,
+    wandb_enabled: bool = False,
+) -> Dict[str, Dict[str, List[float]]]:
     """
-    Train a Sparse Autoencoder (SAE) model with optional validation set.
+    Orchestrates the training and validation of SAE.
+
+    Args:
+        model (nn.Module): The SAE model to train.
+        train_dataloader (DataLoader): DataLoader for training data.
+        criterion (Any): Loss function.
+        optimizer (optim.Optimizer): Optimizer for parameter updates.
+        val_dataloader (Optional[DataLoader]): Validation DataLoader (optional).
+        scheduler (Optional[Any]): Learning rate scheduler (optional).
+        nb_epochs (int): Number of training epochs.
+        clip_grad (float): Gradient clipping value.
+        monitoring (int): Logging level (0=silent, 1=basic, 2=debug).
+        device (Union[str, torch.device]): Device to run on.
+        use_amp (bool): Whether to use Automatic Mixed Precision.
+        log_interval (int): Frequency (in batches) of logging training metrics.
+        wandb_enabled (bool): Whether to log to Weights & Biases.
+
+    Returns:
+        Dict[str, Dict[str, List[float]]]: A dictionary containing 'train' and
+        optionally 'val' logs, each mapping metric names to lists of values per epoch/step.
     """
     # Convert device to torch.device if it's a string
     if isinstance(device, str):
         device = torch.device(device)
 
-    train_logs = defaultdict(list)
-    val_logs = defaultdict(list) if val_dataloader is not None else None
+    train_logs: Dict[str, List[float]] = defaultdict(list)
+    val_logs: Optional[Dict[str, List[float]]] = (
+        defaultdict(list) if val_dataloader is not None else None
+    )
 
     # Initialize AMP scaler for mixed precision (only on CUDA)
     scaler = GradScaler("cuda") if use_amp and device.type == "cuda" else None
 
     # Initialize dead code tracker on first batch
-    dead_tracker = None
+    dead_tracker: Optional[DeadCodeTracker] = None
 
     # Print training configuration
     print("\n" + "=" * 80)
@@ -593,6 +713,7 @@ def train_sae_val(
     print("=" * 80 + "\n")
 
     for epoch in range(nb_epochs):
+        # 1. Training Phase
         (
             dead_tracker,
             train_time,
@@ -616,11 +737,19 @@ def train_sae_val(
             train_logs,
         )
 
-        if val_dataloader is not None:
+        # 2. Validation Phase
+        if val_dataloader is not None and val_logs is not None:
             _validate_one_epoch(
-                model, val_dataloader, criterion, scaler, device, val_logs, log_interval
+                model,
+                val_dataloader,
+                criterion,
+                scaler,
+                device,
+                val_logs,
+                log_interval,
             )
 
+        # 3. Log Epoch Summaries to WandB
         _log_epoch_wandb(
             epoch,
             optimizer,
