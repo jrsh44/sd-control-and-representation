@@ -15,6 +15,7 @@ uv run scripts/sd_v1_5/generate_cache.py \
 
 import argparse
 import os
+import platform
 import sys
 import time
 from pathlib import Path
@@ -60,7 +61,13 @@ def parse_layer_names(layer_names: List[str]) -> List[LayerPath]:
     return layers
 
 
-def main():
+def parse_args() -> argparse.Namespace:
+    """
+    Parse command line arguments.
+
+    Returns:
+        Parsed arguments namespace
+    """
     parser = argparse.ArgumentParser(
         description="Generate cached representations using memmap format"
     )
@@ -105,8 +112,14 @@ def main():
         action="store_true",
         help="Skip checking if representations already exist (regenerate all)",
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
+
+def main():
+    # --------------------------------------------------------------------------
+    # 1. Parse Arguments and Setup
+    # --------------------------------------------------------------------------
+    args = parse_args()
 
     # Setup paths
     prompts_dir = Path(args.prompts_dir)
@@ -131,32 +144,37 @@ def main():
         print("  2. Set RESULTS_DIR in .env file")
         return 1
 
-    # Load model to get model name
-    print("\nLoading model...")
+    # Setup device
+    device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
+
+    # --------------------------------------------------------------------------
+    # 2. Load Model
+    # --------------------------------------------------------------------------
+    print("=" * 80)
+    print("LOADING MODEL")
+    print("=" * 80)
     model_load_start = time.time()
     model_registry = ModelRegistry.FINETUNED_SAEURON
     loader = ModelLoader(model_enum=model_registry)
-    device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
-    print(f"Model loaded in {model_load_time:.2f}s")
+    model_name = model_registry.name
+    print(f"Model loaded: {model_name} in {model_load_time:.2f}s")
 
+    # --------------------------------------------------------------------------
+    # 3. Setup Cache Paths
+    # --------------------------------------------------------------------------
     # Build cache path:
     # - With style: {results_dir}/{model_name}/cached_representations/
     # - No style: {results_dir}/{model_name}/validation/
-    model_name = model_registry.name
     if args.style:
         cache_dir = results_dir / model_name / "cached_representations"
     else:
         cache_dir = results_dir / model_name / "validation"
 
-    # Setup device
-    device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
-
-    # Print configuration
-    print("=" * 70)
-    print("Generate Representations Cache (SD 1.5)")
-    print("=" * 70)
+    print("=" * 80)
+    print("CONFIGURATION")
+    print("=" * 80)
     print(f"Model: {model_name}")
     print(f"Cache Dir: {cache_dir}")
     print(f"Cache Type: {'Validation (no style)' if not args.style else 'Training (with style)'}")
@@ -164,47 +182,83 @@ def main():
     print(f"Style: {args.style if args.style else 'None (validation)'}")
     print(f"Layers: {', '.join(layer.name for layer in layers_to_capture)}")
     print(f"Device: {device}")
-    print("=" * 70)
+    print("=" * 80)
 
-    # Initialize memmap cache
+    # --------------------------------------------------------------------------
+    # 4. Setup Cache and Load Prompts
+    # --------------------------------------------------------------------------
     cache = RepresentationCache(cache_dir, use_fp16=True)
 
-    # Load prompts
     print("\nLoading prompts...")
     prompts_by_object = load_prompts_from_directory(prompts_dir)
     if not prompts_by_object:
         print("ERROR: No prompts loaded")
         return 1
 
-    # Calculate dataset size for memmap cache
-    print("\n📊 Calculating dataset size...")
-    # Count total prompts
     total_prompts = sum(len(prompts) for prompts in prompts_by_object.values())
 
-    # Each prompt generates representations with shape [timesteps, 1, spatial, features]
-    # We initialize layers dynamically after first generation to get actual dimensions
     print(f"  Total prompts: {total_prompts}")
     print(f"  Layers: {len(layers_to_capture)}")
 
-    # Initialize wandb
+    # --------------------------------------------------------------------------
+    # 5. Initialize WandB
+    # --------------------------------------------------------------------------
     if not args.skip_wandb:
         wandb.login()
-        wandb.init(
-            project="sd-control-representation",
-            entity="bartoszjezierski28-warsaw-university-of-technology",
-            config={
-                "model": model_name,
-                "device": device,
+
+        # Create a run name
+        style_suffix = f"_{args.style}" if args.style else "_validation"
+        run_name = f"Cache_{model_name}_{style_suffix}_{len(layers_to_capture)}layers"
+
+        gpu_name = torch.cuda.get_device_name(0) if device == "cuda" else "Unknown"
+
+        # Structured Configuration
+        config = {
+            "dataset": {
+                "prompts_dir": str(prompts_dir),
                 "style": args.style or "no_style",
+                "cache_type": "validation" if not args.style else "training",
+                "cache_dir": str(cache_dir),
+                "total_prompts": total_prompts,
+                "layers": [layer.name for layer in layers_to_capture],
+            },
+            "model": {
+                "name": model_name,
+                "registry": model_registry.name,
+                "load_time": model_load_time,
+            },
+            "generation": {
                 "guidance_scale": args.guidance_scale,
                 "steps": args.steps,
                 "base_seed": args.seed,
                 "storage_format": "npy_memmap",
-                "layers": [layer.name for layer in layers_to_capture],
+                "use_fp16": True,
             },
-            tags=["memmap", "cache_generation", args.style or "no_style"],
-        )
+            "hardware": {
+                "device": device,
+                "gpu_name": gpu_name,
+                "platform": platform.platform(),
+                "python_version": sys.version.split()[0],
+                "node": platform.node(),
+            },
+        }
 
+        wandb.init(
+            project="sd-control-representation",
+            entity="bartoszjezierski28-warsaw-university-of-technology",
+            name=run_name,
+            config=config,
+            group=f"cache_{model_name}",
+            job_type="generate_cache",
+            tags=["cache", "generation", "memmap", args.style or "validation"]
+            + [layer.name.lower() for layer in layers_to_capture],
+            notes="Generated cached representations for SD layers using memmap format.",
+        )
+        print(f"🚀 WandB Initialized: {run_name}")
+
+    # --------------------------------------------------------------------------
+    # 6. Generation
+    # --------------------------------------------------------------------------
     # Generation statistics
     total_generations = 0
     skipped_generations = 0
@@ -217,7 +271,7 @@ def main():
         print(f"\nStarting generation for style: {style}")
     else:
         print("\nStarting generation (no style applied)")
-    print("=" * 70)
+    print("=" * 80)
 
     for object_name, prompts in prompts_by_object.items():
         print(f"\n[Object: {object_name}] Processing {len(prompts)} prompts...")
@@ -259,14 +313,13 @@ def main():
                 inference_time = time.time() - inference_start
                 total_inference_time += inference_time
 
-                # Save each representation immediately
+                # Save each representation
                 save_start = time.time()
                 for layer, tensor in zip(layers_to_capture, representations, strict=True):
                     if tensor is not None:
                         # Auto-initialize layer on first save
                         if layer.name not in cache._active_memmaps:
                             # Calculate total samples for this layer
-                            # tensor shape: [timesteps, 1, spatial, features]
                             n_timesteps, _, n_spatial, n_features = tensor.shape
                             samples_per_prompt = n_timesteps * n_spatial
                             total_samples_estimate = total_prompts * samples_per_prompt
@@ -338,10 +391,12 @@ def main():
 
                 traceback.print_exc()
 
+    # --------------------------------------------------------------------------
+    # 7. Finalize and Save
+    # --------------------------------------------------------------------------
     # Save all accumulated metadata
     print("\n💾 Finalizing cache...")
     metadata_save_start = time.time()
-    # Finalize all layers (trim memmaps, save index files)
     print("  Finalizing cache layers...")
     for layer in layers_to_capture:
         if layer.name in cache._active_memmaps:
@@ -349,10 +404,9 @@ def main():
     metadata_save_time = time.time() - metadata_save_start
     print(f"✅ Cache finalized in {metadata_save_time:.2f}s")
 
-    # Print summary
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
     print("GENERATION SUMMARY")
-    print("=" * 70)
+    print("=" * 80)
     print(f"Style: {style if style else 'None'}")
     print(f"Device: {device}")
     print(f"Model Load Time: {model_load_time:.2f}s")
@@ -367,9 +421,8 @@ def main():
     print(f"  ⏭️ Skipped: {skipped_generations}")
     print(f"  ❌ Failed: {failed_generations}")
     print(f"\nCache Location: {cache_dir}/")
-    print("=" * 70)
+    print("=" * 80)
 
-    # Log final summary
     if not args.skip_wandb:
         wandb.log(
             {
