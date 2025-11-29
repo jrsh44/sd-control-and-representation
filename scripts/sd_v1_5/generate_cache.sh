@@ -92,6 +92,9 @@ PYTHON_SCRIPT="scripts/sd_v1_5/generate_cache.py"
 # Prompts directory
 PROMPTS_DIR="data/unlearn_canvas/prompts"
 
+# Dataset name (used for organization and WandB logging)
+DATASET_NAME="unlearn_canvas"
+
 # Styles to process
 STYLES=(
     "Surrealism"
@@ -159,6 +162,7 @@ echo ""
 # Build command
 CMD="uv run ${PYTHON_SCRIPT} \
     --prompts-dir ${PROMPTS_DIR} \
+    --dataset-name ${DATASET_NAME} \
     --layers ${LAYERS_STR} \
     --guidance-scale ${GUIDANCE_SCALE} \
     --steps ${CURRENT_NUM_STEPS} \

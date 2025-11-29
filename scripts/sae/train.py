@@ -11,7 +11,7 @@ without validation.
 EXAMPLE USAGE:
 
     uv run scripts/sae/train.py         \
-    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
+    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/unlearn_canvas/representations/train/unet_up_1_att_1 \
     --sae_path ../results/sae/unet_up_1_att_1_sae.pt         \
     --expansion_factor 16         \
     --top_k 32         \
@@ -22,26 +22,32 @@ EXAMPLE USAGE:
 """  # noqa: E501
 
 import argparse
+import platform
 import sys
-import time
 from pathlib import Path
 
 import torch
+import torch.optim as optim
 from dotenv import load_dotenv
-from overcomplete.sae import TopKSAE
 from torch.utils.data import DataLoader
 
 import wandb
 
-# Add project root to path
+# Add project root to path if needed
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 load_dotenv(dotenv_path=project_root / ".env")
 
+from overcomplete.sae import TopKSAE  # noqa: E402
+from torch.amp.grad_scaler import GradScaler  # noqa: E402
+
 from src.data.dataset import RepresentationDataset  # noqa: E402
-from src.models.sae.training import criterion_laux, train_sae_val  # noqa: E402
+from src.models.sae.training import (
+    criterion_laux,
+    train_sae_val,
+)  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,6 +60,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=True,
         help="Path to training dataset directory (e.g., results/sd_1_5/unet_mid_att)",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default="unlearn_canvas",
+        help="Name of the dataset (used for WandB logging and organization)",
     )
     parser.add_argument(
         "--test_dataset_path",
@@ -111,202 +123,185 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    is_cuda = device == "cuda"
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    # --------------------------------------------------------------------------
+    # 1. Load Dataset
+    # --------------------------------------------------------------------------
     print("=" * 80)
-    print("LOAD DATASET AND TRAIN SAE ON REPRESENTATIONS")
+    print("LOADING DATASET")
     print("=" * 80)
     print(f"Train dataset path: {args.train_dataset_path}")
-    print(f"Test dataset path: {args.test_dataset_path}")
-    print(f"SAE path: {args.sae_path}")
-    print(f"Device: {device}")
-    print(
-        f"SAE Config: epochs={args.num_epochs}, lr={args.learning_rate}, "
-        f"exp_factor={args.expansion_factor}, top_k={args.top_k}, batch_size={args.batch_size}"
+
+    train_path = Path(args.train_dataset_path)
+    train_cache_dir = train_path.parent
+    train_layer_name = train_path.name
+
+    print("\n⚡ Using memmap cache for fast loading...")
+    train_dataset = RepresentationDataset(
+        cache_dir=train_cache_dir,
+        layer_name=train_layer_name,
+        return_metadata=False,
     )
-    print("-" * 80)
+    input_dim = train_dataset._full_data.shape[1]
+    print(f"Dataset loaded. Input dim: {input_dim}")
 
-    try:
-        # Initialize wandb
-        if not args.skip_wandb:
-            wandb.login()
-            wandb.init(
-                project="sd-control-representation",
-                entity="bartoszjezierski28-warsaw-university-of-technology",
-                name=f"SAE_{Path(args.sae_path).stem}",
-                config={
-                    "sae_path": args.sae_path,
-                    "val_dataset_path": args.test_dataset_path,
-                    "expansion_factor": args.expansion_factor,
-                    "top_k": args.top_k,
-                    "learning_rate": args.learning_rate,
-                    "batch_size": args.batch_size,
-                    "num_epochs": args.num_epochs,
-                },
-                tags=["sae", "incremental", "validation"],
-                notes="Trained incrementally on multiple train datasets, single validation set.",
-            )
+    # --------------------------------------------------------------------------
+    # 2. Initialize WandB
+    # --------------------------------------------------------------------------
+    if not args.skip_wandb:
+        wandb.login()
 
-        # Load dataset
-        print("\n📂 Loading datasets...")
-        dataset_load_start = time.time()
-
-        # Train dataset path should point directly to the layer directory
-        # e.g., /path/to/cached_representations/unet_up_1_att_1
-        # Split into cache_dir and layer_name for RepresentationDataset
-        train_path = Path(args.train_dataset_path)
-        train_cache_dir = train_path.parent
-        train_layer_name = train_path.name
-
-        print("\n⚡ Using memmap cache for fast loading...")
-        training_dataset = RepresentationDataset(
-            cache_dir=train_cache_dir,
-            layer_name=train_layer_name,
-            return_metadata=False,
-            # Example filters (uncomment to use):
-            # filter_fn=lambda x: x["style"] == "van_gogh",
-            # filter_fn=lambda x: x["timestep"] < 500,
-            # filter_fn=lambda x: x["object"] in ["cat", "dog"],
+        # Create a run name
+        run_name = (
+            f"SAE_{args.dataset_name}_{train_layer_name}_exp{args.expansion_factor}_k{args.top_k}"
         )
-        input_dim = training_dataset._full_data.shape[1]
 
-        print(f"Loaded training dataset: {len(training_dataset)} samples, input_dim={input_dim}")
+        gpu_name = torch.cuda.get_device_name(0) if is_cuda else "Unknown"
 
-        # Load validation dataset if provided
-        validation_dataset = None
-        if args.test_dataset_path:
-            test_path = Path(args.test_dataset_path)
-            test_cache_dir = test_path.parent
-            test_layer_name = test_path.name
+        # Structured Configuration
+        config = {
+            "dataset": {
+                "name": args.dataset_name,
+                "layer_name": train_layer_name,
+                "train_path": str(train_path),
+                "val_path": str(args.test_dataset_path) if args.test_dataset_path else "None",
+                "input_dim": input_dim,
+                "total_samples": len(train_dataset),
+            },
+            "model": {
+                "architecture": "TopKSAE",
+                "expansion_factor": args.expansion_factor,
+                "top_k": args.top_k,
+                "num_concepts": input_dim * args.expansion_factor,
+                "input_dim": input_dim,
+            },
+            "training": {
+                "learning_rate": args.learning_rate,
+                "batch_size": args.batch_size,
+                "epochs": args.num_epochs,
+                "optimizer": "Adam",
+                "grad_clip": 1.0,
+                "scheduler": "None",
+            },
+            "hardware": {
+                "device": str(device),
+                "gpu_name": gpu_name,
+                "platform": platform.platform(),
+                "python_version": sys.version.split()[0],
+                "node": platform.node(),
+            },
+        }
 
-            validation_dataset = RepresentationDataset(
-                cache_dir=test_cache_dir,
-                layer_name=test_layer_name,
-                return_metadata=False,
-            )
+        wandb.init(
+            project="sd-control-representation",
+            entity="bartoszjezierski28-warsaw-university-of-technology",
+            name=run_name,
+            config=config,
+            group=f"{args.dataset_name}_{train_layer_name}",
+            job_type="train",
+            tags=[
+                "sae",
+                "train",
+                args.dataset_name,
+                train_layer_name,
+                f"exp{args.expansion_factor}",
+            ],
+            notes="Trained incrementally on cached representations.",
+        )
+        print(f"🚀 WandB Initialized: {run_name}")
 
-            print(f"Loaded validation dataset: {len(validation_dataset)} samples")
-        else:
-            print("No validation dataset provided - training without validation")
+    # --------------------------------------------------------------------------
+    # 3. Setup Model & DataLoaders
+    # --------------------------------------------------------------------------
+    if is_cuda:
+        import os
 
-        dataset_load_time = time.time() - dataset_load_start
+        num_cpus = len(os.sched_getaffinity(0))
+        num_workers = min(max(num_cpus - 1, 1), 16)
+        print(f"Available CPUs: {num_cpus}, using {num_workers} workers")
+    else:
+        num_workers = 0
 
-        print(f"✓ Total dataset loading time: {dataset_load_time:.2f}s\n")
+    train_dl = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        pin_memory=True,
+        num_workers=num_workers,
+    )
 
-        # Prepare DataLoader
-        is_cuda = device == "cuda"
-
-        # Determine optimal number of workers based on available CPUs
-        if is_cuda:
-            import os
-
-            num_cpus = len(os.sched_getaffinity(0))  # Get available CPUs
-            num_workers = min(max(num_cpus - 1, 1), 16)
-            print(f"Available CPUs: {num_cpus}, using {num_workers} workers")
-        else:
-            num_workers = 0
-
-        train_dataloader = DataLoader(
-            training_dataset,
+    val_dl = None
+    if args.test_dataset_path:
+        val_path = Path(args.test_dataset_path)
+        val_dataset = RepresentationDataset(
+            cache_dir=val_path.parent, layer_name=val_path.name, return_metadata=False
+        )
+        val_dl = DataLoader(
+            val_dataset,
             batch_size=args.batch_size,
-            shuffle=True,
-            pin_memory=is_cuda,
+            shuffle=False,
             num_workers=num_workers,
-            prefetch_factor=2 if num_workers > 0 else None,
-            persistent_workers=False,  # Avoid worker overhead for large datasets
+            pin_memory=True,
         )
+        print(f"Loaded validation dataset: {len(val_dataset)} samples")
 
-        # Create validation dataloader only if validation dataset exists
-        val_dataloader = None
-        if validation_dataset is not None:
-            val_dataloader = DataLoader(
-                validation_dataset,
-                batch_size=args.batch_size,
-                shuffle=False,
-                pin_memory=is_cuda,
-                num_workers=num_workers,
-                prefetch_factor=2 if num_workers > 0 else None,
-                persistent_workers=False,
-            )
+    nb_concepts = input_dim * args.expansion_factor
+    sae = TopKSAE(input_dim, nb_concepts=nb_concepts, top_k=args.top_k, device=device)
+    sae = sae.to(device)
 
-        # Initialize or load SAE
-        nb_concepts = input_dim * args.expansion_factor
-        sae = TopKSAE(
-            input_dim,
-            nb_concepts=nb_concepts,
-            top_k=args.top_k,
-            device=device,
-        )
-        sae = sae.to(device)
+    # Load existing if available
+    sae_path = Path(args.sae_path)
+    if sae_path.exists():
+        print(f"Loading weights from {sae_path}")
+        sae.load_state_dict(torch.load(sae_path, map_location=device))
+    else:
+        print(f"Creating new SAE: {sae_path}")
 
-        sae_path = Path(args.sae_path)
-        if sae_path.exists():
-            print(f"Loading existing SAE from: {sae_path}")
-            sae.load_state_dict(torch.load(sae_path, map_location=device))
-        else:
-            print(f"Creating new SAE (file does not exist: {sae_path})")
-
-        # Check GPU capability for torch.compile()
-        if device == "cuda":
-            gpu_capability = torch.cuda.get_device_capability(0)
-            gpu_name = torch.cuda.get_device_name(0)
-            print(f"GPU: {gpu_name} (Capability: {gpu_capability[0]}.{gpu_capability[1]})")
-
-            if gpu_capability[0] >= 7:
-                print("Compiling model with torch.compile() (first epoch will be slower)...")
+    # Compile if supported
+    if is_cuda:
+        gpu_capability = torch.cuda.get_device_capability(0)
+        if gpu_capability[0] >= 7:
+            print("Compiling model with torch.compile()...")
+            try:
                 sae = torch.compile(sae)
-                print("✓ Model compiled successfully")
-            else:
-                print(
-                    f"⚠️  Skipping torch.compile() - GPU capability "
-                    f"{gpu_capability[0]}.{gpu_capability[1]} < 7.0 (Triton requires >= 7.0)"
-                )
-                print(
-                    "   Training will proceed without compilation (slightly slower but still works)"
-                )
-        else:
-            print("CPU mode - skipping torch.compile()")
+                print("✓ Model compiled")
+            except Exception as e:
+                print(f"⚠️ Compilation failed: {e}")
 
-        # Define optimizer
-        optimizer = torch.optim.Adam(sae.parameters(), lr=args.learning_rate)
+    optimizer = optim.Adam(sae.parameters(), lr=args.learning_rate)
+    scaler = GradScaler("cuda") if is_cuda else None
 
-        # Train SAE
-        print("\nStarting SAE training...")
-        train_sae_val(
-            model=sae,
-            train_dataloader=train_dataloader,
-            criterion=criterion_laux,
-            optimizer=optimizer,
-            val_dataloader=val_dataloader,
-            nb_epochs=args.num_epochs,
-            device=device,
-            use_amp=True,
-            log_interval=args.log_interval,
-            wandb_enabled=not args.skip_wandb,
-        )
-        sae = sae.eval()
-        print("\n✓ SAE training completed.")
+    # --------------------------------------------------------------------------
+    # 4. Training
+    # --------------------------------------------------------------------------
+    train_sae_val(
+        model=sae,
+        train_dataloader=train_dl,
+        criterion=criterion_laux,
+        optimizer=optimizer,
+        val_dataloader=val_dl,
+        scheduler=None,
+        nb_epochs=args.num_epochs,
+        clip_grad=1.0,
+        monitoring=1,
+        device=device,
+        use_amp=scaler is not None,
+        log_interval=args.log_interval,
+        wandb_enabled=not args.skip_wandb,
+    )
 
-        # Save the trained model
-        sae_path.parent.mkdir(parents=True, exist_ok=True)
-        print("\n" + "=" * 80)
-        print("SAVING MODEL")
-        print("=" * 80)
-        print(f"Saving trained SAE model to: {sae_path}")
-        torch.save(sae.state_dict(), sae_path)
-        print("✓ Model saved successfully")
+    # Save final model
+    sae_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(sae.state_dict(), sae_path)
+    print(f"Final model saved: {sae_path}")
 
-        print("\n" + "=" * 80)
-        print("Done.")
-        return 0
+    if not args.skip_wandb:
+        wandb.finish()
 
-    except Exception as e:
-        print(f"\n✗ ERROR: {e}", file=sys.stderr)
-        import traceback
-
-        traceback.print_exc()
-        return 1
+    print("Done.")
+    return 0
 
 
 if __name__ == "__main__":

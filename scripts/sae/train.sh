@@ -79,11 +79,14 @@ PYTHON_SCRIPT="scripts/sae/train.py"
 # Dataset paths - Update these to your cached representation directories
 LAYER_NAME="unet_up_1_att_1"
 MODEL_NAME="finetuned_sd_saeuron"
-TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
+TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/${DATASET_NAME}/representations/train/${LAYER_NAME}"
+
+# Dataset name (used for WandB logging and organization)
+DATASET_NAME="unlearn_canvas"
 
 # Optional: Validation dataset (comment out or leave empty to train without validation)
-TEST_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/validation/${LAYER_NAME}"
-# TEST_DATASET_PATH=""  # Uncomment to disable validation
+VALIDATION_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/${DATASET_NAME}/representations/validation/${LAYER_NAME}"
+# VALIDATION_DATASET_PATH=""  # Uncomment to disable validation
 
 # SAE model parameters
 EXPANSION_FACTOR=16
@@ -104,7 +107,7 @@ echo "Starting SAE training..."
 echo "=========================================="
 echo "Configuration:"
 echo "  Train dataset: ${TRAIN_DATASET_PATH}"
-echo "  Test dataset: ${TEST_DATASET_PATH:-None (training without validation)}"
+echo "  Validation dataset: ${VALIDATION_DATASET_PATH:-None (training without validation)}"
 echo "  Cache format: Memmap"
 echo "  SAE path: ${SAE_PATH}"
 echo "  Expansion factor: ${EXPANSION_FACTOR}"
@@ -118,6 +121,7 @@ echo "=========================================="
 CMD="uv run ${PYTHON_SCRIPT} \
     --train_dataset_path ${TRAIN_DATASET_PATH} \
     --sae_path ${SAE_PATH} \
+    --dataset_name ${DATASET_NAME} \
     --expansion_factor ${EXPANSION_FACTOR} \
     --top_k ${TOP_K} \
     --learning_rate ${LEARNING_RATE} \
@@ -125,8 +129,8 @@ CMD="uv run ${PYTHON_SCRIPT} \
     --batch_size ${BATCH_SIZE}"
 
 # Add optional validation dataset if provided
-if [ -n "${TEST_DATASET_PATH}" ] && [ "${TEST_DATASET_PATH}" != "" ]; then
-    CMD="${CMD} --test_dataset_path ${TEST_DATASET_PATH}"
+if [ -n "${VALIDATION_DATASET_PATH}" ] && [ "${VALIDATION_DATASET_PATH}" != "" ]; then
+    CMD="${CMD} --test_dataset_path ${VALIDATION_DATASET_PATH}"
     echo "Validation: ENABLED"
 else
     echo "Validation: DISABLED"
