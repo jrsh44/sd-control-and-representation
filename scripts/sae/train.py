@@ -11,15 +11,15 @@ without validation.
 EXAMPLE USAGE:
 
     uv run scripts/sae/train.py         \
-    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results_tmp/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1        \
-    --sae_path ../results_tmp/sae/unet_up_1_att_1_sae.pt         \
+    --train_dataset_path /mnt/evafs/groups/mi2lab/bjezierski/results/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
+    --sae_path ../results/sae/unet_up_1_att_1_sae.pt         \
     --expansion_factor 16         \
     --top_k 32         \
     --learning_rate 4e-4         \
     --num_epochs 5         \
     --batch_size 4096         \
     --log_interval 10
-"""
+"""  # noqa: E501
 
 import argparse
 import sys

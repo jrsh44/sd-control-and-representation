@@ -4,14 +4,15 @@ Fast memmap-based dataset for representations.
 
 import json
 import os
-import signal
 import shutil
+import signal
 from pathlib import Path
 from typing import Callable, List, Optional
 
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+
 
 class RepresentationDataset(Dataset):
     """
@@ -24,6 +25,7 @@ class RepresentationDataset(Dataset):
         layer_name: str,
         transform: Optional[Callable] = None,
         return_metadata: bool = False,
+        return_timestep: bool = False,  # NEW
         filter_fn: Optional[Callable] = None,
         indices: Optional[List[int]] = None,
         use_local_copy: bool = True,
@@ -55,9 +57,7 @@ class RepresentationDataset(Dataset):
         disable_copy = os.environ.get("NPY_DISABLE_LOCAL_COPY", "0") == "1"
 
         if use_local_copy and not disable_copy and self._is_network_fs(data_path):
-            print(
-                "  ⚡ Detected network filesystem - copying to local /tmp for faster access..."
-            )
+            print("  ⚡ Detected network filesystem - copying to local /tmp for faster access...")
             self._local_copy_path = self._copy_to_local_tmp(data_path, layer_name)
             if self._local_copy_path != data_path:  # Copy succeeded
                 data_path = self._local_copy_path
@@ -98,6 +98,7 @@ class RepresentationDataset(Dataset):
 
         # Load metadata from info.json if needed (for filtering or metadata)
         self._metadata = None
+        self.return_timestep = return_timestep  # NEW
         if filter_fn is not None or return_metadata or indices is not None:
             # Load metadata from info.json
             self._metadata = info.get("metadata", [])
@@ -105,7 +106,6 @@ class RepresentationDataset(Dataset):
                 raise ValueError(f"No metadata found in {info_path}")
         else:
             print("  Skipping metadata load (no filtering/metadata needed) - faster startup")
-
 
         # Apply filtering
         if indices is not None:
@@ -141,7 +141,6 @@ class RepresentationDataset(Dataset):
         return len(self.indices)
 
     def __getitem__(self, idx):
-        # Map filtered index to original index
         if self.use_direct_indexing:
             real_idx = idx
         else:
@@ -153,15 +152,19 @@ class RepresentationDataset(Dataset):
         if self.transform is not None:
             rep = self.transform(rep)
 
+        # NEW: Return timestep if requested
+        if self.return_timestep:
+            timestep = self._index[real_idx]["timestep"]
+            if self.return_metadata:
+                return (
+                    rep,
+                    timestep,
+                    self._full_metadata[real_idx] if self._full_metadata else self._index[real_idx],
+                )
+            return rep, timestep
+
         if not self.return_metadata:
             return rep
-
-        # Return with metadata (if loaded)
-        if self._metadata is not None:
-            return rep, self._metadata[real_idx]
-        else:
-            # No metadata available
-            return rep, {}
 
     def _is_network_fs(self, path: Path) -> bool:
         """Check if path is on network filesystem (Lustre, NFS, etc.)"""
@@ -208,9 +211,7 @@ class RepresentationDataset(Dataset):
             print("     Request node with more /tmp space or use smaller dataset")
             return source_path  # Fall back to network storage
 
-        print(
-            f"  ✓ /tmp space check: {available_gb:.1f}GB available, {required_gb:.1f}GB needed"
-        )
+        print(f"  ✓ /tmp space check: {available_gb:.1f}GB available, {required_gb:.1f}GB needed")
 
         # Copy file with progress
         print(f"  📦 Copying {file_size_gb:.2f}GB to local /tmp...")
