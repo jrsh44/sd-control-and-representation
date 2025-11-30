@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Generate cached representations for Stable Diffusion v1.5 using memmap format.
+Cache representations from prompts directory and style for Stable Diffusion models.
 
 Structure: {results_dir}/{model_name}/{dataset_name}/representations/
     {train|validation}/{layer_name}/
 Each dataset contains: object, style, prompt_nr, prompt_text, representation
 
 EXAMPLE:
-uv run scripts/sd_v1_5/generate_cache.py \
+uv run scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.py \
     --prompts-dir data/unlearn_canvas/prompts/test \
     --style Impressionism \
     --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
