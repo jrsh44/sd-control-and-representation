@@ -146,7 +146,6 @@ echo ""
 # Build command
 CMD="uv run ${PYTHON_SCRIPT} \
     --prompts-file ${PROMPTS_FILE} \
-    --object-name ${OBJECT_NAME} \
     --dataset-name ${DATASET_NAME} \
     --num-prompts ${NUM_PROMPTS} \
     --array-id ${SLURM_ARRAY_TASK_ID} \
@@ -154,7 +153,7 @@ CMD="uv run ${PYTHON_SCRIPT} \
     --layers ${LAYERS_STR} \
     --guidance-scale ${GUIDANCE_SCALE} \
     --steps ${STEPS} \
-    --seed ${SEED} \ 
+    --seed ${SEED} \
     --log-images-every 1"
 
 # Add --skip-wandb flag if requested
