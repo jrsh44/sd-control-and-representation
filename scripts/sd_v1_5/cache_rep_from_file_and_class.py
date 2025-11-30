@@ -17,7 +17,8 @@ Examples:
   uv run scripts/sd_v1_5/cache_rep_from_file_and_class.py \
     --dataset-name "random_concepts" \
     --prompts-file data/random/prompts.txt \
-    --layers UNET_UP_1_ATT_1
+    --layers UNET_UP_1_ATT_1 \
+    --log-images-every 10
 """
 
 import argparse
@@ -120,6 +121,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--skip-wandb", action="store_true")
     parser.add_argument("--skip-existence-check", action="store_true")
+    parser.add_argument(
+        "--log-images-every",
+        type=int,
+        default=None,
+        help="Log generated images to WandB every N prompts (e.g., --log-images-every 10)",
+    )
     return parser.parse_args()
 
 
@@ -389,30 +396,35 @@ def main():
                 save_time = time.time() - save_start
                 total_save_time += save_time
 
+                total_generations += 1
+                print(f"      ✅ Generated in {inference_time:.2f}s, saved in {save_time:.2f}s")
+
+                # Log to WandB before freeing memory
+                if not args.skip_wandb:
+                    system_metrics_end = get_system_metrics(device)
+                    log_data = {
+                        "group": group_label,
+                        "prompt_nr": prompt_nr,
+                        "inference_time": inference_time,
+                        "save_time": save_time,
+                        "total_generations": total_generations,
+                        "skipped_generations": skipped_generations,
+                        **system_metrics_end,
+                        "gpu_memory_delta_mb": system_metrics_end.get("gpu_memory_mb", 0)
+                        - system_metrics_start.get("gpu_memory_mb", 0),
+                    }
+
+                    # Log image every N prompts if requested
+                    if args.log_images_every and (total_generations % args.log_images_every == 0):
+                        log_data["generated_image"] = wandb.Image(image, caption=prompt_text)
+
+                    wandb.log(log_data)
+
                 # Free GPU memory
                 del representations
                 if image is not None:
                     del image
                 torch.cuda.empty_cache()
-
-                total_generations += 1
-                print(f"      ✅ Generated in {inference_time:.2f}s, saved in {save_time:.2f}s")
-
-                if not args.skip_wandb:
-                    system_metrics_end = get_system_metrics(device)
-                    wandb.log(
-                        {
-                            "group": group_label,
-                            "prompt_nr": prompt_nr,
-                            "inference_time": inference_time,
-                            "save_time": save_time,
-                            "total_generations": total_generations,
-                            "skipped_generations": skipped_generations,
-                            **system_metrics_end,
-                            "gpu_memory_delta_mb": system_metrics_end.get("gpu_memory_mb", 0)
-                            - system_metrics_start.get("gpu_memory_mb", 0),
-                        }
-                    )
 
             except Exception as e:
                 if not args.skip_wandb:
