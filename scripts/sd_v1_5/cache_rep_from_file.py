@@ -5,14 +5,14 @@ Generate cached representations from a single prompt file with prompt_nr;prompt 
 EXAMPLE:
 # Generate from 100 random prompts
 uv run scripts/sd_v1_5/cache_rep_from_file.py \
-    --prompts-file data/nudity/prompts.txt \
+    --prompts-file data/cc3m-wds/train.txt \
     --num-prompts 100 \
     --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
     --skip-wandb
 
 # SLURM array job: split into 10 jobs
 uv run scripts/sd_v1_5/cache_rep_from_file.py \
-    --prompts-file data/cc3m-wds/prompts_train.txt \
+    --prompts-file data/cc3m-wds/train.txt \
     --num-prompts 1000 \
     --array-id 2 \
     --array-total 10 \
@@ -20,7 +20,7 @@ uv run scripts/sd_v1_5/cache_rep_from_file.py \
 
 # Process specific prompt range
 uv run scripts/sd_v1_5/cache_rep_from_file.py \
-    --prompts-file data/nudity/prompts.txt \
+    --prompts-file data/cc3m-wds/train.txt \
     --prompt-range 1 100 \
     --layers UNET_UP_1_ATT_1
 """
@@ -175,22 +175,10 @@ def parse_args() -> argparse.Namespace:
         help="Path to prompts file with format: prompt_nr;prompt",
     )
     parser.add_argument(
-        "--object-name",
-        type=str,
-        default="nudity",
-        help="Object name for cache organization (default: nudity)",
-    )
-    parser.add_argument(
         "--dataset-name",
         type=str,
         default="cc3m-wds",
         help="Dataset name for cache path organization (default: cc3m-wds)",
-    )
-    parser.add_argument(
-        "--style",
-        type=str,
-        default=None,
-        help="Style name (e.g., 'Impressionism'). If not provided, no style suffix is added.",
     )
     parser.add_argument(
         "--layers",
@@ -304,23 +292,14 @@ def main():
     # --------------------------------------------------------------------------
     # 3. Setup Cache Paths
     # --------------------------------------------------------------------------
-    # Build cache path:
-    # - With style: {results_dir}/{model_name}/{dataset_name}/representations/train/
-    # - No style: {results_dir}/{model_name}/{dataset_name}/representations/validation/
-    if args.style:
-        cache_dir = results_dir / model_name / args.dataset_name / "representations" / "train"
-    else:
-        cache_dir = results_dir / model_name / args.dataset_name / "representations" / "validation"
+    cache_dir = results_dir / model_name / args.dataset_name / "representations" / "train"
 
     print("=" * 80)
     print("CONFIGURATION")
     print("=" * 80)
     print(f"Model: {model_name}")
     print(f"Cache Dir: {cache_dir}")
-    print(f"Cache Type: {'Validation (no style)' if not args.style else 'Training (with style)'}")
     print(f"Prompts File: {prompts_file}")
-    print(f"Object Name: {args.object_name}")
-    print(f"Style: {args.style if args.style else 'None (validation)'}")
     print(f"Layers: {', '.join(layer.name for layer in layers_to_capture)}")
     print(f"Device: {device}")
     if args.array_id is not None:
@@ -333,7 +312,8 @@ def main():
     cache = RepresentationCache(cache_dir, use_fp16=True)
 
     print("\nLoading prompts...")
-    all_prompts = load_prompts_from_file(prompts_file)
+    raw_prompts = load_base_prompts(prompts_file)
+    all_prompts = dict(raw_prompts)
     print(f"Loaded {len(all_prompts)} prompts from {prompts_file}")
 
     selected_prompts = select_prompts_for_job(
@@ -361,11 +341,7 @@ def main():
         wandb.login()
 
         # Create a run name
-        style_suffix = f"_{args.style}" if args.style else "_validation"
-        run_name = (
-            f"Cache_{args.dataset_name}_{model_name}_{args.object_name}_{style_suffix}_"
-            f"{len(layers_to_capture)}layers"
-        )
+        run_name = f"Cache_{args.dataset_name}_{model_name}_{len(layers_to_capture)}layers"
 
         gpu_name = torch.cuda.get_device_name(0) if device == "cuda" else "Unknown"
 
@@ -374,9 +350,8 @@ def main():
             "dataset": {
                 "name": args.dataset_name,
                 "prompts_file": str(prompts_file),
-                "object_name": args.object_name,
-                "style": args.style or "no_style",
-                "cache_type": "validation" if not args.style else "training",
+                "object_name": "",
+                "style": "no_style",
                 "cache_dir": str(cache_dir),
                 "total_prompts": len(all_prompts),
                 "selected_prompts": total_prompts,
@@ -417,10 +392,7 @@ def main():
             tags=[
                 "cache",
                 "generation",
-                "memmap",
                 args.dataset_name,
-                args.object_name,
-                args.style or "validation",
             ]
             + [layer.name.lower() for layer in layers_to_capture],
             notes="Generated cached representations for SD layers from prompt file.",
@@ -437,18 +409,14 @@ def main():
     total_inference_time = 0.0
     total_save_time = 0.0
 
-    style = args.style
-    object_name = args.object_name
-
     print(f"\nStarting generation for {total_prompts} prompts...")
     print("=" * 80)
 
-    for prompt_nr, base_prompt in sorted(selected_prompts.items()):
+    for prompt_nr, prompt in sorted(selected_prompts.items()):
         # Check if all layers already have this representation
         if not args.skip_existence_check:
             all_exist = all(
-                cache.check_exists(layer.name, object_name, style or "", prompt_nr)
-                for layer in layers_to_capture
+                cache.check_exists(layer.name, "", "", prompt_nr) for layer in layers_to_capture
             )
 
             if all_exist:
@@ -457,11 +425,7 @@ def main():
                 continue
 
         # Generate with optional style
-        if style:
-            styled_prompt = f"{base_prompt} in {style} style"
-        else:
-            styled_prompt = base_prompt
-        print(f"  [{prompt_nr}] 🎨 Generating: {styled_prompt[:60]}...")
+        print(f"  [{prompt_nr}] 🎨 Generating: {prompt[:60]}...")
 
         try:
             generator = torch.Generator(device).manual_seed(args.seed + prompt_nr)
@@ -471,7 +435,7 @@ def main():
             inference_start = time.time()
             representations, image = capture_layer_representations(
                 pipe=pipe,
-                prompt=styled_prompt,
+                prompt=prompt,
                 layer_paths=layers_to_capture,
                 num_inference_steps=args.steps,
                 guidance_scale=args.guidance_scale,
@@ -504,10 +468,10 @@ def main():
 
                     cache.save_representation(
                         layer_name=layer.name,
-                        object_name=object_name,
-                        style=style or "",
+                        object_name="",
+                        style="",
                         prompt_nr=prompt_nr,
-                        prompt_text=styled_prompt,
+                        prompt_text=prompt,
                         representation=tensor,
                         num_steps=args.steps,
                         guidance_scale=args.guidance_scale,
@@ -545,9 +509,8 @@ def main():
                 wandb.log(
                     {
                         "error": str(e),
-                        "object": object_name,
                         "prompt_nr": prompt_nr,
-                        "styled_prompt": styled_prompt,
+                        "styled_prompt": prompt,
                     }
                 )
             failed_generations += 1
@@ -572,8 +535,6 @@ def main():
     print("\n" + "=" * 80)
     print("GENERATION SUMMARY")
     print("=" * 80)
-    print(f"Object: {object_name}")
-    print(f"Style: {style if style else 'None'}")
     print(f"Device: {device}")
     if args.array_id is not None:
         print(f"Array Job: {args.array_id + 1}/{args.array_total}")
