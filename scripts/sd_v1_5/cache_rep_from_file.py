@@ -47,9 +47,10 @@ if str(project_root) not in sys.path:
 load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.cache import RepresentationCache  # noqa: E402
-from src.data.prompts import load_prompts_from_file  # noqa: E402
+from src.data.prompts import load_base_prompts  # noqa: E402
 from src.models.config import ModelRegistry  # noqa: E402
-from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
 from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
 

@@ -45,7 +45,8 @@ from src.data.prompts import (  # noqa: E402
     load_classes_file,
 )
 from src.models.config import ModelRegistry  # noqa: E402
-from src.models.sd_v1_5 import LayerPath, capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
+from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
 from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
 
