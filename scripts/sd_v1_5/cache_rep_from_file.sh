@@ -88,7 +88,6 @@ PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_file.py"
 
 # Prompts configuration
 PROMPTS_FILE="data/cc3m-wds/train.txt"
-OBJECT_NAME=""
 DATASET_NAME="cc3m-wds"
 NUM_PROMPTS=36000
 ARRAY_TOTAL=9
@@ -111,7 +110,6 @@ LAYERS_STR="${LAYERS[@]}"
 echo "Task Configuration:"
 echo "  Script: ${PYTHON_SCRIPT}"
 echo "  Prompts File: ${PROMPTS_FILE}"
-echo "  Object Name: ${OBJECT_NAME}"
 echo "  Dataset Name: ${DATASET_NAME}"
 echo "  Total Prompts: ${NUM_PROMPTS}"
 echo "  Array Total: ${ARRAY_TOTAL}"
@@ -156,7 +154,8 @@ CMD="uv run ${PYTHON_SCRIPT} \
     --layers ${LAYERS_STR} \
     --guidance-scale ${GUIDANCE_SCALE} \
     --steps ${STEPS} \
-    --seed ${SEED}"
+    --seed ${SEED} \ 
+    --log-images-every 1"
 
 # Add --skip-wandb flag if requested
 if [ "${SKIP_WANDB}" = true ]; then
