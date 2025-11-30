@@ -31,7 +31,7 @@
 #==============================================================================
 
 #SBATCH --account mi2lab                    # Your compute account
-#SBATCH --job-name sd_1_5_cache_gen         # Name in queue
+#SBATCH --job-name sd_rep_gen_from_objects_dir_and_style         # Name in queue
 #SBATCH --time 0-6:00:00                    # Max 6 hours per style
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
@@ -66,6 +66,7 @@ echo "=========================================="
 
 # Navigate to project directory
 cd /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation
+source ./.venv/bin/activate
 
 # Load environment variables
 if [ -f .env ]; then

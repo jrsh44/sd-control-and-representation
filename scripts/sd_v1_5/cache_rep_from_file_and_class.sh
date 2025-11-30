@@ -26,7 +26,7 @@
 #==============================================================================
 
 #SBATCH --account mi2lab                    # Your compute account
-#SBATCH --job-name sd_nudity_gen            # Name in queue
+#SBATCH --job-name sd_rep_gen_from_file_and_class            # Name in queue
 #SBATCH --time 0-8:00:00                    # Max 8 hours per task
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
