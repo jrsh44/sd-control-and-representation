@@ -87,7 +87,7 @@ echo ""
 #==============================================================================
 
 # Python script
-PYTHON_SCRIPT="scripts/sd_v1_5/generate_cache.py"
+PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.py"
 
 # Prompts directory
 PROMPTS_DIR="data/unlearn_canvas/prompts"
