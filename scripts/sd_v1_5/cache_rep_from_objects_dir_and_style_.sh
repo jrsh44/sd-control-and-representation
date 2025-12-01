@@ -1,28 +1,17 @@
 #!/bin/bash
 ################################################################################
-# SLURM Array Job Script - Representation Cache Generation
-# Purpose: Generate cached representations for multiple styles in parallel
+# SLURM Array Job Script - Cache Representations with Styles
+#
+# Purpose:
+#   Generate representation caches for objects with different artistic styles
+#   Each array task processes one style (or validation without style)
 #
 # Usage:
-#   sbatch scripts/sd_v1_5/generate_cache.sh
+#   sbatch scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.sh
 #
-# Description:
-#   This script runs parallel tasks to generate representation caches:
-#   - Each task processes one artistic style
-#   - Captures multiple layer representations from SD 1.5
-#   - Saves to memmap format for 100x faster loading
-#   - Metadata saved once at the end (fast incremental writes)
-#
-#   Results are saved to:
-#   - Training cache (with style): {RESULTS_DIR}/{model_name}/cached_representations/{layer_name}/
-#   - Validation cache (no style): {RESULTS_DIR}/validation/{layer_name}/
-#   - Logs: {LOGS_DIR}/sd_1_5_cache_gen_{JOB_ID}_{TASK_ID}.log
-#
-#   Memmap cache files generated:
-#   - data.npy: memmap array of representations
-#   - metadata.pkl: full metadata with prompts
-#   - index.json: lightweight metadata for fast filtering
-#   - info.json: dataset info
+# Output:
+#   - Cache: {RESULTS_DIR}/{model_name}/{dataset_name}/representations/
+#   - Logs: ../logs/sd_1_5_cache_gen_{JOB_ID}_{TASK_ID}.log
 ################################################################################
 
 #==============================================================================
@@ -90,11 +79,14 @@ echo ""
 # Python script
 PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.py"
 
-# Prompts directory
-PROMPTS_DIR="data/unlearn_canvas/prompts"
-
-# Dataset name (used for organization and WandB logging)
+# Dataset configuration
 DATASET_NAME="unlearn_canvas"
+
+# Model configuration (options: sd_v1_5, finetuned_sauron, sd_v3)
+MODEL_NAME="sd_v1_5"
+
+# Prompts configuration
+PROMPTS_DIR="data/unlearn_canvas/prompts"
 
 # Styles to process
 STYLES=(
@@ -113,7 +105,7 @@ GUIDANCE_SCALE=7.5
 NUM_STEPS=(50 100)
 SEED=42
 
-# WandB settings
+# Other settings
 SKIP_WANDB=false
 
 #==============================================================================
@@ -130,12 +122,13 @@ LAYERS_STR="${LAYERS[@]}"
 
 echo "Task Configuration:"
 echo "  Script: ${PYTHON_SCRIPT}"
+echo "  Dataset: ${DATASET_NAME}"
+echo "  Model: ${MODEL_NAME}"
+echo "  Prompts Dir: ${PROMPTS_DIR}"
 echo "  Style: ${CURRENT_STYLE}"
-echo "  Prompts: ${PROMPTS_DIR}"
 echo "  Layers: ${LAYERS_STR}"
-echo "  Cache Format: Memmap"
 echo "  Guidance Scale: ${GUIDANCE_SCALE}"
-echo "  Steps: ${NUM_STEPS}"
+echo "  Steps: ${CURRENT_NUM_STEPS}"
 echo "  Seed: ${SEED}"
 echo "=========================================="
 echo ""
@@ -154,20 +147,22 @@ else
 fi
 
 #==============================================================================
-# RUN CACHE GENERATION
+# RUN GENERATION
 #==============================================================================
 
-echo "Starting cache generation for style: ${CURRENT_STYLE}"
+echo "Starting generation..."
 echo ""
 
 # Build command
 CMD="uv run ${PYTHON_SCRIPT} \
     --prompts-dir ${PROMPTS_DIR} \
     --dataset-name ${DATASET_NAME} \
+    --model-name ${MODEL_NAME} \
     --layers ${LAYERS_STR} \
     --guidance-scale ${GUIDANCE_SCALE} \
     --steps ${CURRENT_NUM_STEPS} \
-    --seed ${SEED}"
+    --seed ${SEED} \
+    --log-images-every 5"
 
 # Add --style flag only if not empty
 if [ -n "${CURRENT_STYLE}" ]; then

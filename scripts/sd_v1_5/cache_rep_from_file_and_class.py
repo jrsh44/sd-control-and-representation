@@ -1,24 +1,13 @@
 #!/usr/bin/env python3
 """
-Cache representations using Stable Diffusion model for prompts from a file and given class
+Generate cached representations using class templates or direct prompts.
 
-Output structure:
-  {results_dir}/{model_name}/{dataset_name}/representations/train/
-
-Examples:
-  # 1. Class-based (e.g., for probing specific concepts like 'cars', 'dogs')
+Usage:
   uv run scripts/sd_v1_5/cache_rep_from_file_and_class.py \
-    --dataset-name "cars" \
-    --prompts-file data/cars/templates.txt \
-    --classes "sedan" "suv" "truck" \
-    --layers UNET_UP_1_ATT_1
+    --dataset-name "cars" --prompts-file data/cars/templates.txt \
+    --classes "sedan" "suv" --layers UNET_UP_1_ATT_1
 
-  # 2. Direct generation (no classes, just prompts)
-  uv run scripts/sd_v1_5/cache_rep_from_file_and_class.py \
-    --dataset-name "random_concepts" \
-    --prompts-file data/random/prompts.txt \
-    --layers UNET_UP_1_ATT_1 \
-    --log-images-every 10
+Output: {results_dir}/{model_name}/{dataset_name}/representations/{layer_name}/
 """
 
 import argparse
@@ -115,6 +104,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Results directory (default: env RESULTS_DIR)",
     )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="sd_v1_5",
+        choices=[model.name for model in ModelRegistry],
+        help=(
+            "Model to use (default: sd_v1_5). Options: "
+            + ", ".join([model.name for model in ModelRegistry])
+        ),
+    )
     parser.add_argument("--device", type=str, default="cuda", help="Device to use (cuda/cpu)")
     parser.add_argument("--guidance-scale", type=float, default=7.5)
     parser.add_argument("--steps", type=int, default=50)
@@ -168,7 +167,8 @@ def main():
     print("LOADING MODEL")
     print("=" * 80)
     model_load_start = time.time()
-    model_registry = ModelRegistry.SD_V1_5
+    model_registry = ModelRegistry[args.model_name]
+
     loader = ModelLoader(model_enum=model_registry)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
@@ -178,9 +178,8 @@ def main():
     # --------------------------------------------------------------------------
     # 3. Setup Cache Paths
     # --------------------------------------------------------------------------
-    # Build cache path: {results_dir}/{model_name}/{dataset_name}/representations/train/
-    # (This script doesn't use styles, so always uses train structure)
-    cache_dir = results_dir / model_name / args.dataset_name / "representations" / "train"
+    # Build cache path: {results_dir}/{model_name}/{dataset_name}/representations
+    cache_dir = results_dir / model_name / args.dataset_name / "representations"
     print("=" * 80)
     print("CONFIGURATION")
     print("=" * 80)

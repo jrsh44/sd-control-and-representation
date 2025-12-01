@@ -1,31 +1,14 @@
 #!/usr/bin/env python3
 """
-Generate cached representations from a single prompt file with prompt_nr;prompt format.
+Generate cached representations from prompt file (supports SLURM array job splitting).
 
-EXAMPLE:
-# Generate from 100 random prompts
-uv run scripts/sd_v1_5/cache_rep_from_file.py \
+Usage:
+  uv run scripts/sd_v1_5/cache_rep_from_file.py \
     --prompts-file data/cc3m-wds/train.txt \
-    --num-prompts 100 \
-    --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
-    --skip-wandb
+    --num-prompts 1000 --array-id 2 --array-total 10 \
+    --layers UNET_UP_1_ATT_1
 
-# SLURM array job: split into 10 jobs
-uv run scripts/sd_v1_5/cache_rep_from_file.py \
-    --prompts-file data/cc3m-wds/train.txt \
-    --num-prompts 1000 \
-    --array-id 2 \
-    --array-total 10 \
-    --layers UNET_UP_1_ATT_1 \
-    --log-images-every 1
-
-
-# Process specific prompt range
-uv run scripts/sd_v1_5/cache_rep_from_file.py \
-    --prompts-file data/cc3m-wds/train.txt \
-    --prompt-range 1 100 \
-    --layers UNET_UP_1_ATT_1 \
-    --log-images-every 1
+Output: {results_dir}/{model_name}/{dataset_name}/representations/{layer_name}/
 """
 
 import argparse
@@ -71,20 +54,20 @@ def select_prompts_for_job(
 
     Priority:
     1. If prompt_range is specified, use that range
-    2. If array_id/array_total are specified, split into chunks first
-    3. If num_prompts is specified, sample randomly from the chunk
-    4. Otherwise, use all prompts (or all from chunk)
+    2. If array_id/array_total are specified, split total prompts into chunks
+    3. If num_prompts is specified with array job, it's the TOTAL across all jobs
+    4. Otherwise, use all prompts
 
     Args:
         all_prompts: All available prompts
-        num_prompts: Number of random prompts to select from the chunk
+        num_prompts: TOTAL number of prompts across all array jobs (not per job)
         prompt_range: Tuple of (start, end) prompt numbers (inclusive)
         array_id: SLURM array task ID (0-indexed)
         array_total: Total number of array jobs
         seed: Random seed for sampling
 
     Returns:
-        Selected prompts dictionary
+        Selected prompts dictionary for this specific job
     """
     # Priority 1: Specific range
     if prompt_range is not None:
@@ -93,18 +76,25 @@ def select_prompts_for_job(
         print(f"Selected prompts in range [{start}, {end}]: {len(selected)} prompts")
         return selected
 
-    # Priority 2: Array job splitting (split first, then sample)
+    # Determine working set based on num_prompts
     working_set = all_prompts
-    if array_id is not None and array_total is not None:
-        # Sort prompt numbers for consistent splitting
-        sorted_nrs = sorted(all_prompts.keys())
+    if num_prompts is not None:
+        if num_prompts < len(all_prompts):
+            # Sample num_prompts from all available prompts
+            random.seed(seed)
+            selected_nrs = sorted(random.sample(list(all_prompts.keys()), num_prompts))
+            working_set = {nr: all_prompts[nr] for nr in selected_nrs}
+            print(f"Selected {num_prompts} prompts from {len(all_prompts)} available (seed={seed})")
+        else:
+            print(f"Using all {len(all_prompts)} prompts (requested {num_prompts})")
 
-        # Calculate chunk size
+    # Priority 2: Split working set into array job chunks
+    if array_id is not None and array_total is not None:
+        sorted_nrs = sorted(working_set.keys())
         total_count = len(sorted_nrs)
         chunk_size = total_count // array_total
         remainder = total_count % array_total
 
-        # Calculate start and end indices for this job
         # Distribute remainder evenly among first jobs
         if array_id < remainder:
             start_idx = array_id * (chunk_size + 1)
@@ -113,35 +103,19 @@ def select_prompts_for_job(
             start_idx = array_id * chunk_size + remainder
             end_idx = start_idx + chunk_size
 
-        # Select prompts for this chunk
         chunk_nrs = sorted_nrs[start_idx:end_idx]
-        working_set = {nr: all_prompts[nr] for nr in chunk_nrs}
+        chunk_prompts = {nr: working_set[nr] for nr in chunk_nrs}
 
-        print(f"Array job {array_id + 1}/{array_total}:")
-        print(f"  Chunk size: {len(working_set)} prompts (indices {start_idx}-{end_idx - 1})")
+        print(f"\nArray job {array_id + 1}/{array_total}:")
+        print(f"  Total prompts to process: {total_count}")
+        print(f"  This job's chunk: {len(chunk_prompts)} prompts (idx {start_idx}-{end_idx - 1})")
         if chunk_nrs:
-            print(f"  Prompt range: {min(chunk_nrs)} - {max(chunk_nrs)}")
+            print(f"  Prompt number range: {min(chunk_nrs)} - {max(chunk_nrs)}")
 
-    # Priority 3: Random sampling from working set
-    if num_prompts is not None:
-        if num_prompts >= len(working_set):
-            print(
-                f"Requested {num_prompts} prompts, "
-                f"but only {len(working_set)} available in chunk. Using all."
-            )
-            return working_set
-        else:
-            random.seed(seed)
-            selected_nrs = random.sample(list(working_set.keys()), num_prompts)
-            selected = {nr: working_set[nr] for nr in selected_nrs}
-            print(f"  Randomly sampled {len(selected)} prompts from chunk (seed={seed})")
-            return selected
+        return chunk_prompts
 
-    # Priority 4: Use all from working set
-    if array_id is not None:
-        print(f"  Using all {len(working_set)} prompts from chunk")
-    else:
-        print(f"Using all {len(working_set)} prompts")
+    # No array splitting - use full working set
+    print(f"Using all {len(working_set)} prompts (no array splitting)")
     return working_set
 
 
@@ -182,6 +156,16 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="cc3m-wds",
         help="Dataset name for cache path organization (default: cc3m-wds)",
+    )
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default="sd_v1_5",
+        choices=[model.name for model in ModelRegistry],
+        help=(
+            "Model to use (default: sd_v1_5). Options: "
+            + ", ".join([model.name for model in ModelRegistry])
+        ),
     )
     parser.add_argument(
         "--layers",
@@ -291,7 +275,8 @@ def main():
     print("LOADING MODEL")
     print("=" * 80)
     model_load_start = time.time()
-    model_registry = ModelRegistry.FINETUNED_SAEURON
+
+    model_registry = ModelRegistry[args.model_name]
     loader = ModelLoader(model_enum=model_registry)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
@@ -301,7 +286,7 @@ def main():
     # --------------------------------------------------------------------------
     # 3. Setup Cache Paths
     # --------------------------------------------------------------------------
-    cache_dir = results_dir / model_name / args.dataset_name / "representations" / "train"
+    cache_dir = results_dir / model_name / args.dataset_name / "representations"
 
     print("=" * 80)
     print("CONFIGURATION")

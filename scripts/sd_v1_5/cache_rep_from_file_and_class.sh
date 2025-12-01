@@ -1,23 +1,17 @@
 #!/bin/bash
 ################################################################################
-# SLURM Array Job Script - Nudity Class Representation Generation
-# Purpose: Generate cached representations for nudity classes in parallel
+# SLURM Array Job Script - Cache Representations with Class Templates
+#
+# Purpose:
+#   Generate representation caches by filling class templates with class names
+#   Each array task processes a different batch of classes
 #
 # Usage:
-#   sbatch scripts/sd_v1_5/generate_nudity_representations.sh
+#   sbatch scripts/sd_v1_5/cache_rep_from_file_and_class.sh
 #
-# Description:
-#   This script runs parallel tasks to generate representation caches for nudity classes
-#
-#   Results are saved to:
-#   - Cache: {RESULTS_DIR}/{model_name}/cached_representations/nudity/{layer_name}/
-#   - Logs: ../logs/sd_1_5_nudity_gen_{JOB_ID}_{TASK_ID}.log
-#
-#   Memmap cache files generated:
-#   - data.npy: memmap array of representations
-#   - metadata.pkl: full metadata with prompts
-#   - index.json: lightweight metadata for fast filtering
-#   - info.json: dataset info
+# Output:
+#   - Cache: {RESULTS_DIR}/{model_name}/{dataset_name}/representations/
+#   - Logs: ../logs/sd_rep_gen_from_file_and_class_{JOB_ID}_{TASK_ID}.log
 ################################################################################
 
 #==============================================================================
@@ -27,14 +21,14 @@
 
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sd_rep_gen_from_file_and_class            # Name in queue
-#SBATCH --time 0-8:00:00                    # Max 8 hours per task
+#SBATCH --time 0-2:00:00                    # Max 1 hour per task
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
-#SBATCH --cpus-per-task 12                  # CPU cores for data processing
+#SBATCH --cpus-per-task 8                  # CPU cores for data processing
 #SBATCH --mem 64G                           # 64GB RAM (for large batches)
 #SBATCH --partition short                   # Queue name
-#SBATCH --output ../logs/sd_1_5_nudity_gen_%A_%a.log   # %A=job ID, %a=task ID
+#SBATCH --output ../logs/sd_rep_gen_from_file_and_class_%A_%a.log   # %A=job ID, %a=task ID
 #SBATCH --array=0-3%2                       # 4 tasks, max 2 running at once
 
 # Optional: email notifications
@@ -52,7 +46,7 @@ set -eu  # Exit on error or undefined variable
 #==============================================================================
 
 echo "=========================================="
-echo "Nudity Representations Generation Job"
+echo "Cache Generation Job"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Task ID: ${SLURM_ARRAY_TASK_ID}"
 echo "Running on: $(hostname)"
@@ -85,8 +79,14 @@ echo ""
 # Python script
 PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_file_and_class.py"
 
-# Base prompts file
-BASE_PROMPTS="data/nudity/base_prompts.txt"
+# Dataset configuration
+DATASET_NAME="nudity"
+
+# Model configuration (options: sd_v1_5, finetuned_sauron, sd_v3)
+MODEL_NAME="sd_v1_5"
+
+# Prompts configuration
+BASE_PROMPTS="data/nudity/prompts.txt"
 
 # Classes to process
 CLASSES_BATCH_0=(
@@ -117,16 +117,22 @@ CLASSES_BATCH_3=(
     "exposed penis"
 )
 
+# Layers to capture
 LAYERS=(
     "TEXT_EMBEDDING_FINAL"
     "UNET_UP_1_ATT_1"
 )
 
+# Generation parameters
 GUIDANCE_SCALE=7.5
 NUM_STEPS=50
 SEED=42
 
+# Other settings
 SKIP_WANDB=false
+
+# Log images every N steps
+LOG_IMAGES_EVERY=10
 
 #==============================================================================
 # TASK MAPPING
@@ -158,13 +164,15 @@ LAYERS_STR="${LAYERS[@]}"
 
 echo "Task Configuration:"
 echo "  Script: ${PYTHON_SCRIPT}"
-echo "  Base prompts: ${BASE_PROMPTS}"
+echo "  Dataset: ${DATASET_NAME}"
+echo "  Model: ${MODEL_NAME}"
+echo "  Prompts file: ${BASE_PROMPTS}"
 echo "  Classes: ${CURRENT_CLASSES[@]}"
 echo "  Layers: ${LAYERS_STR}"
-echo "  Cache Format: Memmap"
 echo "  Guidance Scale: ${GUIDANCE_SCALE}"
 echo "  Steps: ${NUM_STEPS}"
 echo "  Seed: ${SEED}"
+echo "  Log images every: ${LOG_IMAGES_EVERY}"
 echo "=========================================="
 echo ""
 
@@ -182,15 +190,17 @@ else
 fi
 
 #==============================================================================
-# RUN CACHE GENERATION
+# RUN GENERATION
 #==============================================================================
 
-echo "Starting nudity representation generation..."
+echo "Starting generation..."
 echo ""
 
 # Build command with classes
 CMD="uv run ${PYTHON_SCRIPT} \
-    --base-prompts ${BASE_PROMPTS} \
+    --dataset-name ${DATASET_NAME} \
+    --prompts-file ${BASE_PROMPTS} \
+    --model-name ${MODEL_NAME} \
     --classes"
 
 # Add each class as a separate argument
@@ -203,7 +213,8 @@ CMD="${CMD} \
     --layers ${LAYERS_STR} \
     --guidance-scale ${GUIDANCE_SCALE} \
     --steps ${NUM_STEPS} \
-    --seed ${SEED}"
+    --seed ${SEED} \
+    --log-images-every ${LOG_IMAGES_EVERY}"
 
 # Add --skip-wandb flag if requested
 if [ "${SKIP_WANDB}" = true ]; then
