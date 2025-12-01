@@ -1,20 +1,17 @@
 #!/bin/bash
 ################################################################################
-# SLURM Job Script - SAE Training
+# SLURM Array Job Script - Train Sparse Autoencoder
+#
 # Purpose:
-#   Train a Sparse Autoencoder on cached representations and save the model.
+#   Train SAE on cached representations with configurable hyperparameters
+#   Each array task uses different expansion factor, top-k, and learning rate
 #
 # Usage:
 #   sbatch scripts/sae/train.sh
 #
-# Description:
-#   - Trains SAE on cached SD layer representations
-#   - Uses memmap format for fast data loading
-#   - Optional validation dataset
-#
-# Results are saved to:
-#   - Model: results/sae_models/<layer_name>_sae.pt
-#   - Logs: logs/sae_train_<JOB_ID>.log
+# Output:
+#   - Model: {RESULTS_DIR}/{model_name}/sae/{layer}/trained_models/exp{X}_topk{Y}_lr{Z}_epochs{E}_batch{B}.pt
+#   - Logs: ../logs/sae_train_{JOB_ID}_{TASK_ID}.log
 ################################################################################
 
 #==============================================================================
@@ -22,14 +19,15 @@
 #==============================================================================
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sae_train                # Name in queue
-#SBATCH --time 0-18:00:00                   # Max 18 hours
+#SBATCH --time 0-6:00:00                   # Max 6 hours
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
-#SBATCH --cpus-per-task 32                  # CPU cores for data processing
+#SBATCH --cpus-per-task 12                  # CPU cores for data processing
 #SBATCH --mem 100G                          # 100GB RAM (for large batches)
 #SBATCH --partition short                   # Queue name
 #SBATCH --output ../logs/sae_train_%A_%a.log  # %A=job ID, %a=task ID
+#SBATCH --array=0-11%3                       # Job array for multiple configurations
 
 
 # Optional email notification
@@ -44,67 +42,111 @@ set -eu  # Exit on error or undefined variable
 #==============================================================================
 # SETUP
 #==============================================================================
+
 echo "=========================================="
+echo "SAE Training Job"
 echo "Job ID: ${SLURM_JOB_ID}"
+echo "Task ID: ${SLURM_ARRAY_TASK_ID}"
 echo "Running on: $(hostname)"
 echo "Start: $(date)"
 echo "=========================================="
 
-# Navigate to your project directory
-cd /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation
+# Navigate to project directory
+cd /mnt/evafs/groups/mi2lab/mjarosz/sd-control-and-representation
+source ./.venv/bin/activate
 
-# Create required directories
-mkdir -p logs
+# Create directories
+mkdir -p ../logs
 
-# Load environment variables from .env if present
+# Load environment variables
 if [ -f .env ]; then
   export $(cat .env | grep -v '^#' | xargs)
 fi
 
-# Display environment summary
 echo ""
 echo "Environment Configuration:"
-echo "  RESULTS_DIR: ${RESULTS_DIR:-Not set (will use default)}"
+echo "  RESULTS_DIR: ${RESULTS_DIR:-Not set}"
 echo "  HF_HOME: ${HF_HOME:-Not set}"
 echo ""
 
 #==============================================================================
 # EXPERIMENT CONFIGURATION
-# Define all parameters for SAE training
 #==============================================================================
 
-# Python script (updated path)
+# Python script
 PYTHON_SCRIPT="scripts/sae/train.py"
 
-# Dataset paths - Update these to your cached representation directories
-LAYER_NAME="unet_up_1_att_1"
-MODEL_NAME="finetuned_sd_saeuron"
-TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/${DATASET_NAME}/representations/train/${LAYER_NAME}"
-
-# Dataset name (used for WandB logging and organization)
+# Dataset configuration
 DATASET_NAME="unlearn_canvas"
 
-# Optional: Validation dataset (comment out or leave empty to train without validation)
+# Model configuration
+MODEL_NAME="finetuned_sd_saeuron"
+LAYER_NAME="unet_up_1_att_1"
+
+# Dataset paths
+TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/${DATASET_NAME}/representations/train/${LAYER_NAME}"
 VALIDATION_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/${DATASET_NAME}/representations/validation/${LAYER_NAME}"
 # VALIDATION_DATASET_PATH=""  # Uncomment to disable validation
 
-# SAE model parameters
-EXPANSION_FACTOR=16
-TOP_K=32
-LEARNING_RATE=4e-4
-NUM_EPOCHS=5
-BATCH_SIZE=4096
+#==============================================================================
+# CONFIGURATION PROFILES
+# Choose a configuration by setting CONFIG_ID (default: 0)
+
+#==============================================================================
+
+# Use SLURM_ARRAY_TASK_ID if running as job array, otherwise use CONFIG_ID
+CONFIG_ID=${SLURM_ARRAY_TASK_ID:-${CONFIG_ID:-0}}
+
+echo "Using Configuration ID: ${CONFIG_ID}"
+
+# Define configurations as arrays
+# Format: "expansion_factor:top_k:learning_rate:num_epochs:batch_size"
+CONFIGS=(
+    "8:16:4e-4:5:4096"
+    "16:32:4e-4:5:4096"
+    "16:64:4e-4:5:4096"
+    "32:64:4e-4:5:4096"
+    "8:16:1e-4:5:4096"
+    "16:32:1e-4:5:4096"
+    "16:64:1e-4:5:4096"
+    "32:64:1e-4:5:4096"
+    "8:16:1e-5:5:4096"
+    "16:32:1e-5:5:4096"
+    "16:64:1e-5:5:4096"
+    "32:64:1e-5:5:4096"
+)
+
+# Validate CONFIG_ID
+if [ ${CONFIG_ID} -ge ${#CONFIGS[@]} ]; then
+    echo "ERROR: CONFIG_ID=${CONFIG_ID} is out of range (max: $((${#CONFIGS[@]} - 1)))"
+    exit 1
+fi
+
+# Parse selected configuration
+IFS=':' read -r EXPANSION_FACTOR TOP_K LEARNING_RATE NUM_EPOCHS BATCH_SIZE <<< "${CONFIGS[$CONFIG_ID]}"
+
+echo ""
+echo "Selected Configuration [${CONFIG_ID}]:"
+echo "  Expansion Factor: ${EXPANSION_FACTOR}"
+echo "  Top-K: ${TOP_K}"
+echo "  Learning Rate: ${LEARNING_RATE}"
+echo "  Num Epochs: ${NUM_EPOCHS}"
+echo "  Batch Size: ${BATCH_SIZE}"
+echo ""
 
 # Compute SAE path
-SAE_DIR="${RESULTS_DIR:-results}/sae_models"
+SAE_DIR="${RESULTS_DIR:-results}/${MODEL_NAME}/sae/${LAYER_NAME}/trained_models"
 LEARNING_RATE_STR=$(echo "${LEARNING_RATE}" | sed 's/e-/em/g' | sed 's/e+/ep/g' | sed 's/\.//g')
-SAE_PATH="${SAE_DIR}/${LAYER_NAME}_exp${EXPANSION_FACTOR}_topk${TOP_K}_lr${LEARNING_RATE_STR}_epochs${NUM_EPOCHS}_batch${BATCH_SIZE}.pt"
+SAE_PATH="${SAE_DIR}/exp${EXPANSION_FACTOR}_topk${TOP_K}_lr${LEARNING_RATE_STR}_epochs${NUM_EPOCHS}_batch${BATCH_SIZE}.pt"
 
 #==============================================================================
 # RUN TRAINING
 #==============================================================================
-echo "Starting SAE training..."
-echo "=========================================="
+
+echo "Starting training..."
+echo ""
+
+echo "Configuration ID: ${CONFIG_ID}"
 echo "Configuration:"
 echo "  Train dataset: ${TRAIN_DATASET_PATH}"
 echo "  Validation dataset: ${VALIDATION_DATASET_PATH:-None (training without validation)}"
