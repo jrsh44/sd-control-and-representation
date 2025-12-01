@@ -1,24 +1,17 @@
 #!/bin/bash
 ################################################################################
-# SLURM Array Job Script - Prompt File Representation Generation
-# Purpose: Generate cached representations from prompt file in parallel
+# SLURM Array Job Script - Cache Representations from Prompt File
+#
+# Purpose:
+#   Generate representation caches from a prompt file (format: prompt_nr;prompt)
+#   Split workload across multiple parallel SLURM array jobs
 #
 # Usage:
 #   sbatch scripts/sd_v1_5/cache_rep_from_file.sh
 #
-# Description:
-#   This script runs parallel tasks to generate representation caches from
-#   a prompt file with format: prompt_nr;prompt
-#
-#   Results are saved to:
-#   - Cache: {RESULTS_DIR}/{model_name}/cached_representations/cc3m-wds/{layer_name}/
-#   - Logs: ../logs/cache_generation_{JOB_ID}_{TASK_ID}.log
-#
-#   Memmap cache files generated:
-#   - data.npy: memmap array of representations
-#   - metadata.pkl: full metadata with prompts
-#   - index.json: lightweight metadata for fast filtering
-#   - info.json: dataset info
+# Output:
+#   - Cache: {RESULTS_DIR}/{model_name}/{dataset_name}/representations/
+#   - Logs: ../logs/rep_gen_from_file_{JOB_ID}_{TASK_ID}.log
 ################################################################################
 
 #==============================================================================
@@ -53,7 +46,7 @@ set -eu  # Exit on error or undefined variable
 #==============================================================================
 
 echo "=========================================="
-echo "Prompt File Cache Generation Job"
+ echo "Cache Generation Job"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Task ID: ${SLURM_ARRAY_TASK_ID}"
 echo "Running on: $(hostname)"
@@ -86,9 +79,14 @@ echo ""
 # Python script
 PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_file.py"
 
+# Dataset configuration
+DATASET_NAME="cc3m-wds"
+
+# Model configuration (options: sd_v1_5, finetuned_sauron, sd_v3)
+MODEL_NAME="sd_v1_5"
+
 # Prompts configuration
 PROMPTS_FILE="data/cc3m-wds/train.txt"
-DATASET_NAME="cc3m-wds"
 NUM_PROMPTS=36000
 ARRAY_TOTAL=9
 
@@ -103,20 +101,21 @@ GUIDANCE_SCALE=7.5
 STEPS=50
 SEED=42
 
+# Other settings
 SKIP_WANDB=false
 
 LAYERS_STR="${LAYERS[@]}"
 
 echo "Task Configuration:"
 echo "  Script: ${PYTHON_SCRIPT}"
+echo "  Dataset: ${DATASET_NAME}"
+echo "  Model: ${MODEL_NAME}"
 echo "  Prompts File: ${PROMPTS_FILE}"
-echo "  Dataset Name: ${DATASET_NAME}"
 echo "  Total Prompts: ${NUM_PROMPTS}"
 echo "  Array Total: ${ARRAY_TOTAL}"
 echo "  Prompts per Job: $((${NUM_PROMPTS} / ${ARRAY_TOTAL}))"
 echo "  Task ID: ${SLURM_ARRAY_TASK_ID} (of ${ARRAY_TOTAL})"
 echo "  Layers: ${LAYERS_STR}"
-echo "  Cache Format: Memmap"
 echo "  Guidance Scale: ${GUIDANCE_SCALE}"
 echo "  Steps: ${STEPS}"
 echo "  Seed: ${SEED}"
@@ -137,16 +136,17 @@ else
 fi
 
 #==============================================================================
-# RUN CACHE GENERATION
+# RUN GENERATION
 #==============================================================================
 
-echo "Starting cache generation..."
+echo "Starting generation..."
 echo ""
 
 # Build command
 CMD="uv run ${PYTHON_SCRIPT} \
     --prompts-file ${PROMPTS_FILE} \
     --dataset-name ${DATASET_NAME} \
+    --model-name ${MODEL_NAME} \
     --num-prompts ${NUM_PROMPTS} \
     --array-id ${SLURM_ARRAY_TASK_ID} \
     --array-total ${ARRAY_TOTAL} \

@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """
-Cache representations from prompts directory and style for Stable Diffusion models.
+Generate cached representations from object prompts with optional artistic style.
 
-Structure: {results_dir}/{model_name}/{dataset_name}/representations/
-    {train|validation}/{layer_name}/
-Each dataset contains: object, style, prompt_nr, prompt_text, representation
-
-EXAMPLE:
-uv run scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.py \
+Usage:
+  uv run scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.py \
     --prompts-dir data/unlearn_canvas/prompts/test \
-    --style Impressionism \
-    --layers TEXT_EMBEDDING_FINAL UNET_UP_1_ATT_1 \
-    --skip-wandb \
-    --log-images-every 5
+    --style Impressionism --layers UNET_UP_1_ATT_1 \
+    --model-name sd_v1_5 --log-images-every 1
+
+Output: {results_dir}/{model_name}/{dataset_name}/representations/{train|validation}/{layer_name}/
 """
 
 import argparse
@@ -107,6 +103,16 @@ def parse_args() -> argparse.Namespace:
         help="List of layer names to capture",
     )
     parser.add_argument(
+        "--model-name",
+        type=str,
+        default="sd_v1_5",
+        choices=[model.name for model in ModelRegistry],
+        help=(
+            "Model to use (default: sd_v1_5). Options: "
+            + ", ".join([model.name for model in ModelRegistry])
+        ),
+    )
+    parser.add_argument(
         "--device",
         type=str,
         default="cuda",
@@ -169,7 +175,12 @@ def main():
     print("LOADING MODEL")
     print("=" * 80)
     model_load_start = time.time()
-    model_registry = ModelRegistry.FINETUNED_SAEURON
+    try:
+        model_registry = ModelRegistry[args.model_name]
+    except KeyError:
+        print(f"ERROR: Invalid model name '{args.model_name}'")
+        print(f"Available models: {', '.join([m.name for m in ModelRegistry])}")
+        return 1
     loader = ModelLoader(model_enum=model_registry)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
