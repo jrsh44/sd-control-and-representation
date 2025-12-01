@@ -1,16 +1,17 @@
 #!/bin/bash
 ################################################################################
-# SLURM Job Script - SAE Feature Selection (Concept-Based)
+# SLURM Job Script - SAE Feature Selection
+#
 # Purpose:
-#   Load a trained SAE and compute per-neuron activation difference
-#   between samples where a concept is present vs. absent.
+#   Compute per-neuron activation differences for concept detection
+#   Compares activations when concept is present vs. absent
 #
 # Usage:
-#   sbatch scripts/sae/select_features.sh
+#   sbatch scripts/sae/feature_selection.sh
 #
 # Output:
-#   - Scores: results/sae_scores/<layer>_concept_<name>_<value>.npy
-#   - Logs: logs/sae_select_<JOB_ID>.log
+#   - Scores: {RESULTS_DIR}/{model_name}/sae_scores/{layer}_concept_{name}_{value}.npy
+#   - Logs: ../logs/sae_select_{JOB_ID}.log
 ################################################################################
 
 #==============================================================================
@@ -39,22 +40,28 @@ set -eu
 #==============================================================================
 # SETUP
 #==============================================================================
+
 echo "=========================================="
+echo "SAE Feature Selection Job"
 echo "Job ID: ${SLURM_JOB_ID}"
 echo "Running on: $(hostname)"
 echo "Start: $(date)"
 echo "=========================================="
 
+# Navigate to project directory
 cd /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation
-mkdir -p logs
+source ./.venv/bin/activate
 
-# Load .env
+# Create directories
+mkdir -p ../logs
+
+# Load environment variables
 if [ -f .env ]; then
   export $(cat .env | grep -v '^#' | xargs)
 fi
 
 echo ""
-echo "Environment:"
+echo "Environment Configuration:"
 echo "  RESULTS_DIR: ${RESULTS_DIR:-Not set}"
 echo "  HF_HOME: ${HF_HOME:-Not set}"
 echo ""
@@ -66,31 +73,25 @@ echo ""
 # Python script
 PYTHON_SCRIPT="scripts/sae/feature_selection.py"
 
-# Dataset & SAE
-LAYER_NAME="unet_up_1_att_1"
-MODEL_NAME="finetuned_sd_saeuron"
-# DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/${RESULTS_DIR:-results}/${MODEL_NAME}/cached_representations/${LAYER_NAME}"
+# Dataset configuration
+DATASET_NAME="unlearn_canvas"
 DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/${DATASET_NAME}/representations/train/unet_up_1_att_1"
 
-# Dataset name (used for WandB logging and organization)
-DATASET_NAME="unlearn_canvas"
+# Model configuration
+MODEL_NAME="finetuned_sd_saeuron"
+LAYER_NAME="unet_up_1_att_1"
+SAE_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt"
 
-TOP_K=32
-
-# Concept to analyze
+# Concept configuration
 CONCEPT_NAME="object"        # e.g., object, style, timestep
 CONCEPT_VALUE="cats"          # e.g., cat, dog, Impressionism
 
-# SAE model (must exist)
-# SAE_DIR="${RESULTS_DIR:-results}/sae_models"
-# SAE_PATH="${SAE_DIR}/${LAYER_NAME}_exp16_topk32_lr1em4_epochs5_batch4096.pt"
-SAE_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt"
-
-# Output scores
+# Output configuration
 SCORES_DIR="${RESULTS_DIR:-results}/finetuned_sd_saeuron/sae_scores"
 SCORES_PATH="${SCORES_DIR}/${LAYER_NAME}_concept_${CONCEPT_NAME}_${CONCEPT_VALUE}.npy"
 
-# Runtime
+# Generation parameters
+TOP_K=32
 BATCH_SIZE=4096
 EPSILON=1e-8
 
@@ -112,8 +113,10 @@ mkdir -p "$SCORES_DIR"
 #==============================================================================
 # RUN FEATURE SELECTION
 #==============================================================================
-echo "Starting SAE feature selection..."
-echo "=========================================="
+
+echo "Starting feature selection..."
+echo ""
+
 echo "Configuration:"
 echo "  Dataset: ${DATASET_PATH}"
 echo "  SAE: ${SAE_PATH}"

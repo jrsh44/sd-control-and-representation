@@ -68,11 +68,11 @@ class RepresentationDataset(Dataset):
             print("  ℹ️  Local copy disabled via NPY_DISABLE_LOCAL_COPY environment variable")
 
         # Load info to get shape and dtype
-        info_path = layer_dir / "info.json"
-        if not info_path.exists():
-            raise ValueError(f"Missing info.json in {layer_dir}")
+        metadata_path = layer_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise ValueError(f"Missing metadata.json in {layer_dir}")
 
-        with open(info_path, "r") as f:
+        with open(metadata_path, "r") as f:
             info = json.load(f)
 
         total_samples = info["total_samples"]
@@ -96,14 +96,14 @@ class RepresentationDataset(Dataset):
         )
         print(f"  ✓ Loaded memmap: {total_samples} x {feature_dim}, dtype={dtype}")
 
-        # Load metadata from info.json if needed (for filtering or metadata)
+        # Load metadata from metadata.json if needed (for filtering or metadata)
         self._metadata = None
         self.return_timestep = return_timestep  # NEW
         if filter_fn is not None or return_metadata or indices is not None:
-            # Load metadata from info.json
+            # Load metadata from metadata.json
             self._metadata = info.get("metadata", [])
             if not self._metadata:
-                raise ValueError(f"No metadata found in {info_path}")
+                raise ValueError(f"No metadata found in {metadata_path}")
         else:
             print("  Skipping metadata load (no filtering/metadata needed) - faster startup")
 

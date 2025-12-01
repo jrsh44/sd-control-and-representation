@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-NPY memmap-based cache for fast data loading.
+Class for fast numpy memmap cache for representations.
 """
 
+import atexit
+import fcntl
 import json
+import os
+import signal
+import sys
+import time
 from pathlib import Path
 from typing import Dict
 
@@ -14,7 +20,7 @@ import torch
 class RepresentationCache:
     """
     Fast numpy memmap cache for representations.
-    Supports incremental writes without loading everything to RAM.
+    Multi-process safe: uses atomic counter + per-process metadata files.
     """
 
     def __init__(self, cache_dir: Path, use_fp16: bool = True):
@@ -28,11 +34,126 @@ class RepresentationCache:
         self.use_fp16 = use_fp16
         self.dtype = np.float16 if use_fp16 else np.float32
 
+        # Track active memmap files for each layer
         self._active_memmaps: Dict[str, Dict] = {}
 
+        # Process ID for unique metadata files
+        self.pid = os.getpid()
+
+        self._register_cleanup_handlers()
+
+    def _register_cleanup_handlers(self):
+        """
+        Register handlers to save metadata on unexpected exit.
+        """
+
+        def cleanup_handler(signum=None, frame=None):
+            print(f"\n⚠️  Process {self.pid} interrupted (signal={signum}), saving metadata...")
+            self._emergency_save_all_metadata()
+            sys.exit(1 if signum else 0)
+
+        signal.signal(signal.SIGTERM, cleanup_handler)
+        signal.signal(signal.SIGINT, cleanup_handler)
+        atexit.register(lambda: self._emergency_save_all_metadata())
+
+    def _emergency_save_all_metadata(self):
+        """
+        Save all pending metadata from all layers.
+        """
+
+        for layer_name, layer_info in self._active_memmaps.items():
+            try:
+                if layer_info["metadata"]:
+                    self._save_metadata_to_process_file(layer_name, layer_info["metadata"])
+                    metadata_count = len(layer_info["metadata"])
+                    print(f"  ✓ Saved {metadata_count} metadata entries for {layer_name}")
+            except Exception as e:
+                print(f"  ✗ Failed to save metadata for {layer_name}: {e}")
+
+    def _save_metadata_to_process_file(self, layer_name: str, metadata_list: list):
+        """
+        Save metadata to process-specific file
+
+        Args:
+            layer_name: Layer name
+            metadata_list: List of metadata entries to save
+        """
+
+        layer_dir = self.get_layer_path(layer_name)
+        metadata_file = layer_dir / f"metadata_process_{self.pid}.json"
+
+        existing = []
+        if metadata_file.exists():
+            with open(metadata_file, "r") as f:
+                existing = json.load(f)
+
+        all_metadata = existing + metadata_list
+
+        temp_file = metadata_file.with_suffix(f".tmp.{self.pid}")
+        with open(temp_file, "w") as f:
+            json.dump(all_metadata, f, indent=2)
+
+        temp_file.replace(metadata_file)
+
     def get_layer_path(self, layer_name: str) -> Path:
-        """Get storage path for a layer."""
+        """
+        Get storage path for a layer.
+
+        Args:
+            layer_name: Layer name
+
+        Returns:
+            Path to layer directory
+        """
         return self.cache_dir / f"{layer_name.lower()}"
+
+    def _atomic_increment_counter(self, layer_name: str, count: int) -> int:
+        """
+        Atomically reserve `count` indices and return starting index.
+        Thread-safe across multiple processes using atomic file rename.
+
+        Args:
+            layer_name: Layer name
+            count: Number of indices to reserve
+
+        Returns:
+            Starting index for this process
+        """
+        layer_dir = self.get_layer_path(layer_name)
+        counter_file = layer_dir / "counter.txt"
+
+        max_retries = 100
+        for attempt in range(max_retries):
+            try:
+                if counter_file.exists():
+                    with open(counter_file, "r") as f:
+                        current = int(f.read().strip())
+                else:
+                    current = 0
+
+                next_value = current + count
+
+                temp_file = counter_file.with_suffix(f".tmp.{self.pid}.{attempt}")
+                with open(temp_file, "w") as f:
+                    f.write(str(next_value))
+
+                try:
+                    temp_file.replace(counter_file)
+                    return current
+                except OSError:
+                    temp_file.unlink(missing_ok=True)
+                    time.sleep(0.001)
+                    continue
+
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise RuntimeError(
+                        f"Failed to get atomic index after {max_retries} attempts: {e}"
+                    ) from e
+                time.sleep(0.001)
+                continue
+
+        raise RuntimeError("Unreachable")
 
     def initialize_layer(self, layer_name: str, total_samples: int, feature_dim: int) -> np.memmap:
         """
@@ -50,13 +171,12 @@ class RepresentationCache:
         layer_dir.mkdir(parents=True, exist_ok=True)
 
         data_path = layer_dir / "data.npy"
-        info_path = layer_dir / "info.json"
+        metadata_path = layer_dir / "metadata.json"
 
         # Check if layer already exists
-        if info_path.exists():
+        if metadata_path.exists():
             print(f"⚠️  Layer {layer_name} already exists - skipping initialization")
-            # Load and return existing memmap
-            with open(info_path, "r") as f:
+            with open(metadata_path, "r") as f:
                 info = json.load(f)
 
             memmap_array = np.memmap(
@@ -68,9 +188,7 @@ class RepresentationCache:
 
             self._active_memmaps[layer_name] = {
                 "memmap": memmap_array,
-                "current_idx": info.get("current_count", 0),
                 "metadata": [],
-                "existing_metadata": info.get("metadata", []),
                 "total_samples": info["total_samples"],
                 "feature_dim": info["feature_dim"],
             }
@@ -92,9 +210,7 @@ class RepresentationCache:
         # Track active memmap
         self._active_memmaps[layer_name] = {
             "memmap": memmap_array,
-            "current_idx": 0,
             "metadata": [],
-            "existing_metadata": [],
             "total_samples": total_samples,
             "feature_dim": feature_dim,
         }
@@ -108,8 +224,8 @@ class RepresentationCache:
             "current_count": 0,
             "metadata": [],
         }
-        info_path = layer_dir / "info.json"
-        with open(info_path, "w") as f:
+        metadata_path = layer_dir / "metadata.json"
+        with open(metadata_path, "w") as f:
             json.dump(info, f, indent=2)
 
         print(f"Initialized NPY cache: {data_path} [{total_samples} x {feature_dim}]")
@@ -141,7 +257,6 @@ class RepresentationCache:
         """
         tensor = representation.cpu().half() if self.use_fp16 else representation.cpu()
 
-        # Expect shape: [timesteps, batch, spatial, features]
         if tensor.dim() != 4:
             raise ValueError(
                 f"Expected 4D tensor [timesteps, batch, spatial, features], "
@@ -154,14 +269,12 @@ class RepresentationCache:
         total_records = n_timesteps * n_spatial
         flat_data = tensor.reshape(total_records, n_features).numpy()
 
-        # Get or create memmap
         if layer_name not in self._active_memmaps:
             layer_dir = self.get_layer_path(layer_name)
-            info_path = layer_dir / "info.json"
+            metadata_path = layer_dir / "metadata.json"
 
-            if info_path.exists():
-                # Load existing memmap
-                with open(info_path, "r") as f:
+            if metadata_path.exists():
+                with open(metadata_path, "r") as f:
                     info = json.load(f)
 
                 data_path = layer_dir / "data.npy"
@@ -172,116 +285,32 @@ class RepresentationCache:
                     shape=(info["total_samples"], info["feature_dim"]),
                 )
 
-                # Start from current_count
-                current_idx = info.get("current_count", 0)
-
-                # Load existing metadata from info.json
-                existing_metadata = info.get("metadata", [])
-
                 self._active_memmaps[layer_name] = {
                     "memmap": memmap_array,
-                    "current_idx": current_idx,
                     "metadata": [],
-                    "existing_metadata": existing_metadata,  # Preserve old metadata
                     "total_samples": info["total_samples"],
                     "feature_dim": info["feature_dim"],
                 }
             else:
-                raise RuntimeError(
-                    f"Layer {layer_name} not initialized. "
-                )
+                raise RuntimeError(f"Layer {layer_name} not initialized.")
 
         layer_info = self._active_memmaps[layer_name]
         memmap_array = layer_info["memmap"]
-        start_idx = layer_info["current_idx"]
+
+        start_idx = self._atomic_increment_counter(layer_name, total_records)
 
         if start_idx + total_records > layer_info["total_samples"]:
-            # Auto-resize memmap if out of space
-            print("\n⚠️  Memmap full - resizing to accommodate new data...")
-            old_size = layer_info["total_samples"]
-            # Add 50% more space to avoid frequent resizes
-            new_size = old_size + max(total_records, old_size // 2)
-            print(f"   Resizing: {old_size:,} → {new_size:,} samples")
+            self._resize_memmap(layer_name, start_idx + total_records)
+            memmap_array = self._active_memmaps[layer_name]["memmap"]
 
-            layer_dir = self.get_layer_path(layer_name)
-            data_path = layer_dir / "data.npy"
-
-            # Close current memmap
-            memmap_array.flush()
-            del memmap_array
-
-            # Create larger memmap
-            old_data = np.memmap(
-                str(data_path),
-                dtype=self.dtype,
-                mode="r",
-                shape=(old_size, layer_info["feature_dim"]),
-            )
-
-            temp_path = data_path.with_suffix(".tmp")
-            new_memmap = np.memmap(
-                str(temp_path),
-                dtype=self.dtype,
-                mode="w+",
-                shape=(new_size, layer_info["feature_dim"]),
-            )
-
-            # Copy existing data
-            print(f"   Copying {old_size:,} existing samples...")
-            chunk_size = 10000
-            for chunk_start in range(0, old_size, chunk_size):
-                chunk_end = min(chunk_start + chunk_size, old_size)
-                new_memmap[chunk_start:chunk_end] = old_data[chunk_start:chunk_end]
-
-            new_memmap.flush()
-            del new_memmap
-            del old_data
-
-            # Replace old file
-            temp_path.replace(data_path)
-
-            # Reload with new size
-            memmap_array = np.memmap(
-                str(data_path),
-                dtype=self.dtype,
-                mode="r+",
-                shape=(new_size, layer_info["feature_dim"]),
-            )
-
-            layer_info["memmap"] = memmap_array
-            layer_info["total_samples"] = new_size
-
-            # Update info.json
-            info_path = layer_dir / "info.json"
-            with open(info_path, "r") as f:
-                info = json.load(f)
-            info["total_samples"] = new_size
-            with open(info_path, "w") as f:
-                json.dump(info, f, indent=2)
-
-            print("   ✓ Resize complete")
-
-        # Write data to memmap
         end_idx = start_idx + total_records
         memmap_array[start_idx:end_idx] = flat_data.astype(self.dtype)
         memmap_array.flush()
 
-        layer_info["current_idx"] = end_idx
-
-        # Update info.json with current progress
-        layer_dir = self.get_layer_path(layer_name)
-        info_path = layer_dir / "info.json"
-        if info_path.exists():
-            with open(info_path, "r") as f:
-                info = json.load(f)
-            info["current_count"] = end_idx
-            with open(info_path, "w") as f:
-                json.dump(info, f, indent=2)
-
-        # Append metadata to in-memory list
+        new_metadata = []
         for i in range(n_timesteps):
             for j in range(n_spatial):
-                layer_info["metadata"].append(
+                new_metadata.append(
                     {
                         "timestep": int(i),
                         "spatial": int(j),
@@ -294,50 +323,68 @@ class RepresentationCache:
                     }
                 )
 
-    def finalize_layer(self, layer_name: str):
-        """
-        Finalize a layer (trim memmap to actual size, close files).
-        """
-        if layer_name not in self._active_memmaps:
-            print(f"Layer {layer_name} not active, skipping finalization")
-            return
+        layer_info["metadata"].extend(new_metadata)
 
+        if len(layer_info["metadata"]) >= 10:
+            self._save_metadata_to_process_file(layer_name, layer_info["metadata"])
+            layer_info["metadata"] = []
+
+    def _resize_memmap(self, layer_name: str, min_size: int):
+        """Resize memmap to accommodate more data with advisory locking."""
         layer_info = self._active_memmaps[layer_name]
-        actual_size = layer_info["current_idx"]
-        expected_size = layer_info["total_samples"]
-
         layer_dir = self.get_layer_path(layer_name)
         data_path = layer_dir / "data.npy"
+        metadata_path = layer_dir / "metadata.json"
+        lock_file = layer_dir / "resize.lock"
 
-        if actual_size < expected_size:
-            print(f"Trimming {layer_name}: {expected_size} → {actual_size} samples")
+        lock_fd = open(lock_file, "w")
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-            # Load full memmap
-            old_memmap = layer_info["memmap"]
-            old_memmap.flush()
-            del old_memmap  # Close
+            with open(metadata_path, "r") as f:
+                info = json.load(f)
 
-            # Create trimmed version
+            current_size = info["total_samples"]
+
+            if min_size <= current_size:
+                print(f"  ℹ️  Another process already resized to {current_size}")
+                layer_info["memmap"].flush()
+                del layer_info["memmap"]
+
+                layer_info["memmap"] = np.memmap(
+                    str(data_path),
+                    dtype=self.dtype,
+                    mode="r+",
+                    shape=(current_size, layer_info["feature_dim"]),
+                )
+                layer_info["total_samples"] = current_size
+                return
+
+            new_size = max(min_size, int(current_size * 1.5))
+            print(f"  🔧 Resizing {layer_name}: {current_size:,} → {new_size:,}")
+
+            layer_info["memmap"].flush()
+            del layer_info["memmap"]
+
             old_data = np.memmap(
                 str(data_path),
                 dtype=self.dtype,
                 mode="r",
-                shape=(expected_size, layer_info["feature_dim"]),
+                shape=(current_size, layer_info["feature_dim"]),
             )
 
-            temp_path = data_path.with_suffix(".tmp")
+            temp_path = data_path.with_suffix(f".tmp.{self.pid}")
             new_memmap = np.memmap(
                 str(temp_path),
                 dtype=self.dtype,
                 mode="w+",
-                shape=(actual_size, layer_info["feature_dim"]),
+                shape=(new_size, layer_info["feature_dim"]),
             )
 
-            # Copy data in chunks to avoid OOM
             chunk_size = 10000
-            for start_idx in range(0, actual_size, chunk_size):
-                end_idx = min(start_idx + chunk_size, actual_size)
-                new_memmap[start_idx:end_idx] = old_data[start_idx:end_idx]
+            for chunk_start in range(0, current_size, chunk_size):
+                chunk_end = min(chunk_start + chunk_size, current_size)
+                new_memmap[chunk_start:chunk_end] = old_data[chunk_start:chunk_end]
 
             new_memmap.flush()
             del new_memmap
@@ -345,49 +392,75 @@ class RepresentationCache:
 
             temp_path.replace(data_path)
 
-            # Update info
-            info_path = layer_dir / "info.json"
-            with open(info_path, "r") as f:
-                info = json.load(f)
-            info["total_samples"] = actual_size
-            info["current_count"] = actual_size
-            with open(info_path, "w") as f:
+            info["total_samples"] = new_size
+            with open(metadata_path, "w") as f:
                 json.dump(info, f, indent=2)
-        else:
-            print(f"No trimming needed for {layer_name} (using {actual_size} samples)")
-            memmap_array = layer_info["memmap"]
-            memmap_array.flush()
-            del memmap_array
 
-        print(f"  Saving metadata for {layer_name}...")
+            layer_info["memmap"] = np.memmap(
+                str(data_path),
+                dtype=self.dtype,
+                mode="r+",
+                shape=(new_size, layer_info["feature_dim"]),
+            )
+            layer_info["total_samples"] = new_size
 
-        # Merge existing metadata with new entries
-        existing_metadata = layer_info.get("existing_metadata", [])
-        new_metadata = layer_info["metadata"]
+            print("  ✓ Resize complete")
 
-        if existing_metadata:
-            all_metadata = existing_metadata + new_metadata
-            print(f"    Merged {len(existing_metadata)} existing + {len(new_metadata)} new entries")
-        else:
-            all_metadata = new_metadata
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
 
-        # Update info.json with all metadata
-        info_path = layer_dir / "info.json"
-        with open(info_path, "r") as f:
+    def finalize_layer(self, layer_name: str):
+        """Finalize layer by merging all process-specific metadata files."""
+        if layer_name not in self._active_memmaps:
+            print(f"Layer {layer_name} not active, skipping finalization")
+            return
+
+        layer_info = self._active_memmaps[layer_name]
+        layer_dir = self.get_layer_path(layer_name)
+
+        if layer_info["metadata"]:
+            self._save_metadata_to_process_file(layer_name, layer_info["metadata"])
+            layer_info["metadata"] = []
+
+        layer_info["memmap"].flush()
+        del layer_info["memmap"]
+
+        print(f"  📦 Merging metadata from all processes for {layer_name}...")
+        all_metadata = []
+
+        metadata_files = sorted(layer_dir.glob("metadata_process_*.json"))
+        for metadata_file in metadata_files:
+            with open(metadata_file, "r") as f:
+                process_metadata = json.load(f)
+                all_metadata.extend(process_metadata)
+            print(f"    Loaded {len(process_metadata)} entries from {metadata_file.name}")
+
+        counter_file = layer_dir / "counter.txt"
+        actual_size = 0
+        if counter_file.exists():
+            with open(counter_file, "r") as f:
+                actual_size = int(f.read().strip())
+
+        metadata_path = layer_dir / "metadata.json"
+        with open(metadata_path, "r") as f:
             info = json.load(f)
+
         info["metadata"] = all_metadata
-        with open(info_path, "w") as f:
+        info["total_samples"] = actual_size
+        info["current_count"] = actual_size
+
+        with open(metadata_path, "w") as f:
             json.dump(info, f, indent=2)
-        print(f"    Saved {len(all_metadata)} metadata entries to info.json")
+
+        print(f"  ✓ Saved {len(all_metadata)} total metadata entries")
+        print(f"  ✓ Finalized {layer_name}: {actual_size} samples")
 
         del self._active_memmaps[layer_name]
 
-        print(f"✓ Finalized {layer_name}: {actual_size} samples")
-
     def check_exists(self, layer_name: str, object_name: str, style: str, prompt_nr: int) -> bool:
         """
-        Check if a specific representation exists.
-        Uses info.json metadata for lookups.
+        Check if a representation already exists in the cache.
 
         Args:
             layer_name: Name of the layer
@@ -399,12 +472,12 @@ class RepresentationCache:
             bool: True if representation exists
         """
         layer_dir = self.get_layer_path(layer_name)
-        info_path = layer_dir / "info.json"
+        metadata_path = layer_dir / "metadata.json"
 
-        if not info_path.exists():
+        if not metadata_path.exists():
             return False
 
-        with open(info_path, "r") as f:
+        with open(metadata_path, "r") as f:
             info = json.load(f)
 
         metadata = info.get("metadata", [])
