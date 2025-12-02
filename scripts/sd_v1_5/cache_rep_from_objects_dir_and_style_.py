@@ -31,8 +31,8 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
-from src.data import load_prompts_from_directory  # noqa: E402
 from src.data.cache import RepresentationCache  # noqa: E402
+from src.data.prompts import load_prompts_from_directory  # noqa: E402
 from src.models.config import ModelRegistry  # noqa: E402
 from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
 from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
@@ -105,10 +105,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-name",
         type=str,
-        default="sd_v1_5",
+        default="SD_V1_5",
         choices=[model.name for model in ModelRegistry],
         help=(
-            "Model to use (default: sd_v1_5). Options: "
+            "Model to use (default: SD_V1_5). Options: "
             + ", ".join([model.name for model in ModelRegistry])
         ),
     )
@@ -184,7 +184,7 @@ def main():
     loader = ModelLoader(model_enum=model_registry)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
-    model_name = model_registry.name
+    model_name = model_registry.config_name
     print(f"Model loaded: {model_name} in {model_load_time:.2f}s")
 
     # --------------------------------------------------------------------------
@@ -253,7 +253,7 @@ def main():
             },
             "model": {
                 "name": model_name,
-                "registry": model_registry.name,
+                "registry": model_registry.config_name,
                 "load_time": model_load_time,
             },
             "generation": {

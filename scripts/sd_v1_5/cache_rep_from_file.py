@@ -160,11 +160,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-name",
         type=str,
-        default="sd_v1_5",
+        default="SD_V1_5",
         choices=[model.name for model in ModelRegistry],
         help=(
-            "Model to use (default: sd_v1_5). Options: "
-            + ", ".join([model.name for model in ModelRegistry])
+            "Model to use (default: SD_V1_5). Options: "
+            + ", ".join(model.name for model in ModelRegistry)
         ),
     )
     parser.add_argument(
@@ -280,7 +280,7 @@ def main():
     loader = ModelLoader(model_enum=model_registry)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
-    model_name = model_registry.name
+    model_name = model_registry.config_name
     print(f"Model loaded: {model_name} in {model_load_time:.2f}s")
 
     # --------------------------------------------------------------------------
@@ -353,7 +353,7 @@ def main():
             },
             "model": {
                 "name": model_name,
-                "registry": model_registry.name,
+                "registry": model_registry.config_name,
                 "load_time": model_load_time,
             },
             "generation": {

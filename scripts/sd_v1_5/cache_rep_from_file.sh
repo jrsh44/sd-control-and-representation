@@ -82,8 +82,8 @@ PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_file.py"
 # Dataset configuration
 DATASET_NAME="cc3m-wds"
 
-# Model configuration (options: sd_v1_5, finetuned_sauron, sd_v3)
-MODEL_NAME="sd_v1_5"
+# Model configuration (options: SD_V1_5, FINETUNED_SAURON, SD_V3)
+MODEL_NAME="SD_V1_5"
 
 # Prompts configuration
 PROMPTS_FILE="data/cc3m-wds/train.txt"
