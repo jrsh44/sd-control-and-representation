@@ -82,8 +82,8 @@ PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_file_and_class.py"
 # Dataset configuration
 DATASET_NAME="nudity"
 
-# Model configuration (options: sd_v1_5, finetuned_sauron, sd_v3)
-MODEL_NAME="sd_v1_5"
+# Model configuration (options: SD_V1_5, FINETUNED_SAURON, SD_V3)
+MODEL_NAME="SD_V1_5"
 
 # Prompts configuration
 BASE_PROMPTS="data/nudity/prompts.txt"
