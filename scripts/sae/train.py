@@ -54,9 +54,10 @@ from overcomplete.sae import TopKSAE
 from torch.utils.data import ConcatDataset, DataLoader, Subset
 
 import wandb
-from src.models.sae.training.config import TrainingConfig
+from src.models.sae.training.config import SchedulerConfig, TrainingConfig
 from src.models.sae.training.losses import criterion_laux
 from src.models.sae.training.trainer import SAETrainer
+from src.models.sae.training.utils import create_warmup_cosine_scheduler
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -263,6 +264,30 @@ def parse_args() -> argparse.Namespace:
         default=1024,
         help="Batch size for SAE training",
     )
+
+    # Learning rate scheduler parameters
+    parser.add_argument(
+        "--warmup_steps",
+        type=int,
+        default=0,
+        help="Number of batches for linear warmup phase. "
+        "Set to 0 to disable scheduler. Default: 0 (disabled)",
+    )
+    parser.add_argument(
+        "--warmup_start_factor",
+        type=float,
+        default=0.01,
+        help="Starting LR as fraction of base LR during warmup. "
+        "E.g., 0.01 means start at 1%% of learning_rate. Default: 0.01",
+    )
+    parser.add_argument(
+        "--min_lr_ratio",
+        type=float,
+        default=0.0,
+        help="Minimum LR as fraction of base LR after cosine decay. "
+        "E.g., 0.1 means decay to 10%% of learning_rate. Default: 0.0",
+    )
+
     parser.add_argument("--skip-wandb", action="store_true")
     return parser.parse_args()
 
@@ -379,6 +404,11 @@ def main() -> int:
         if slurm_array_task_id:
             tags.append(f"array:{slurm_array_task_id}")
 
+        # Add scheduler tag if enabled
+        if args.warmup_steps > 0:
+            tags.append("scheduler:warmup_cosine")
+            tags.append(f"warmup:{args.warmup_steps}")
+
         # Initialize wandb
         if not args.skip_wandb:
             wandb.login()
@@ -403,6 +433,11 @@ def main() -> int:
                     "learning_rate": args.learning_rate,
                     "batch_size": args.batch_size,
                     "num_epochs": args.num_epochs,
+                    # Scheduler config
+                    "scheduler_enabled": args.warmup_steps > 0,
+                    "scheduler_warmup_steps": args.warmup_steps,
+                    "scheduler_warmup_start_factor": args.warmup_start_factor,
+                    "scheduler_min_lr_ratio": args.min_lr_ratio,
                     # Paths
                     "sae_path": args.sae_path,
                     "config_path": args.config_path,
@@ -413,7 +448,8 @@ def main() -> int:
                     "hostname": os.environ.get("HOSTNAME", "unknown"),
                 },
                 tags=tags,
-                notes=f"Training SAE on {args.datasets_name} ({layer_name}) with exp={args.expansion_factor}, k={args.top_k}, lr={lr_str}",
+                notes=f"Training SAE on {args.datasets_name} ({layer_name}) "
+                f"with exp={args.expansion_factor}, k={args.top_k}, lr={lr_str}",
             )
 
         # Load all datasets
@@ -535,6 +571,13 @@ def main() -> int:
             "dataset_paths": args.dataset_paths,
             "validation_percent": args.validation_percent,
             "validation_seed": args.validation_seed,
+            # Scheduler configuration
+            "scheduler": {
+                "enabled": args.warmup_steps > 0,
+                "warmup_steps": args.warmup_steps,
+                "warmup_start_factor": args.warmup_start_factor,
+                "min_lr_ratio": args.min_lr_ratio,
+            },
         }
 
         # Define optimizer
@@ -572,6 +615,31 @@ def main() -> int:
                 print("  Warning: No logs found for completed training")
                 results_logs = {"train": {}, "val": {}}
         else:
+            # Create scheduler config
+            scheduler_config = SchedulerConfig(
+                enabled=args.warmup_steps > 0,
+                warmup_steps=args.warmup_steps,
+                warmup_start_factor=args.warmup_start_factor,
+                min_lr_ratio=args.min_lr_ratio,
+            )
+
+            # Calculate total training steps for scheduler
+            total_steps = len(train_dataloader) * (args.num_epochs - start_epoch)
+
+            # Create learning rate scheduler (if enabled)
+            scheduler = create_warmup_cosine_scheduler(
+                optimizer=optimizer,
+                scheduler_config=scheduler_config,
+                total_steps=total_steps,
+            )
+
+            if scheduler is not None:
+                print("\n📈 Learning rate scheduler:")
+                print(f"   Warmup: {args.warmup_steps} steps")
+                print(f"   Start factor: {args.warmup_start_factor:.2%} of base LR")
+                print(f"   Min LR ratio: {args.min_lr_ratio:.2%} of base LR")
+                print(f"   Total steps: {total_steps}")
+
             # Create training config
             training_config = TrainingConfig(
                 nb_epochs=args.num_epochs,
@@ -588,6 +656,7 @@ def main() -> int:
                 optimizer=optimizer,
                 criterion=criterion_laux,
                 config=training_config,
+                scheduler=scheduler,
             )
 
             # Add checkpoint callback
@@ -630,6 +699,10 @@ def main() -> int:
                 # Core training metrics
                 log_dict = {
                     "epoch": epoch + 1,
+                    # Learning rate (actual LR at this epoch, important for scheduler)
+                    "train/learning_rate": train_logs.get(
+                        "learning_rate", [args.learning_rate] * num_logged_epochs
+                    )[epoch],
                     # Training metrics - loss components
                     "train/loss": train_logs["avg_loss"][epoch],
                     "train/recon_loss": train_logs.get("recon_loss", [0] * num_logged_epochs)[

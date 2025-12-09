@@ -3,8 +3,42 @@ Configuration dataclasses for SAE training.
 """
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional
+
+
+@dataclass
+class SchedulerConfig:
+    """
+    Configuration for learning rate scheduler with warmup and cosine annealing.
+    """
+
+    enabled: bool = False
+    warmup_steps: int = 0  # Number of batches for warmup phase
+    warmup_start_factor: float = 0.01  # Start at 1% of base LR
+    min_lr_ratio: float = 0.0  # Minimum LR as ratio of base LR (eta_min)
+
+    def to_dict(self) -> Dict:
+        """
+        Convert to dictionary for JSON serialization.
+
+        Returns:
+            Dictionary representation of the config.
+        """
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "SchedulerConfig":
+        """
+        Create from dictionary.
+
+        Args:
+            d: Dictionary with config values.
+
+        Returns:
+            SchedulerConfig instance.
+        """
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 @dataclass
