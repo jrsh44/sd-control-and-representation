@@ -10,7 +10,8 @@
 #   sbatch scripts/sae/train.sh
 #
 # Output:
-#   - Model: {RESULTS_DIR}/{model_name}/sae/{layer}/trained_models/exp{X}_topk{Y}_lr{Z}_epochs{E}_batch{B}.pt
+#   - Model: {RESULTS_DIR}/{model_name}/sae/{datasets_name}/{layer}/exp{X}_topk{Y}_lr{Z}_ep{E}_bs{B}/model.pt
+#   - Config: {RESULTS_DIR}/{model_name}/sae/{datasets_name}/{layer}/exp{X}_topk{Y}_lr{Z}_ep{E}_bs{B}/config.json
 #   - Logs: ../logs/sae_train_{JOB_ID}_{TASK_ID}.log
 ################################################################################
 
@@ -19,15 +20,16 @@
 #==============================================================================
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sae_train                # Name in queue
-#SBATCH --time 0-6:00:00                   # Max 6 hours
+#SBATCH --time 0-22:00:00                   # Max 22 hours
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
-#SBATCH --cpus-per-task 12                  # CPU cores for data processing
-#SBATCH --mem 100G                          # 100GB RAM (for large batches)
+#SBATCH --cpus-per-task 24                  # CPU cores for data processing
+#SBATCH --mem 256G                          # 256GB RAM (for large batches)
 #SBATCH --partition short                   # Queue name
 #SBATCH --output ../logs/sae_train_%A_%a.log  # %A=job ID, %a=task ID
 #SBATCH --array=0-11%3                       # Job array for multiple configurations
+#SBATCH --nodelist=dgx-1
 
 
 # Optional email notification
@@ -76,17 +78,20 @@ echo ""
 # Python script
 PYTHON_SCRIPT="scripts/sae/train.py"
 
-# Dataset configuration
-DATASET_NAME="unlearn_canvas"
+# Dataset configuration 
+DATASETS_NAME="cc3m-wds_nudity"
 
 # Model configuration
-MODEL_NAME="finetuned_sd_saeuron"
+MODEL_NAME="sd_v1_5"
+# LAYER_NAME="unet_up_1_att_1"
 LAYER_NAME="unet_up_1_att_1"
 
-# Dataset paths
-TRAIN_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/${DATASET_NAME}/representations/train/${LAYER_NAME}"
-VALIDATION_DATASET_PATH="${RESULTS_DIR:-results}/${MODEL_NAME}/${DATASET_NAME}/representations/validation/${LAYER_NAME}"
-# VALIDATION_DATASET_PATH=""  # Uncomment to disable validation
+# Dataset paths (can be multiple, space-separated)
+DATASET_PATHS="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/cc3m-wds/representations/unet_up_1_att_1 /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1"
+
+# Validation settings
+VALIDATION_PERCENT="10"  # Use N% for validation (set to 0 to disable)
+VALIDATION_SEED="42"     # Seed for reproducible splits
 
 #==============================================================================
 # CONFIGURATION PROFILES
@@ -134,10 +139,13 @@ echo "  Num Epochs: ${NUM_EPOCHS}"
 echo "  Batch Size: ${BATCH_SIZE}"
 echo ""
 
-# Compute SAE path
-SAE_DIR="${RESULTS_DIR:-results}/${MODEL_NAME}/sae/${LAYER_NAME}/trained_models"
+# Compute SAE output directory and paths
+# Structure: {RESULTS_DIR}/{model}/sae/{datasets_name}/{layer}/exp{X}_topk{Y}_lr{Z}_ep{E}_bs{B}/
 LEARNING_RATE_STR=$(echo "${LEARNING_RATE}" | sed 's/e-/em/g' | sed 's/e+/ep/g' | sed 's/\.//g')
-SAE_PATH="${SAE_DIR}/exp${EXPANSION_FACTOR}_topk${TOP_K}_lr${LEARNING_RATE_STR}_epochs${NUM_EPOCHS}_batch${BATCH_SIZE}.pt"
+CONFIG_NAME="exp${EXPANSION_FACTOR}_topk${TOP_K}_lr${LEARNING_RATE_STR}_ep${NUM_EPOCHS}_bs${BATCH_SIZE}"
+SAE_DIR="${RESULTS_DIR:-results}/${MODEL_NAME}/sae/${DATASETS_NAME}/${LAYER_NAME}/${CONFIG_NAME}"
+SAE_PATH="${SAE_DIR}/model.pt"
+CONFIG_PATH="${SAE_DIR}/config.json"
 
 #==============================================================================
 # RUN TRAINING
@@ -148,10 +156,13 @@ echo ""
 
 echo "Configuration ID: ${CONFIG_ID}"
 echo "Configuration:"
-echo "  Train dataset: ${TRAIN_DATASET_PATH}"
-echo "  Validation dataset: ${VALIDATION_DATASET_PATH:-None (training without validation)}"
+echo "  Datasets name: ${DATASETS_NAME}"
+echo "  Dataset path(s): ${DATASET_PATHS}"
+echo "  Validation: ${VALIDATION_PERCENT}% split"
 echo "  Cache format: Memmap"
-echo "  SAE path: ${SAE_PATH}"
+echo "  SAE directory: ${SAE_DIR}"
+echo "  SAE model: ${SAE_PATH}"
+echo "  SAE config: ${CONFIG_PATH}"
 echo "  Expansion factor: ${EXPANSION_FACTOR}"
 echo "  Top-K: ${TOP_K}"
 echo "  Learning rate: ${LEARNING_RATE}"
@@ -159,24 +170,19 @@ echo "  Epochs: ${NUM_EPOCHS}"
 echo "  Batch size: ${BATCH_SIZE}"
 echo "=========================================="
 
-# Build command with required arguments
+# Build command
 CMD="uv run ${PYTHON_SCRIPT} \
-    --train_dataset_path ${TRAIN_DATASET_PATH} \
+    --dataset_paths ${DATASET_PATHS} \
     --sae_path ${SAE_PATH} \
-    --dataset_name ${DATASET_NAME} \
+    --config_path ${CONFIG_PATH} \
+    --datasets_name ${DATASETS_NAME} \
     --expansion_factor ${EXPANSION_FACTOR} \
     --top_k ${TOP_K} \
     --learning_rate ${LEARNING_RATE} \
     --num_epochs ${NUM_EPOCHS} \
-    --batch_size ${BATCH_SIZE}"
-
-# Add optional validation dataset if provided
-if [ -n "${VALIDATION_DATASET_PATH}" ] && [ "${VALIDATION_DATASET_PATH}" != "" ]; then
-    CMD="${CMD} --test_dataset_path ${VALIDATION_DATASET_PATH}"
-    echo "Validation: ENABLED"
-else
-    echo "Validation: DISABLED"
-fi
+    --batch_size ${BATCH_SIZE} \
+    --validation_percent ${VALIDATION_PERCENT} \
+    --validation_seed ${VALIDATION_SEED}"
 
 # Add --skip-wandb flag if you want to skip wandb logging
 # CMD="${CMD} --skip-wandb"
