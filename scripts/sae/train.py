@@ -815,43 +815,44 @@ def main() -> int:
 
             # Log final summary metrics
             train_logs = results_logs["train"]
-            wandb.run.summary.update(
-                {
-                    "final/train_loss": train_logs["avg_loss"][-1],
-                    "final/train_r2": train_logs["r2"][-1],
-                    "final/train_dead_pct": train_logs["dead_features"][-1] * 100,
-                    "final/total_epochs": num_logged_epochs,
-                    "final/total_time_s": sum(train_logs["time_epoch"]),
-                    "final/avg_epoch_time_s": sum(train_logs["time_epoch"]) / num_logged_epochs,
-                    "final/total_data_loading_time_s": sum(
-                        train_logs.get("data_loading_time", [0])
-                    ),
-                    "final/total_batch_compute_time_s": sum(
-                        train_logs.get("batch_compute_time", [0])
-                    ),
-                }
-            )
-
-            if "val" in results_logs and results_logs["val"] is not None:
-                val_logs = results_logs["val"]
+            if wandb.run is not None:
                 wandb.run.summary.update(
                     {
-                        "final/val_loss": val_logs["avg_loss"][-1],
-                        "final/val_r2": val_logs["r2"][-1],
-                        "final/val_dead_pct": val_logs["dead_features"][-1] * 100,
-                        "final/best_val_loss": min(val_logs["avg_loss"]),
-                        "final/best_val_r2": max(val_logs["r2"]),
-                        "final/val_encoder_avg_max_cos": val_logs.get("encoder_avg_max_cos", [0])[
-                            -1
-                        ],
-                        "final/val_decoder_avg_max_cos": val_logs.get("decoder_avg_max_cos", [0])[
-                            -1
-                        ],
-                        "final/val_active_features_0.1": val_logs.get("active_features_0.1", [0])[
-                            -1
-                        ],
+                        "final/train_loss": train_logs["avg_loss"][-1],
+                        "final/train_r2": train_logs["r2"][-1],
+                        "final/train_dead_pct": train_logs["dead_features"][-1] * 100,
+                        "final/total_epochs": num_logged_epochs,
+                        "final/total_time_s": sum(train_logs["time_epoch"]),
+                        "final/avg_epoch_time_s": sum(train_logs["time_epoch"]) / num_logged_epochs,
+                        "final/total_data_loading_time_s": sum(
+                            train_logs.get("data_loading_time", [0])
+                        ),
+                        "final/total_batch_compute_time_s": sum(
+                            train_logs.get("batch_compute_time", [0])
+                        ),
                     }
                 )
+
+                if "val" in results_logs and results_logs["val"] is not None:
+                    val_logs = results_logs["val"]
+                    wandb.run.summary.update(
+                        {
+                            "final/val_loss": val_logs["avg_loss"][-1],
+                            "final/val_r2": val_logs["r2"][-1],
+                            "final/val_dead_pct": val_logs["dead_features"][-1] * 100,
+                            "final/best_val_loss": min(val_logs["avg_loss"]),
+                            "final/best_val_r2": max(val_logs["r2"]),
+                            "final/val_encoder_avg_max_cos": val_logs.get(
+                                "encoder_avg_max_cos", [0]
+                            )[-1],
+                            "final/val_decoder_avg_max_cos": val_logs.get(
+                                "decoder_avg_max_cos", [0]
+                            )[-1],
+                            "final/val_active_features_0.1": val_logs.get(
+                                "active_features_0.1", [0]
+                            )[-1],
+                        }
+                    )
 
         # Save the trained model and config
         sae_path.parent.mkdir(parents=True, exist_ok=True)
