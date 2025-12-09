@@ -40,7 +40,7 @@ class SAETrainer:
         optimizer: torch.optim.Optimizer,
         criterion: Callable,
         config: TrainingConfig,
-        scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
+        scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
     ):
         """
         Initialize the trainer.
