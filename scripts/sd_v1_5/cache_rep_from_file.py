@@ -32,7 +32,12 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
-from src.data.cache import RepresentationCache  # noqa: E402
+from src.data.cache import (  # noqa: E402
+    RepresentationCache,
+    calculate_layer_dimensions,
+    calculate_total_samples,
+    initialize_cache_from_dimensions,
+)
 from src.data.prompts import load_base_prompts  # noqa: E402
 from src.models.config import ModelRegistry  # noqa: E402
 from src.models.sd_v1_5.hooks import capture_layer_representations  # noqa: E402
@@ -303,7 +308,12 @@ def main():
     # --------------------------------------------------------------------------
     # 4. Setup Cache and Load Prompts
     # --------------------------------------------------------------------------
-    cache = RepresentationCache(cache_dir, use_fp16=True)
+    cache = RepresentationCache(
+        cache_dir,
+        use_fp16=True,
+        array_id=args.array_id,
+        array_total=args.array_total,
+    )
 
     print("\nLoading prompts...")
     raw_prompts = load_base_prompts(prompts_file)
@@ -325,11 +335,50 @@ def main():
 
     total_prompts = len(selected_prompts)
 
-    print(f"  Selected prompts: {total_prompts}")
+    # --------------------------------------------------------------------------
+    # 5. Pre-allocate Cache
+    # --------------------------------------------------------------------------
+    # Calculate total prompts
+    if args.num_prompts:
+        # --num-prompts specifies total across all jobs
+        total_prompts_all_jobs = args.num_prompts
+    elif args.prompt_range:
+        total_prompts_all_jobs = total_prompts
+    else:
+        total_prompts_all_jobs = len(all_prompts)
+
+    print("\n" + "=" * 80)
+    print("PRE-ALLOCATING CACHE")
+    print("=" * 80)
+    print(f"Total prompts (all jobs): {total_prompts_all_jobs:,}")
+    print(f"This job's prompts: {total_prompts:,}")
+
+    # Probe dimensions with single dummy inference
+    layer_dims = calculate_layer_dimensions(
+        pipe=pipe,
+        layer_paths=layers_to_capture,
+        num_inference_steps=args.steps,
+        guidance_scale=args.guidance_scale,
+        device=device,
+    )
+
+    # Calculate total samples needed for ALL prompts (not just this job's chunk)
+    total_samples = calculate_total_samples(
+        num_prompts=total_prompts_all_jobs,
+        layer_dims=layer_dims,
+        safety_margin=1.0,  # No margin needed with exact pre-calculation
+    )
+
+    # Pre-initialize all layers with full size
+    initialize_cache_from_dimensions(cache, layer_dims, total_samples, total_prompts_all_jobs)
+
+    print("=" * 80)
+
+    print(f"\n  Selected prompts: {total_prompts}")
     print(f"  Layers: {len(layers_to_capture)}")
 
     # --------------------------------------------------------------------------
-    # 5. Initialize WandB
+    # 6. Initialize WandB
     # --------------------------------------------------------------------------
     if not args.skip_wandb:
         wandb.login()
@@ -394,30 +443,37 @@ def main():
         print(f"🚀 WandB Initialized: {run_name}")
 
     # --------------------------------------------------------------------------
-    # 6. Generation
+    # 7. Generation
     # --------------------------------------------------------------------------
+    existing_prompt_nrs = set()
+    if not args.skip_existence_check:
+        print("\n🔍 Checking for existing representations...")
+        for layer in layers_to_capture:
+            layer_existing = cache.get_existing_prompt_nrs(layer.name)
+            if not existing_prompt_nrs:
+                existing_prompt_nrs = layer_existing
+            else:
+                # Only skip if ALL layers have it
+                existing_prompt_nrs = existing_prompt_nrs.intersection(layer_existing)
+        print(f"  Found {len(existing_prompt_nrs)} already cached prompts")
+
+    # Filter out already-cached prompts
+    prompts_to_generate = {
+        nr: prompt for nr, prompt in selected_prompts.items() if nr not in existing_prompt_nrs
+    }
+    skipped_generations = len(selected_prompts) - len(prompts_to_generate)
+
     # Generation statistics
     total_generations = 0
-    skipped_generations = 0
     failed_generations = 0
     total_inference_time = 0.0
     total_save_time = 0.0
 
-    print(f"\nStarting generation for {total_prompts} prompts...")
+    print(f"\nStarting generation for {len(prompts_to_generate)} prompts...")
+    print(f"  (skipping {skipped_generations} already cached)")
     print("=" * 80)
 
-    for prompt_nr, prompt in sorted(selected_prompts.items()):
-        # Check if all layers already have this representation
-        if not args.skip_existence_check:
-            all_exist = all(
-                cache.check_exists(layer.name, "", "", prompt_nr) for layer in layers_to_capture
-            )
-
-            if all_exist:
-                skipped_generations += 1
-                print(f"  [{prompt_nr}] ⏭️  Skipping (already cached)")
-                continue
-
+    for prompt_nr, prompt in sorted(prompts_to_generate.items()):
         # Generate with optional style
         print(f"  [{prompt_nr}] 🎨 Generating: {prompt[:60]}...")
 
@@ -442,28 +498,8 @@ def main():
             save_start = time.time()
             for layer, tensor in zip(layers_to_capture, representations, strict=True):
                 if tensor is not None:
-                    # Auto-initialize layer on first save
-                    if layer.name not in cache._active_memmaps:
-                        # Calculate total samples for this layer
-                        n_timesteps, _, n_spatial, n_features = tensor.shape
-                        samples_per_prompt = n_timesteps * n_spatial
-                        total_samples_estimate = total_prompts * samples_per_prompt
-
-                        print(f"\n  📦 Initializing layer '{layer.name}'")
-                        print(f"     Shape per prompt: [{n_timesteps}, {n_spatial}, {n_features}]")
-                        print(f"     Samples per prompt: {samples_per_prompt}")
-                        print(f"     Estimated total: {total_samples_estimate:,}")
-
-                        cache.initialize_layer(
-                            layer_name=layer.name,
-                            total_samples=total_samples_estimate,
-                            feature_dim=n_features,
-                        )
-
                     cache.save_representation(
                         layer_name=layer.name,
-                        object_name="",
-                        style="",
                         prompt_nr=prompt_nr,
                         prompt_text=prompt,
                         representation=tensor,
@@ -517,7 +553,7 @@ def main():
             traceback.print_exc()
 
     # --------------------------------------------------------------------------
-    # 7. Finalize and Save
+    # 8. Finalize and Save
     # --------------------------------------------------------------------------
     # Save all accumulated metadata
     print("\n💾 Finalizing cache...")
