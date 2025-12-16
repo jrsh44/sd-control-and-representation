@@ -3,6 +3,7 @@ SAE Trainer class for structured training with callbacks and logging.
 """
 
 import time
+import warnings
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional
 
@@ -26,6 +27,12 @@ from .metrics import (
 )
 from .utils import extract_input, get_dictionary
 
+warnings.filterwarnings(
+    "ignore",
+    message="Detected call of `lr_scheduler.step\\(\\)` before `optimizer.step\\(\\)`",
+    category=UserWarning,
+)
+
 
 class SAETrainer:
     """
@@ -41,6 +48,7 @@ class SAETrainer:
         criterion: Callable,
         config: TrainingConfig,
         scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
+        base_lr: Optional[float] = None,
     ):
         """
         Initialize the trainer.
@@ -51,12 +59,18 @@ class SAETrainer:
             criterion: Loss function
             config: Training configuration
             scheduler: Optional learning rate scheduler
+            base_lr: Base learning rate (before scheduler modifications).
+                     If None, uses current optimizer LR.
         """
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
         self.config = config
         self.scheduler = scheduler
+
+        # Store base learning rate (before scheduler modifies it)
+        # If not provided, use current optimizer LR
+        self.base_lr = base_lr if base_lr is not None else optimizer.param_groups[0]["lr"]
 
         self.device = (
             torch.device(config.device) if isinstance(config.device, str) else config.device
@@ -120,6 +134,10 @@ class SAETrainer:
 
         for epoch in range(self.config.start_epoch, self.config.nb_epochs):
             self.state.current_epoch = epoch
+
+            # Set epoch on sampler if it has set_epoch method (for reproducible shuffling)
+            if hasattr(train_dataloader.sampler, "set_epoch"):
+                train_dataloader.sampler.set_epoch(epoch)
 
             train_metrics = self._train_epoch(train_dataloader, epoch)
             self._log_epoch_metrics("train", train_metrics)
@@ -580,7 +598,13 @@ class SAETrainer:
         print(f"Device: {self.device}")
         print(f"Mixed Precision: {'Enabled' if self.scaler else 'Disabled'}")
         print(f"Optimizer: {self.optimizer.__class__.__name__}")
-        print(f"Learning rate: {self.optimizer.param_groups[0]['lr']}")
+        current_lr = self.optimizer.param_groups[0]["lr"]
+        if self.scheduler is not None and current_lr != self.base_lr:
+            print(
+                f"Learning rate: {self.base_lr} (base), {current_lr:.2e} (initial after warmup start)"
+            )
+        else:
+            print(f"Learning rate: {current_lr}")
         print(f"Aux loss alpha: {self.config.aux_loss_alpha}")
         print(f"Log interval: {self.config.log_interval} batches")
         if self.config.start_epoch > 0:
