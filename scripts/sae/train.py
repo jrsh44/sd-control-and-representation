@@ -47,17 +47,15 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Iterator
 
+import numpy as np
 import torch
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
-from torch.utils.data import ConcatDataset, DataLoader, Subset
+from torch.utils.data import ConcatDataset, DataLoader, Sampler, Subset
 
 import wandb
-from src.models.sae.training.config import SchedulerConfig, TrainingConfig
-from src.models.sae.training.losses import criterion_laux
-from src.models.sae.training.trainer import SAETrainer
-from src.models.sae.training.utils import create_warmup_cosine_scheduler
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -67,15 +65,20 @@ if str(project_root) not in sys.path:
 load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.dataset import RepresentationDataset  # noqa: E402
+from src.models.sae.training.config import SchedulerConfig, TrainingConfig  # noqa: E402
+from src.models.sae.training.losses import criterion_laux  # noqa: E402
+from src.models.sae.training.trainer import SAETrainer  # noqa: E402
+from src.models.sae.training.utils import create_warmup_cosine_scheduler  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
 
 
 def get_optimal_dataloader_params(is_cuda: bool) -> dict:
     """
-    Calculate optimal DataLoader parameters to maximize device utilization.
+    Calculate optimal DataLoader parameters.
 
-    For memmap datasets (especially on /tmp), I/O is essentially instant,
-    so we maximize workers and prefetch to keep the GPU fully saturated.
+    For memmap datasets, the bottleneck is typically I/O (especially on network FS).
+    More workers help with prefetching, but too many can cause memory pressure
+    from Python interpreter overhead and page cache contention.
 
     Args:
         is_cuda: Whether using CUDA (GPU)
@@ -97,7 +100,13 @@ def get_optimal_dataloader_params(is_cuda: bool) -> dict:
     else:
         available_cpus = os.cpu_count() or 4
 
-    num_workers = max(2, available_cpus - 2)
+    # Can override with DATALOADER_NUM_WORKERS environment variable
+    num_workers_override = os.environ.get("DATALOADER_NUM_WORKERS")
+    if num_workers_override:
+        num_workers = int(num_workers_override)
+    else:
+        # Use most available CPUs, leave 2 for main process
+        num_workers = max(2, available_cpus - 2)
 
     return {
         "num_workers": num_workers,
@@ -143,6 +152,8 @@ def save_checkpoint(
     config: dict,
 ):
     """Save a training checkpoint."""
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
     checkpoint = {
         "epoch": epoch,
         "model_state_dict": model.state_dict(),
@@ -317,6 +328,105 @@ def load_dataset_from_path(dataset_path: str) -> RepresentationDataset:
     )
 
 
+class ShuffledRangeSampler(Sampler[int]):
+    """
+    Memory-efficient sampler that regenerates indices from seed.
+
+    This sampler does NOT store any index arrays. Instead, it regenerates
+    the shuffled indices on-the-fly using the seed.
+    """
+
+    def __init__(
+        self,
+        total_size: int,
+        start_idx: int,
+        end_idx: int,
+        shuffle: bool = True,
+        seed: int = 42,
+        chunk_size: int = 1_000_000,
+    ):
+        """
+        Args:
+            total_size: Total dataset size (for permutation generation)
+            start_idx: Start index in the shuffled order (inclusive)
+            end_idx: End index in the shuffled order (exclusive)
+            shuffle: Whether to shuffle iteration order each epoch
+            seed: Random seed for reproducible shuffling
+            chunk_size: Chunk size for memory-efficient iteration
+        """
+        self._total_size = total_size
+        self._start = start_idx
+        self._end = end_idx
+        self._length = end_idx - start_idx
+        self._shuffle = shuffle
+        self._seed = seed
+        self._chunk_size = chunk_size
+        self.epoch = 0
+
+    def _get_indices_chunk(self, chunk_start: int, chunk_end: int) -> np.ndarray:
+        """
+        Get a chunk of the shuffled indices by regenerating from seed.
+
+        Args:
+            chunk_start: Start index of the chunk (relative to sampler)
+            chunk_end: End index of the chunk (relative to sampler)
+
+        Returns:
+            Numpy array of indices for the specified chunk
+
+        """
+
+        # Use the same seed every time to get consistent permutation
+        rng = np.random.default_rng(self._seed)
+        # Generate full permutation
+        full_perm = rng.permutation(self._total_size)
+        # Return only our chunk from within our assigned range
+        return full_perm[self._start + chunk_start : self._start + chunk_end]
+
+    def __iter__(self) -> Iterator[int]:
+        # We need to iterate over indices [_start, _end) from the master permutation
+        # But we don't want to store the full permutation
+
+        # Strategy: Generate full permutation once per epoch, iterate in chunks
+        rng_master = np.random.default_rng(self._seed)
+        full_perm = rng_master.permutation(self._total_size)
+
+        # Extract our slice
+        my_indices = full_perm[self._start : self._end]
+        del full_perm
+
+        if self._shuffle:
+            # Shuffle our slice for this epoch
+            rng_epoch = np.random.default_rng(self._seed + self.epoch + 1000)
+            n_chunks = (self._length + self._chunk_size - 1) // self._chunk_size
+            chunk_order = rng_epoch.permutation(n_chunks)
+
+            for chunk_idx in chunk_order:
+                chunk_start = chunk_idx * self._chunk_size
+                chunk_end = min(chunk_start + self._chunk_size, self._length)
+
+                chunk = my_indices[chunk_start:chunk_end].copy()
+                rng_epoch.shuffle(chunk)
+
+                for idx in chunk:
+                    yield int(idx)
+
+                del chunk
+        else:
+            # No shuffle - iterate in order through our slice
+            for idx in my_indices:
+                yield int(idx)
+
+        del my_indices
+
+    def __len__(self) -> int:
+        return self._length
+
+    def set_epoch(self, epoch: int) -> None:
+        """Set epoch for reproducible per-epoch shuffling."""
+        self.epoch = epoch
+
+
 def create_train_val_split(dataset, val_percent: int, seed: int):
     """
     Split a dataset into train and validation subsets.
@@ -327,28 +437,36 @@ def create_train_val_split(dataset, val_percent: int, seed: int):
         seed: Random seed for reproducibility
 
     Returns:
-        train_dataset, val_dataset (val_dataset is None if val_percent is 0)
+        (dataset, train_sampler, val_sampler) - samplers are None if val_percent is 0
     """
     if val_percent <= 0 or val_percent >= 100:
-        return dataset, None
+        return dataset, None, None
 
     n_samples = len(dataset)
     n_val = int(n_samples * val_percent / 100)
     n_train = n_samples - n_val
 
-    # Generate reproducible indices
-    generator = torch.Generator().manual_seed(seed)
-    indices = torch.randperm(n_samples, generator=generator).tolist()
+    # Create stateless samplers - they regenerate indices from seed
+    # Memory per sampler: ~100 bytes (just stores integers)
+    # Each worker regenerates the permutation independently
+    train_sampler = ShuffledRangeSampler(
+        total_size=n_samples,
+        start_idx=0,
+        end_idx=n_train,
+        shuffle=True,
+        seed=seed,
+    )
+    val_sampler = ShuffledRangeSampler(
+        total_size=n_samples,
+        start_idx=n_train,
+        end_idx=n_samples,
+        shuffle=False,
+        seed=seed,
+    )
 
-    train_indices = indices[:n_train]
-    val_indices = indices[n_train:]
+    print(f"  Split: {n_train:,} train, {n_val:,} validation samples")
 
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
-
-    print(f"  Split: {n_train} train, {n_val} validation samples")
-
-    return train_dataset, val_dataset
+    return dataset, train_sampler, val_sampler
 
 
 def main() -> int:
@@ -452,6 +570,15 @@ def main() -> int:
                 f"with exp={args.expansion_factor}, k={args.top_k}, lr={lr_str}",
             )
 
+            # Define separate x-axes for batch and epoch metrics
+            # This prevents batch step numbers from affecting epoch metrics
+            wandb.define_metric("batch/*", step_metric="batch/step")
+            wandb.define_metric("train/*", step_metric="epoch")
+            wandb.define_metric("val/*", step_metric="epoch")
+            wandb.define_metric("gap/*", step_metric="epoch")
+            wandb.define_metric("hparams/*", step_metric="epoch")
+            wandb.define_metric("meta/*", step_metric="epoch")
+
         # Load all datasets
         print("\nLoading datasets...")
         datasets = []
@@ -487,12 +614,15 @@ def main() -> int:
                     "input_dim": input_dim,
                     "nb_concepts": nb_concepts,
                     "total_samples": len(combined_dataset),
-                }
+                },
+                allow_val_change=True,
             )
 
         # Handle validation dataset
         validation_dataset = None
         training_dataset = combined_dataset
+        train_sampler = None
+        val_sampler = None
 
         if args.test_dataset_path:
             # Use separate validation dataset
@@ -500,14 +630,16 @@ def main() -> int:
             validation_dataset = load_dataset_from_path(args.test_dataset_path)
             print(f"Validation dataset: {len(validation_dataset)} samples")
         elif args.validation_percent > 0:
-            # Create internal train/val split
+            # Create internal train/val split with memory-efficient samplers
             print(
                 f"\nCreating {args.validation_percent}% validation split "
                 f"(seed={args.validation_seed})..."
             )
-            training_dataset, validation_dataset = create_train_val_split(
+            training_dataset, train_sampler, val_sampler = create_train_val_split(
                 combined_dataset, args.validation_percent, args.validation_seed
             )
+            # training_dataset is the original combined_dataset (no Subset wrapping)
+            # samplers handle the index subsetting
         else:
             print("\nNo validation dataset - training without validation")
 
@@ -524,16 +656,36 @@ def main() -> int:
             print(f"  (SLURM_CPUS_PER_TASK={os.environ['SLURM_CPUS_PER_TASK']})")
 
         # Prepare DataLoaders
-        train_dataloader = DataLoader(
-            training_dataset,
-            batch_size=args.batch_size,
-            shuffle=True,
-            **dl_params,
-        )
+        # Use sampler if available (memory-efficient for large datasets)
+        # When using sampler, shuffle must be False (sampler handles shuffling)
+        if train_sampler is not None:
+            train_dataloader = DataLoader(
+                training_dataset,
+                batch_size=args.batch_size,
+                sampler=train_sampler,
+                **dl_params,
+            )
+        else:
+            train_dataloader = DataLoader(
+                training_dataset,
+                batch_size=args.batch_size,
+                shuffle=True,
+                **dl_params,
+            )
 
-        # Create validation dataloader only if validation dataset exists
+        # Create validation dataloader only if validation sampler or dataset exists
         val_dataloader = None
-        if validation_dataset is not None:
+        if val_sampler is not None:
+            # Using sampler-based validation (from internal split)
+            val_dataloader = DataLoader(
+                training_dataset,  # Same dataset, different sampler
+                batch_size=args.batch_size,
+                sampler=val_sampler,
+                **dl_params,
+            )
+            print(f"Validation dataloader: {len(val_dataloader)} batches")
+        elif validation_dataset is not None:
+            # Using separate validation dataset
             val_dataloader = DataLoader(
                 validation_dataset,
                 batch_size=args.batch_size,
@@ -634,8 +786,14 @@ def main() -> int:
             )
 
             if scheduler is not None:
+                actual_warmup = (
+                    min(args.warmup_steps, total_steps - 1) if args.warmup_steps > 0 else 0
+                )
                 print("\n📈 Learning rate scheduler:")
-                print(f"   Warmup: {args.warmup_steps} steps")
+                if actual_warmup < args.warmup_steps:
+                    print(f"   Warmup: {actual_warmup} steps (clamped from {args.warmup_steps})")
+                else:
+                    print(f"   Warmup: {args.warmup_steps} steps")
                 print(f"   Start factor: {args.warmup_start_factor:.2%} of base LR")
                 print(f"   Min LR ratio: {args.min_lr_ratio:.2%} of base LR")
                 print(f"   Total steps: {total_steps}")
@@ -657,12 +815,57 @@ def main() -> int:
                 criterion=criterion_laux,
                 config=training_config,
                 scheduler=scheduler,
+                base_lr=args.learning_rate,
             )
+
+            # Add batch callback for WandB logging (logs every N batches)
+            if not args.skip_wandb:
+                batch_log_interval = 10  # Log every N batches
+
+                def wandb_batch_callback(step, batch_idx, epoch, metrics):
+                    """Log batch metrics to WandB."""
+                    # Only log every N batches to avoid overwhelming WandB
+                    if batch_idx % batch_log_interval != 0:
+                        return
+
+                    # Filter out None and infinite values
+                    log_dict = {"batch/step": step, "batch/epoch": epoch}
+
+                    metric_mappings = {
+                        "batch/loss": "loss",
+                        "batch/recon_loss": "recon_loss",
+                        "batch/aux_loss": "aux_loss",
+                        "batch/r2": "r2",
+                        "batch/l0_sparsity": "l0_sparsity",
+                        "batch/z_l2": "z_l2",
+                        "batch/mean_activation": "mean_activation",
+                        "batch/active_ratio": "active_ratio",
+                    }
+
+                    for wandb_key, metric_key in metric_mappings.items():
+                        value = metrics.get(metric_key)
+                        if value is not None and not (
+                            isinstance(value, float)
+                            and (value != value or abs(value) == float("inf"))
+                        ):
+                            log_dict[wandb_key] = value
+
+                    # Add learning rate
+                    if scheduler is not None:
+                        try:
+                            log_dict["batch/learning_rate"] = scheduler.get_last_lr()[0]
+                        except Exception:
+                            pass
+
+                    wandb.log(log_dict, step=step)
+
+                trainer.add_batch_callback(wandb_batch_callback)
 
             # Add checkpoint callback
             def checkpoint_callback(
-                model, optimizer, epoch, _train_metrics, _val_metrics, train_logs, val_logs
+                model, optimizer, epoch, train_metrics, val_metrics, train_logs, val_logs
             ):
+                _ = train_metrics, val_metrics  # Unused, but required
                 save_checkpoint(
                     checkpoint_path=checkpoint_path,
                     model=model,
