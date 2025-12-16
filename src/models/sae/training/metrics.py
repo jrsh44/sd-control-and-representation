@@ -54,16 +54,31 @@ def compute_sparsity_metrics(z: torch.Tensor) -> dict:
         - active_ratio: Ratio of active (non-zero) features
     """
     l0_per_sample = l0_eps(z, 0).mean().item()
-    z_l2 = l2(z).item()
+    z_l2_raw = l2(z).item()
+
+    # Guard against infinity/nan values
+    if not torch.isfinite(torch.tensor(z_l2_raw)):
+        z_l2 = 0.0
+    else:
+        z_l2 = z_l2_raw
 
     nonzero_mask = z.abs() > 1e-8
     active_ratio = nonzero_mask.float().mean().item()
 
+    mean_act = z.abs().mean().item()
+    max_act = z.abs().max().item()
+
+    # Guard against infinity in other metrics too
+    if not torch.isfinite(torch.tensor(mean_act)):
+        mean_act = 0.0
+    if not torch.isfinite(torch.tensor(max_act)):
+        max_act = 0.0
+
     return {
         "l0_sparsity": l0_per_sample,
         "z_l2": z_l2,
-        "mean_activation": z.abs().mean().item(),
-        "max_activation": z.abs().max().item(),
+        "mean_activation": mean_act,
+        "max_activation": max_act,
         "active_ratio": active_ratio,
     }
 
