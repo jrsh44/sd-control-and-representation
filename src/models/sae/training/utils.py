@@ -41,7 +41,11 @@ def create_warmup_cosine_scheduler(
         return None
 
     # Clamp warmup_steps to be less than total_steps
+    original_warmup_steps = warmup_steps
     warmup_steps = min(warmup_steps, total_steps - 1)
+    if warmup_steps < original_warmup_steps:
+        print(f"  ⚠️  WARNING: warmup_steps ({original_warmup_steps}) > total_steps ({total_steps})")
+        print(f"     Clamping warmup_steps to {warmup_steps}")
     cosine_steps = total_steps - warmup_steps
 
     # Get base learning rate for eta_min calculation
