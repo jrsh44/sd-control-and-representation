@@ -21,15 +21,15 @@
 
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sd_rep_gen_from_file_and_class            # Name in queue
-#SBATCH --time 0-2:00:00                    # Max 1 hour per task
+#SBATCH --time 0-18:00:00                    # Max 3 hours per task
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
 #SBATCH --cpus-per-task 8                  # CPU cores for data processing
 #SBATCH --mem 64G                           # 64GB RAM (for large batches)
-#SBATCH --partition short                   # Queue name
+#SBATCH --partition short,experimental                   # Queue name
 #SBATCH --output ../logs/sd_rep_gen_from_file_and_class_%A_%a.log   # %A=job ID, %a=task ID
-#SBATCH --array=0-3%2                       # 4 tasks, max 2 running at once
+#SBATCH --array=0-3%4                       # 4 tasks, max 2 running at once
 
 # Optional: email notifications
 #SBATCH --mail-user=01180694@pw.edu.pl
@@ -132,7 +132,7 @@ SEED=42
 SKIP_WANDB=false
 
 # Log images every N steps
-LOG_IMAGES_EVERY=10
+LOG_IMAGES_EVERY=1
 
 #==============================================================================
 # TASK MAPPING
