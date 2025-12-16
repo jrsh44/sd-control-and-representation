@@ -198,13 +198,16 @@ class RepresentationDataset(Dataset):
         shared copy, so cleanup only happens when the last process exits.
         """
         import fcntl
+        import hashlib
         import time
 
         # Create unique tmp directory for this SLURM job array (shared across tasks)
         # Use SLURM_ARRAY_JOB_ID if available (shared), otherwise SLURM_JOB_ID
         array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID", "")
         job_id = array_job_id if array_job_id else os.environ.get("SLURM_JOB_ID", "local")
-        tmp_dir = Path(f"/tmp/npy_cache_{job_id}_{layer_name}")  # noqa: S108
+
+        path_hash = hashlib.sha256(str(source_path).encode()).hexdigest()[:8]
+        tmp_dir = Path(f"/tmp/npy_cache_{job_id}_{layer_name}_{path_hash}")  # noqa: S108
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
         tmp_path = tmp_dir / "data.npy"
