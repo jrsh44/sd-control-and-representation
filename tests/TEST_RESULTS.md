@@ -30,47 +30,50 @@ pytest tests/ -v
 
 **Latest Execution:**
 - **Date:** December 17, 2025
-- **Total Tests:** 29
-- **Passed:** 29
+- **Total Tests:** 32
+- **Passed:** 32
 - **Failed:** 0
-- **Execution Time:** 88.56 seconds
+- **Execution Time:** 409.15 seconds (6:49)
 
 ```
-=========================================== test session starts ============================================
+================================================= test session starts ==================================================
 platform linux -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0
-collected 29 items
+collected 32 items
 
 tests/test_cache.py::test_cache_initialization PASSED                                                [  3%]
 tests/test_cache.py::test_cache_fp32_vs_fp16 PASSED                                                  [  6%]
-tests/test_cache.py::test_save_metadata PASSED                                                       [ 10%]
-tests/test_cache.py::test_initialize_layer PASSED                                                    [ 13%]
-tests/test_cache.py::test_atomic_counter PASSED                                                      [ 17%]
-tests/test_cache.py::test_save_representation PASSED                                                 [ 20%]
-tests/test_dataset.py::test_dataset_initialization PASSED                                            [ 24%]
-tests/test_dataset.py::test_dataset_getitem PASSED                                                   [ 27%]
-tests/test_dataset.py::test_dataset_filtering PASSED                                                 [ 31%]
-tests/test_dataset.py::test_dataset_with_metadata PASSED                                             [ 34%]
-tests/test_dataset.py::test_dataset_with_timestep PASSED                                             [ 37%]
-tests/test_dataset.py::test_dataset_with_indices PASSED                                              [ 41%]
-tests/test_dataset.py::test_dataset_missing_layer PASSED                                             [ 44%]
-tests/test_prompts.py::test_load_prompts_from_directory PASSED                                       [ 48%]
-tests/test_prompts.py::test_load_base_prompts PASSED                                                 [ 51%]
-tests/test_prompts.py::test_load_classes_file PASSED                                                 [ 55%]
-tests/test_prompts.py::test_build_prompts_by_class PASSED                                            [ 58%]
-tests/test_sae_training.py::test_compute_avg_max_cosine_similarity PASSED                            [ 62%]
-tests/test_sae_training.py::test_criterion_laux PASSED                                               [ 65%]
-tests/test_sae_training.py::test_extract_input PASSED                                                [ 68%]
-tests/test_sae_training.py::test_compute_reconstruction_error PASSED                                 [ 72%]
-tests/test_sae_training.py::test_log_metrics PASSED                                                  [ 75%]
-tests/test_sae_training.py::test_extract_input_error PASSED                                          [ 79%]
-tests/test_sd_v1_5.py::test_layer_path_enum PASSED                                                   [ 82%]
-tests/test_sd_v1_5.py::test_get_nested_module_basic PASSED                                           [ 86%]
-tests/test_sd_v1_5.py::test_get_nested_module_deep PASSED                                            [ 89%]
-tests/test_visualization.py::test_display_image PASSED                                               [ 93%]
-tests/test_visualization.py::test_display_sequence PASSED                                            [ 96%]
-tests/test_visualization.py::test_display_gif PASSED                                                 [100%]
+tests/test_cache.py::test_save_metadata PASSED                                                       [  9%]
+tests/test_cache.py::test_initialize_layer PASSED                                                    [ 12%]
+tests/test_cache.py::test_atomic_counter PASSED                                                      [ 15%]
+tests/test_cache.py::test_save_representation PASSED                                                 [ 18%]
+tests/test_dataset.py::test_dataset_initialization PASSED                                            [ 21%]
+tests/test_dataset.py::test_dataset_getitem PASSED                                                   [ 25%]
+tests/test_dataset.py::test_dataset_filtering PASSED                                                 [ 28%]
+tests/test_dataset.py::test_dataset_with_metadata PASSED                                             [ 31%]
+tests/test_dataset.py::test_dataset_with_timestep PASSED                                             [ 34%]
+tests/test_dataset.py::test_dataset_with_indices PASSED                                              [ 37%]
+tests/test_dataset.py::test_dataset_missing_layer PASSED                                             [ 40%]
+tests/test_prompts.py::test_load_prompts_from_directory PASSED                                       [ 43%]
+tests/test_prompts.py::test_load_base_prompts PASSED                                                 [ 46%]
+tests/test_prompts.py::test_load_classes_file PASSED                                                 [ 50%]
+tests/test_prompts.py::test_build_prompts_by_class PASSED                                            [ 53%]
+tests/test_sae_training.py::test_compute_avg_max_cosine_similarity PASSED                            [ 56%]
+tests/test_sae_training.py::test_criterion_laux PASSED                                               [ 59%]
+tests/test_sae_training.py::test_extract_input PASSED                                                [ 62%]
+tests/test_sae_training.py::test_compute_reconstruction_error PASSED                                 [ 65%]
+tests/test_sae_training.py::test_log_metrics PASSED                                                  [ 68%]
+tests/test_sae_training.py::test_extract_input_error PASSED                                          [ 71%]
+tests/test_sd_v1_5.py::test_layer_path_enum PASSED                                                   [ 75%]
+tests/test_sd_v1_5.py::test_get_nested_module_basic PASSED                                           [ 78%]
+tests/test_sd_v1_5.py::test_get_nested_module_deep PASSED                                            [ 81%]
+tests/test_visualization.py::test_display_image PASSED                                               [ 84%]
+tests/test_visualization.py::test_display_sequence PASSED                                            [ 87%]
+tests/test_visualization.py::test_display_gif PASSED                                                 [ 90%]
+tests/test_visualization.py::test_display_image_invalid_input PASSED                                 [ 93%]
+tests/test_visualization.py::test_display_sequence_empty_list PASSED                                 [ 96%]
+tests/test_visualization.py::test_display_sequence_sampling PASSED                                   [100%]
 
-====================================== 29 passed in 88.56s (0:01:28) =======================================
+============================================ 32 passed in 409.15s (0:06:49) ============================================
 ```
 
 ---
@@ -227,21 +230,36 @@ tests/test_visualization.py::test_display_gif PASSED                            
 
 ---
 
-### Visualization Tests (test_visualization.py) - 3 tests
+### Visualization Tests (test_visualization.py) - 6 tests
 
 **test_display_image**
-- **Purpose:** Tests single image display function
-- **What it tests:** Creates test image and verifies display function runs without errors
+- **Purpose:** Tests single image display function with mocked matplotlib
+- **What it tests:** Creates test image, calls display_image(), and verifies plt.imshow and plt.show are called correctly with the image
 - **Result:** ✅ PASSED
 
 **test_display_sequence**
-- **Purpose:** Tests displaying a sequence of images
-- **What it tests:** Creates a list of images and verifies sequence display works
+- **Purpose:** Tests displaying a sequence of images with mocked matplotlib
+- **What it tests:** Creates 3 images, calls display_sequence(), and verifies plt.imshow is called for each image and plt.show is called once
 - **Result:** ✅ PASSED
 
 **test_display_gif**
-- **Purpose:** Tests GIF display functionality
-- **What it tests:** Creates frames and verifies GIF can be displayed in headless environment
+- **Purpose:** Tests GIF display functionality with mocked IPython display
+- **What it tests:** Creates frames, calls display_gif(), and verifies IPython.display.display is called to show the GIF
+- **Result:** ✅ PASSED
+
+**test_display_image_invalid_input**
+- **Purpose:** Tests error handling for invalid input to display_image
+- **What it tests:** Passes a string instead of PIL Image and verifies plt.show is not called (error is handled gracefully)
+- **Result:** ✅ PASSED
+
+**test_display_sequence_empty_list**
+- **Purpose:** Tests edge case handling for empty image list
+- **What it tests:** Passes empty list to display_sequence() and verifies plt.show is not called (handled gracefully)
+- **Result:** ✅ PASSED
+
+**test_display_sequence_sampling**
+- **Purpose:** Tests display_sequence sampling rate logic
+- **What it tests:** Creates 10 images with sampling_rate=3, verifies plt.imshow is called 4 times (indices 0, 3, 6, 9 - last always included)
 - **Result:** ✅ PASSED
 
 ---
@@ -255,8 +273,8 @@ tests/test_visualization.py::test_display_gif PASSED                            
 | Prompts | 4 | 4 | Directory loading, CSV parsing, class files, prompt building |
 | SAE Training | 6 | 6 | Similarity, loss, input extraction, reconstruction, logging, errors |
 | SD v1.5 | 3 | 3 | Layer enumeration, module access, deep nesting |
-| Visualization | 3 | 3 | Image display, sequences, GIF rendering |
-| **TOTAL** | **29** | **29** | **100% pass rate** |
+| Visualization | 6 | 6 | Mocked matplotlib/IPython, error handling, edge cases, sampling logic |
+| **TOTAL** | **32** | **32** | **100% pass rate** |
 
 ---
 
@@ -265,5 +283,6 @@ tests/test_visualization.py::test_display_gif PASSED                            
 - All tests run on **CPU only** (CUDA_VISIBLE_DEVICES="" is set in conftest.py)
 - PyTorch behavior is identical on CPU vs GPU for logic testing
 - Tests requiring GPU are marked with `@pytest.mark.requires_gpu` and skipped on CPU
-- Total test execution time: ~88.56 seconds
-- Added 13 new tests: 3 cache, 7 dataset, 3 training
+- Total test execution time: ~409 seconds (6:49)
+- **Visualization tests use mocking** to avoid headless environment issues - they verify function calls instead of actual display
+- Added 16 new tests total: 3 cache, 7 dataset, 3 training, 3 visualization error/edge cases
