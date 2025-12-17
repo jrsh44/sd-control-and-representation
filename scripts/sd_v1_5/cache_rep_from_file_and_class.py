@@ -107,10 +107,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-name",
         type=str,
-        default="sd_v1_5",
+        default="SD_V1_5",
         choices=[model.name for model in ModelRegistry],
         help=(
-            "Model to use (default: sd_v1_5). Options: "
+            "Model to use (default: SD_V1_5). Options: "
             + ", ".join([model.name for model in ModelRegistry])
         ),
     )
@@ -172,7 +172,7 @@ def main():
     loader = ModelLoader(model_enum=model_registry)
     pipe = loader.load_model(device=device)
     model_load_time = time.time() - model_load_start
-    model_name = model_registry.name
+    model_name = model_registry.config_name
     print(f"Model loaded: {model_name} in {model_load_time:.2f}s")
 
     # --------------------------------------------------------------------------
@@ -276,7 +276,7 @@ def main():
             },
             "model": {
                 "name": model_name,
-                "registry": model_registry.name,
+                "registry": model_registry.config_name,
                 "load_time": model_load_time,
             },
             "generation": {
@@ -311,6 +311,20 @@ def main():
     # --------------------------------------------------------------------------
     # 6. Generation
     # --------------------------------------------------------------------------
+    # Load existing (prompt_nr, object, style) tuples ONCE at start
+    # We use get_existing_entries because prompt_nr alone is not unique across classes/styles
+    existing_entries: set = set()
+    if not args.skip_existence_check:
+        print("\n🔍 Checking for existing representations...")
+        for layer in layers_to_capture:
+            layer_existing = cache.get_existing_entries(layer.name)
+            if not existing_entries:
+                existing_entries = layer_existing
+            else:
+                # Only skip if ALL layers have it
+                existing_entries = existing_entries.intersection(layer_existing)
+        print(f"  Found {len(existing_entries)} already cached (prompt_nr, class, style) entries")
+
     # Generation statistics
     total_generations = 0
     skipped_generations = 0
@@ -321,24 +335,20 @@ def main():
     print(f"\nStarting generation for {total_prompts} prompts...")
     print("=" * 80)
 
+    # Style is empty string by default (can be extended later)
+    current_style = ""
+
     for group_label, prompts in prompts_by_group.items():
         # group_label is Class Name (e.g. "dog") or Dataset Name (if direct mode)
         print(f"\n[Group: {group_label}] Processing {len(prompts)} prompts...")
 
         for prompt_nr, prompt_text in prompts.items():
-            # Check existence
-            if not args.skip_existence_check:
-                # In direct mode, style=""
-                # In class mode, usually we treat class_label as object_name and style as empty
-                # cache structure: layer / object_name (group) / style / prompt_nr
-                all_exist = all(
-                    cache.check_exists(layer.name, group_label, "", prompt_nr)
-                    for layer in layers_to_capture
-                )
-                if all_exist:
-                    skipped_generations += 1
-                    print(f"  [{prompt_nr}] ⏭️  Skipping (already cached)")
-                    continue
+            # Check existence using (prompt_nr, object_name, style) key
+            entry_key = (prompt_nr, group_label, current_style)
+            if entry_key in existing_entries:
+                skipped_generations += 1
+                print(f"  [{prompt_nr}] ⏭️  Skipping (already cached)")
+                continue
 
             print(f"  [{prompt_nr}] 🎨 Generating: {prompt_text[:60]}...")
 
@@ -384,13 +394,12 @@ def main():
 
                         cache.save_representation(
                             layer_name=layer.name,
-                            object_name=group_label,
-                            style="",
                             prompt_nr=prompt_nr,
                             prompt_text=prompt_text,
                             representation=tensor,
                             num_steps=args.steps,
                             guidance_scale=args.guidance_scale,
+                            object_name=group_label,
                         )
                 save_time = time.time() - save_start
                 total_save_time += save_time

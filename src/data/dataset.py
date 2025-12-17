@@ -4,10 +4,11 @@ Fast memmap-based dataset for representations.
 
 import json
 import os
+import random
 import shutil
 import signal
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -100,10 +101,10 @@ class RepresentationDataset(Dataset):
         self._metadata = None
         self.return_timestep = return_timestep  # NEW
         if filter_fn is not None or return_metadata or indices is not None:
-            # Load metadata from metadata.json
-            self._metadata = info.get("metadata", [])
+            # Load entries from metadata.json (can be "entries" or "metadata" key)
+            self._metadata = info.get("entries", info.get("metadata", []))
             if not self._metadata:
-                raise ValueError(f"No metadata found in {metadata_path}")
+                raise ValueError(f"No entries/metadata found in {metadata_path}")
         else:
             print("  Skipping metadata load (no filtering/metadata needed) - faster startup")
 
@@ -134,6 +135,14 @@ class RepresentationDataset(Dataset):
         print(f"  Data shape: {self._full_data.shape}")
         print(f"  Dtype: {self._full_data.dtype}")
         print(f"  Size on disk: {data_path.stat().st_size / 1e9:.2f} GB")
+
+        # Store feature_dim as instance variable for external access
+        self._feature_dim = feature_dim
+
+    @property
+    def feature_dim(self) -> int:
+        """Return the feature dimension of the representations."""
+        return self._feature_dim
 
     def __len__(self):
         if self.use_direct_indexing:
@@ -179,62 +188,104 @@ class RepresentationDataset(Dataset):
             return False
 
     def _copy_to_local_tmp(self, source_path: Path, layer_name: str) -> Path:
-        """Copy data file to local /tmp for fast access with safety checks"""
+        """
+        Copy data file to local /tmp for fast access with safety checks.
+
+        Uses file locking to ensure only one process copies the file when
+        multiple SLURM array jobs run on the same node.
+
+        Uses reference counting to track how many processes are using the
+        shared copy, so cleanup only happens when the last process exits.
+        """
+        import fcntl
+        import hashlib
         import time
 
-        # Create unique tmp directory for this job
-        job_id = os.environ.get("SLURM_JOB_ID", "local")
-        tmp_dir = Path(f"/tmp/npy_cache_{job_id}_{layer_name}")  # noqa: S108
+        # Create unique tmp directory for this SLURM job array (shared across tasks)
+        # Use SLURM_ARRAY_JOB_ID if available (shared), otherwise SLURM_JOB_ID
+        array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID", "")
+        job_id = array_job_id if array_job_id else os.environ.get("SLURM_JOB_ID", "local")
+
+        path_hash = hashlib.sha256(str(source_path).encode()).hexdigest()[:8]
+        tmp_dir = Path(f"/tmp/npy_cache_{job_id}_{layer_name}_{path_hash}")  # noqa: S108
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
         tmp_path = tmp_dir / "data.npy"
+        lock_path = tmp_dir / ".copy.lock"
+        done_path = tmp_dir / ".copy.done"
+        refcount_path = tmp_dir / ".refcount"
 
-        if tmp_path.exists():
-            print(f"  ✓ Local copy already exists: {tmp_path}")
-            return tmp_path
+        # Use file locking for all operations to ensure atomicity
+        with open(lock_path, "w") as lock_file:
+            try:
+                # Try to acquire exclusive lock (non-blocking first)
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    # Another process is copying, wait for it
+                    print("  ⏳ Another process is copying data, waiting...")
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # Blocking wait
 
-        # Verify /tmp has enough space
-        file_size_bytes = source_path.stat().st_size
-        file_size_gb = file_size_bytes / 1e9
+                # After acquiring lock, check if copy was completed by another process
+                if done_path.exists() and tmp_path.exists():
+                    # Increment refcount and return
+                    count = 0
+                    if refcount_path.exists():
+                        try:
+                            count = int(refcount_path.read_text().strip() or "0")
+                        except (ValueError, OSError):
+                            count = 0
+                    refcount_path.write_text(str(count + 1))
+                    print(f"  ✓ Local copy ready (refcount={count + 1}): {tmp_path}")
+                    return tmp_path
 
-        stat = os.statvfs("/tmp")  # noqa: S108
-        available_bytes = stat.f_bavail * stat.f_frsize
-        available_gb = available_bytes / 1e9
+                # We have the lock and need to do the copy
+                # Verify /tmp has enough space
+                file_size_bytes = source_path.stat().st_size
+                file_size_gb = file_size_bytes / 1e9
 
-        # 20% margin for safety
-        required_gb = file_size_gb * 1.2
+                stat = os.statvfs("/tmp")  # noqa: S108
+                available_bytes = stat.f_bavail * stat.f_frsize
+                available_gb = available_bytes / 1e9
 
-        if available_gb < required_gb:
-            print("  ⚠️  WARNING: Insufficient /tmp space!")
-            print(f"     Need: {required_gb:.1f}GB, Available: {available_gb:.1f}GB")
-            print("     Skipping local copy - will use network storage (slower)")
-            print("     Request node with more /tmp space or use smaller dataset")
-            return source_path  # Fall back to network storage
+                # 20% margin for safety
+                required_gb = file_size_gb * 1.2
 
-        print(f"  ✓ /tmp space check: {available_gb:.1f}GB available, {required_gb:.1f}GB needed")
+                if available_gb < required_gb:
+                    print("  ⚠️  WARNING: Insufficient /tmp space!")
+                    print(f"     Need: {required_gb:.1f}GB, Available: {available_gb:.1f}GB")
+                    print("     Skipping local copy - will use network storage (slower)")
+                    return source_path  # Fall back to network storage
 
-        # Copy file with progress
-        print(f"  📦 Copying {file_size_gb:.2f}GB to local /tmp...")
-        start = time.time()
+                print(f"  ✓ /tmp space: {available_gb:.1f}GB available, {required_gb:.1f}GB needed")
 
-        try:
-            shutil.copy2(source_path, tmp_path)
-        except OSError as e:
-            print(f"  ✗ Copy failed: {e}")
-            print("     Falling back to network storage")
-            # Clean up partial copy
-            if tmp_path.exists():
-                tmp_path.unlink()
-            if tmp_dir.exists() and not list(tmp_dir.iterdir()):
-                tmp_dir.rmdir()
-            return source_path  # Fall back to network storage
+                # Copy file with progress
+                print(f"  📦 Copying {file_size_gb:.2f}GB to local /tmp...")
+                start = time.time()
 
-        elapsed = time.time() - start
-        speed_gbps = file_size_gb / elapsed if elapsed > 0 else 0
-        print(f"  ✓ Copy complete in {elapsed:.1f}s ({speed_gbps:.2f} GB/s)")
-        print(f"  ✓ Using local copy: {tmp_path}")
+                try:
+                    shutil.copy2(source_path, tmp_path)
+                    # Mark copy as complete and set initial refcount
+                    done_path.touch()
+                    refcount_path.write_text("1")  # First user
+                except OSError as e:
+                    print(f"  ✗ Copy failed: {e}")
+                    print("     Falling back to network storage")
+                    # Clean up partial copy
+                    if tmp_path.exists():
+                        tmp_path.unlink()
+                    return source_path  # Fall back to network storage
 
-        return tmp_path
+                elapsed = time.time() - start
+                speed_gbps = file_size_gb / elapsed if elapsed > 0 else 0
+                print(f"  ✓ Copy complete in {elapsed:.1f}s ({speed_gbps:.2f} GB/s)")
+                print(f"  ✓ Using local copy (refcount=1): {tmp_path}")
+
+                return tmp_path
+
+            finally:
+                # Release lock
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def _register_cleanup(self):
         """Register cleanup handlers for signals"""
@@ -249,14 +300,178 @@ class RepresentationDataset(Dataset):
         signal.signal(signal.SIGTERM, signal_handler)
 
     def __del__(self):
-        """Cleanup local copy on dataset destruction"""
-        if hasattr(self, "_local_copy_path") and self._local_copy_path:
-            try:
-                if "/tmp/npy_cache_" in str(self._local_copy_path):  # noqa: S108
-                    tmp_dir = self._local_copy_path.parent
-                    if tmp_dir.exists():
+        """Cleanup local copy only when last user exits (reference counting)"""
+        if not hasattr(self, "_local_copy_path") or not self._local_copy_path:
+            return
+
+        if "/tmp/npy_cache_" not in str(self._local_copy_path):  # noqa: S108
+            return
+
+        try:
+            import fcntl
+
+            tmp_dir = self._local_copy_path.parent
+            lock_path = tmp_dir / ".copy.lock"
+            refcount_path = tmp_dir / ".refcount"
+
+            if not tmp_dir.exists():
+                return
+
+            with open(lock_path, "w") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                try:
+                    # Read and decrement refcount
+                    count = 1
+                    if refcount_path.exists():
+                        try:
+                            count = int(refcount_path.read_text().strip() or "1")
+                        except (ValueError, OSError):
+                            count = 1
+                    count -= 1
+
+                    if count <= 0:
+                        # Last user - safe to delete
+                        # Release lock before deleting (lock file is inside tmp_dir)
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
                         shutil.rmtree(tmp_dir, ignore_errors=True)
-                        print(f"\n  🧹 Cleaned up local copy: {tmp_dir}")
-                        self._local_copy_path = None
-            except Exception:  # noqa: S110
-                pass  # Ignore cleanup errors
+                        print(f"\n  🧹 Cleaned up local copy (last user): {tmp_dir}")
+                    else:
+                        # Other tasks still using it
+                        refcount_path.write_text(str(count))
+                        print(f"\n  ℹ️  Local copy still in use by {count} task(s)")
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except Exception:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    raise
+
+            self._local_copy_path = None
+        except Exception:  # noqa: S110
+            pass  # Ignore cleanup errors
+
+    @staticmethod
+    def compute_train_val_indices(
+        metadata_path: Path,
+        validation_percent: float = 10.0,
+        seed: int = 42,
+    ) -> Tuple[List[int], List[int]]:
+        """
+        Compute train/val indices by splitting at the prompt level.
+
+        This ensures all samples from a single prompt stay together
+        in either train or validation set.
+
+        Args:
+            metadata_path: Path to metadata.json file
+            validation_percent: Percentage for validation (0-100)
+            seed: Random seed for reproducibility
+
+        Returns:
+            (train_indices, val_indices) - Lists of sample indices
+        """
+        with open(metadata_path, "r") as f:
+            info = json.load(f)
+
+        entries = info.get("entries", [])
+        if not entries:
+            raise ValueError(f"No entries found in {metadata_path}")
+
+        # Get unique prompt keys
+        prompt_to_entries: Dict[Tuple, List[int]] = {}
+        for i, entry in enumerate(entries):
+            key = (entry["prompt_nr"], entry.get("object", ""))
+            if key not in prompt_to_entries:
+                prompt_to_entries[key] = []
+            prompt_to_entries[key].append(i)
+
+        # Shuffle prompts and split
+        prompt_keys = list(prompt_to_entries.keys())
+        random.seed(seed)
+        random.shuffle(prompt_keys)
+
+        n_val = max(1, int(len(prompt_keys) * validation_percent / 100))
+        val_prompt_keys = set(prompt_keys[:n_val])
+
+        # Collect sample indices for each split
+        train_indices = []
+        val_indices = []
+
+        for entry in entries:
+            key = (entry["prompt_nr"], entry.get("object", ""))
+            start_idx = entry["start_idx"]
+            end_idx = entry["end_idx"]
+
+            # Add all sample indices for this entry
+            sample_indices = list(range(start_idx, end_idx))
+
+            if key in val_prompt_keys:
+                val_indices.extend(sample_indices)
+            else:
+                train_indices.extend(sample_indices)
+
+        return train_indices, val_indices
+
+    @classmethod
+    def create_train_val_split(
+        cls,
+        cache_dir: Path,
+        layer_name: str,
+        validation_percent: float = 10.0,
+        seed: int = 42,
+        **kwargs,
+    ) -> Tuple["RepresentationDataset", "RepresentationDataset"]:
+        """
+        Create train and validation datasets from a single data source.
+
+        This is MUCH more efficient than copying data - it uses index-based
+        splitting so both datasets share the same underlying memmap file.
+
+        Args:
+            cache_dir: Base cache directory
+            layer_name: Layer name (e.g., 'unet_up_1_att_1')
+            validation_percent: Percentage for validation (0-100)
+            seed: Random seed for reproducibility
+            **kwargs: Additional arguments passed to RepresentationDataset
+
+        Returns:
+            (train_dataset, val_dataset) tuple
+
+        Example:
+            train_ds, val_ds = RepresentationDataset.create_train_val_split(
+                cache_dir=Path("/path/to/representations"),
+                layer_name="unet_up_1_att_1",
+                validation_percent=10.0,
+            )
+        """
+        layer_dir = cache_dir / layer_name
+        metadata_path = layer_dir / "metadata.json"
+
+        print(f"Computing train/val split for {layer_name}...")
+        train_indices, val_indices = cls.compute_train_val_indices(
+            metadata_path=metadata_path,
+            validation_percent=validation_percent,
+            seed=seed,
+        )
+
+        print(f"  Train: {len(train_indices):,} samples")
+        print(f"  Val: {len(val_indices):,} samples")
+
+        # Create datasets with pre-computed indices
+        # Note: use_local_copy only for train to avoid double copying
+        train_dataset = cls(
+            cache_dir=cache_dir,
+            layer_name=layer_name,
+            indices=train_indices,
+            use_local_copy=kwargs.pop("use_local_copy", True),
+            **kwargs,
+        )
+
+        # Val dataset shares the same memmap - no local copy needed
+        val_dataset = cls(
+            cache_dir=cache_dir,
+            layer_name=layer_name,
+            indices=val_indices,
+            use_local_copy=False,  # Share memmap with train
+            **kwargs,
+        )
+
+        return train_dataset, val_dataset
