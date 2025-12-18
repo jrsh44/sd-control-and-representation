@@ -53,7 +53,7 @@ import numpy as np
 import torch
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
-from torch.utils.data import ConcatDataset, DataLoader, Sampler, Subset
+from torch.utils.data import ConcatDataset, DataLoader, Sampler
 
 import wandb
 
@@ -296,6 +296,14 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Minimum LR as fraction of base LR after cosine decay. "
         "E.g., 0.1 means decay to 10%% of learning_rate. Default: 0.0",
+    )
+
+    # Auxiliary loss parameter
+    parser.add_argument(
+        "--aux_loss_alpha",
+        type=float,
+        default=1 / 32,
+        help="Weight for auxiliary loss component. Default: 1/32 (0.03125)",
     )
 
     parser.add_argument("--skip-wandb", action="store_true")
@@ -555,6 +563,8 @@ def main() -> int:
                     "scheduler_warmup_steps": args.warmup_steps,
                     "scheduler_warmup_start_factor": args.warmup_start_factor,
                     "scheduler_min_lr_ratio": args.min_lr_ratio,
+                    # Loss config
+                    "aux_loss_alpha": args.aux_loss_alpha,
                     # Paths
                     "sae_path": args.sae_path,
                     "config_path": args.config_path,
@@ -722,6 +732,8 @@ def main() -> int:
             "dataset_paths": args.dataset_paths,
             "validation_percent": args.validation_percent,
             "validation_seed": args.validation_seed,
+            # Loss configuration
+            "aux_loss_alpha": args.aux_loss_alpha,
             # Scheduler configuration
             "scheduler": {
                 "enabled": args.warmup_steps > 0,
@@ -805,6 +817,7 @@ def main() -> int:
                 log_interval=10,
                 device=device,
                 start_epoch=start_epoch,
+                aux_loss_alpha=args.aux_loss_alpha,
             )
 
             # Create trainer
