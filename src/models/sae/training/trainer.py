@@ -45,7 +45,6 @@ class SAETrainer:
         self,
         model: torch.nn.Module,
         optimizer: torch.optim.Optimizer,
-        criterion: Callable,
         config: TrainingConfig,
         scheduler: Optional[torch.optim.lr_scheduler.LRScheduler] = None,
         base_lr: Optional[float] = None,
@@ -56,7 +55,6 @@ class SAETrainer:
         Args:
             model: SAE model to train
             optimizer: Optimizer for updating weights
-            criterion: Loss function
             config: Training configuration
             scheduler: Optional learning rate scheduler
             base_lr: Base learning rate (before scheduler modifications).
@@ -64,7 +62,6 @@ class SAETrainer:
         """
         self.model = model
         self.optimizer = optimizer
-        self.criterion = criterion
         self.config = config
         self.scheduler = scheduler
 
