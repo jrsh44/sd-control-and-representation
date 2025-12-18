@@ -117,6 +117,12 @@ echo "Using Configuration ID: ${CONFIG_ID}"
 # Define configurations as arrays
 # Format: "expansion_factor:top_k:learning_rate:num_epochs:batch_size"
 
+# exp: 8, 16, 24, 32
+# top-k: 16, 32, 64
+# learning_rate: 1e-3, 1e-4, 1e-5
+# scheduler: 5000, 0
+# aux_loss_alpha: 0.03125
+
 CONFIGS=(
     "16:32:5e-5:2:4096"
     "16:64:5e-5:2:4096"
