@@ -2,6 +2,7 @@
 Metrics for Sparse Autoencoder training and evaluation.
 """
 
+import math
 from typing import Dict, List, Optional
 
 import torch
@@ -48,31 +49,27 @@ def compute_sparsity_metrics(z: torch.Tensor) -> dict:
     Returns:
         Dictionary with:
         - l0_sparsity: Average L0 norm per sample (using overcomplete.metrics)
-        - z_l2: L2 norm of activations
+        - z_l2: L2 norm of activations (average across batch)
         - mean_activation: Mean activation value
         - max_activation: Maximum activation value
         - active_ratio: Ratio of active (non-zero) features
     """
-    l0_per_sample = l0_eps(z, 0).mean().item()
-    z_l2_raw = l2(z).item()
+    epsilon = 1e-8
 
-    # Guard against infinity/nan values
-    if not torch.isfinite(torch.tensor(z_l2_raw)):
-        z_l2 = 0.0
-    else:
-        z_l2 = z_l2_raw
+    is_active = (z.abs() > epsilon).float()
+    l0_per_sample = is_active.sum(dim=-1).mean().item()
 
-    nonzero_mask = z.abs() > 1e-8
-    active_ratio = nonzero_mask.float().mean().item()
+    z_norms = torch.norm(z, p=2, dim=-1)
+    z_l2 = z_norms.mean().item()
 
+    active_ratio = is_active.mean().item()
     mean_act = z.abs().mean().item()
     max_act = z.abs().max().item()
 
-    # Guard against infinity in other metrics too
-    if not torch.isfinite(torch.tensor(mean_act)):
+    if not math.isfinite(z_l2):
+        z_l2 = 0.0
+    if not math.isfinite(mean_act):
         mean_act = 0.0
-    if not torch.isfinite(torch.tensor(max_act)):
-        max_act = 0.0
 
     return {
         "l0_sparsity": l0_per_sample,
