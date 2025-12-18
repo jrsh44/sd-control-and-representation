@@ -97,6 +97,9 @@ WARMUP_STEPS="100000"           # Number of batches for linear warmup (0 = disab
 WARMUP_START_FACTOR="0.01" # Starting LR as fraction of base LR (e.g., 0.01 = 1%)
 MIN_LR_RATIO="0.1"         # Minimum LR as fraction of base LR after cosine decay
 
+# Auxiliary loss settings
+AUX_LOSS_ALPHA="0.03125"   # Weight for auxiliary loss (default: 1/32 = 0.03125)
+
 # Wandb settings
 SKIP_WANDB="false"  # Set to "true" to disable wandb logging
 
@@ -113,6 +116,12 @@ echo "Using Configuration ID: ${CONFIG_ID}"
 
 # Define configurations as arrays
 # Format: "expansion_factor:top_k:learning_rate:num_epochs:batch_size"
+
+# exp: 8, 16, 24, 32
+# top-k: 16, 32, 64
+# learning_rate: 1e-3, 1e-4, 1e-5
+# scheduler: 5000, 0
+# aux_loss_alpha: 0.03125
 
 CONFIGS=(
     "16:32:5e-5:2:4096"
@@ -142,6 +151,7 @@ echo "  Batch Size: ${BATCH_SIZE}"
 echo "  Warmup Steps: ${WARMUP_STEPS}"
 echo "  Warmup Start Factor: ${WARMUP_START_FACTOR}"
 echo "  Min LR Ratio: ${MIN_LR_RATIO}"
+echo "  Aux Loss Alpha: ${AUX_LOSS_ALPHA}"
 echo ""
 
 # Compute SAE output directory and paths
@@ -176,6 +186,7 @@ echo "  Batch size: ${BATCH_SIZE}"
 echo "  Warmup steps: ${WARMUP_STEPS}"
 echo "  Warmup start factor: ${WARMUP_START_FACTOR}"
 echo "  Min LR ratio: ${MIN_LR_RATIO}"
+echo "  Aux loss alpha: ${AUX_LOSS_ALPHA}"
 echo "  Skip wandb: ${SKIP_WANDB}"
 echo "=========================================="
 
@@ -194,7 +205,8 @@ CMD="uv run ${PYTHON_SCRIPT} \
     --validation_seed ${VALIDATION_SEED} \
     --warmup_steps ${WARMUP_STEPS} \
     --warmup_start_factor ${WARMUP_START_FACTOR} \
-    --min_lr_ratio ${MIN_LR_RATIO}"
+    --min_lr_ratio ${MIN_LR_RATIO} \
+    --aux_loss_alpha ${AUX_LOSS_ALPHA}"
 
 # Add --skip-wandb flag if enabled
 if [ "${SKIP_WANDB}" = "true" ]; then
