@@ -66,7 +66,6 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.training.config import SchedulerConfig, TrainingConfig  # noqa: E402
-from src.models.sae.training.losses import criterion_laux  # noqa: E402
 from src.models.sae.training.trainer import SAETrainer  # noqa: E402
 from src.models.sae.training.utils import create_warmup_cosine_scheduler  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
@@ -812,7 +811,6 @@ def main() -> int:
             trainer = SAETrainer(
                 model=sae,
                 optimizer=optimizer,
-                criterion=criterion_laux,
                 config=training_config,
                 scheduler=scheduler,
                 base_lr=args.learning_rate,
