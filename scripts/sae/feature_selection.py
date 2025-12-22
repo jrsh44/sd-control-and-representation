@@ -2,19 +2,22 @@
 """
 Example usage:
     python scripts/sae/feature_selection.py \
-        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/unlearn_canvas/representations/train/unet_up_1_att_1 \
+        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1 \
+        --dataset_name nudity \
         --concept object \
-        --concept_value cats \
-        --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
-        --feature_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cat.npy \
-        --epsilon 1e-8 \
-        --batch_size 4096 \
-        --top_k 32
+        --concept_value exposed anus \
+        --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096 \
+        --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096/feature_sums \
+        --feature_sums_prefix unet_up_1_att_1_concept_object_exposed_anus \
+        --epsilon 1e-8
 
 """  # noqa: E501
 
 import argparse
+import hashlib
+import os
 import platform
+import re
 import sys
 from pathlib import Path
 
@@ -36,7 +39,6 @@ from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.feature_selection import (  # noqa: E402
     compute_sums_per_timestep,
     concept_filtering_function,
-    negate_function,
 )
 
 
@@ -73,40 +75,23 @@ def parse_args() -> argparse.Namespace:
     )
     # SAE path
     parser.add_argument(
-        "--sae_path",
+        "--sae_dir_path",
         type=str,
         required=True,
-        help="Path to .pt file for SAE weights (load if exists, create and save if not)",
+        help="Path to directory where SAE model is stored, in this folder there is single .pt file",
     )
-    # feature means path
+    # feature sums directory and prefix
     parser.add_argument(
-        "--feature_sums_path",
+        "--features_dir_path",
         type=str,
         required=True,
-        help="Path to .npy file for feature means (load if exists, create and save if not)",
+        help="Directory where partial feature sum files will be saved",
     )
-    # epsilon
     parser.add_argument(
-        "--epsilon",
-        type=float,
-        default=1e-8,
-        required=False,
-        help="Small value to avoid division by zero",
-    )
-    # dataLoader batch size
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=4096,
-        required=False,
-        help="Batch size for DataLoader",
-    )
-    # top_k
-    parser.add_argument(
-        "--top_k",
-        type=int,
+        "--feature_sums_prefix",
+        type=str,
         required=True,
-        help="Top-k sparsity for SAE",
+        help="Prefix for partial feature sum files (e.g., 'unet_mid_att_concept_object_cat')",
     )
     # log every
     parser.add_argument(
@@ -135,8 +120,9 @@ def main() -> int:
     print(f"Dataset path: {args.dataset_path}")
     print(f"Concept: {args.concept}")
     print(f"Concept value: {args.concept_value}")
-    print(f"SAE path: {args.sae_path}")
-    print(f"Feature sums path: {args.feature_sums_path}")
+    print(f"SAE path: {args.sae_dir_path}")
+    print(f"Features dir: {args.features_dir_path}")
+    print(f"Feature sums prefix: {args.feature_sums_prefix}")
     print(f"Device: {device}")
     print("-" * 80)
 
@@ -147,7 +133,7 @@ def main() -> int:
         wandb.login()
 
         # Create a run name
-        sae_stem = Path(args.sae_path).stem
+        sae_stem = Path(args.sae_dir_path).stem
         run_name = (
             f"FeatureSelection_{args.dataset_name}_{sae_stem}_{args.concept}_{args.concept_value}"
         )
@@ -166,15 +152,16 @@ def main() -> int:
                 "value": args.concept_value,
             },
             "model": {
-                "sae_path": args.sae_path,
+                "sae_dir_path": args.sae_dir_path,
                 "architecture": "TopKSAE",
-                "top_k": args.top_k,
+                # "top_k": args.top_k,
             },
             "feature_selection": {
-                "epsilon": args.epsilon,
-                "batch_size": args.batch_size,
+                # "epsilon": args.epsilon,
+                # "batch_size": args.batch_size,
                 "log_every": args.log_every,
-                "feature_sums_path": args.feature_sums_path,
+                "features_dir_path": args.features_dir_path,
+                "feature_sums_prefix": args.feature_sums_prefix,
             },
             "hardware": {
                 "device": str(device),
@@ -201,12 +188,37 @@ def main() -> int:
     # 3. Load SAE Model
     # --------------------------------------------------------------------------
     try:
-        sae_path = Path(args.sae_path)
-        if not sae_path.exists():
-            raise FileNotFoundError(f"SAE not found: {sae_path}")
+        sae_dir_path = Path(args.sae_dir_path)
+        if not sae_dir_path.exists():
+            raise FileNotFoundError(f"SAE directory not found: {sae_dir_path}")
+
+        # Find the first model.pt or checkpoint.pt file in the sae_dir_path
+        pt_files = list(sae_dir_path.glob("model.pt")) + list(sae_dir_path.glob("checkpoint.pt"))
+        if not pt_files:
+            raise FileNotFoundError(f"No model.pt or checkpoint.pt file found in {sae_dir_path}")
+
+        sae_path = pt_files[0]
+        print(f"Using SAE weights file: {sae_path}")
+
+        # extract topk and batch_size from sae_path e.g. wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096  # noqa: E501
+        match = re.search(r"topk(\d+)_.*_bs(\d+)", str(sae_path))
+        if match:
+            extracted_topk = int(match.group(1))
+            extracted_batch_size = int(match.group(2))
+            print(
+                f"Extracted top_k={extracted_topk}, batch_size={extracted_batch_size} from SAE path"
+            )
+        else:
+            print("Warning: Could not extract top_k and batch_size from SAE path")
+            extracted_topk = 32
+            extracted_batch_size = 4096
+            print(f"Using default top_k={extracted_topk}, batch_size={extracted_batch_size}")
 
         # Load state dict
         state_dict = torch.load(sae_path, map_location="cpu")
+
+        # print keys in state_dict (for tests)
+        print(f"SAE state_dict keys: {list(state_dict.keys())}")
 
         # Auto-detect and remove _orig_mod prefix from torch.compile()
         if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
@@ -223,7 +235,7 @@ def main() -> int:
         sae = TopKSAE(
             input_shape=input_shape,
             nb_concepts=nb_concepts,
-            top_k=args.top_k,
+            top_k=extracted_topk,
             device=device,
         )
         sae.load_state_dict(state_dict)
@@ -306,7 +318,7 @@ def main() -> int:
         # 5. Compute Feature Sums
         # --------------------------------------------------------------------------
         print("\nComputing activations for 'concept=false'...")
-        loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
+        loader_false = make_loader(dataset_concept_false, extracted_batch_size, is_cuda)
         sums_false, counts_false = compute_sums_per_timestep(
             loader_false, sae, device, nb_concepts, args.log_every, "compute_sums_false"
         )
@@ -319,7 +331,7 @@ def main() -> int:
         print("  Memory cleaned after false dataset processing")
 
         print("\nComputing activations for 'concept=true'...")
-        loader_true = make_loader(dataset_concept_true, args.batch_size, is_cuda)
+        loader_true = make_loader(dataset_concept_true, extracted_batch_size, is_cuda)
         sums_true, counts_true = compute_sums_per_timestep(
             loader_true, sae, device, nb_concepts, args.log_every, "compute_sums_true"
         )
@@ -334,8 +346,9 @@ def main() -> int:
         # --------------------------------------------------------------------------
         # 6. Save Results
         # --------------------------------------------------------------------------
-        feature_sums_path = Path(args.feature_sums_path)
-        feature_sums_path.parent.mkdir(parents=True, exist_ok=True)
+        features_dir = Path(args.features_dir_path)
+        features_dir.mkdir(parents=True, exist_ok=True)
+
         feature_sums = {
             "sums_true_per_timestep": sums_true,  # dict[int, Tensor]
             "counts_true_per_timestep": counts_true,  # dict[int, int]
@@ -344,11 +357,16 @@ def main() -> int:
             "timesteps": sorted(set(sums_true.keys()) | set(sums_false.keys())),
         }
 
+        job_id = os.environ.get("SLURM_ARRAY_TASK_ID", "0")
+        dataset_hash = hashlib.md5(args.dataset_path.encode()).hexdigest()[:8]  # noqa: S324
+        partial_file = f"{args.feature_sums_prefix}_job{job_id}_{dataset_hash}.pt"
+        partial_path = features_dir / partial_file
+
         print("\n" + "=" * 80)
         print("SAVING FEATURE SUMS")
         print("=" * 80)
-        print(f"Saving feature sums to {feature_sums_path}...")
-        torch.save(feature_sums, feature_sums_path)
+        print(f"Saving feature sums to {partial_path}...")
+        torch.save(feature_sums, partial_path)
         print("✓ Feature sums saved successfully.")
 
         if not args.skip_wandb:
@@ -357,7 +375,7 @@ def main() -> int:
                     "final/samples_concept_true": n_samples_true,
                     "final/samples_concept_false": n_samples_false,
                     "final/timesteps_processed": len(feature_sums["timesteps"]),
-                    "final/feature_sums_path": str(feature_sums_path),
+                    "final/feature_sums_path": str(partial_path),
                 }
             )
 
