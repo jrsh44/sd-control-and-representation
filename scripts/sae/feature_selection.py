@@ -36,6 +36,7 @@ from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.feature_selection import (  # noqa: E402
     compute_sums_per_timestep,
     concept_filtering_function,
+    negate_function,
 )
 
 
@@ -234,6 +235,9 @@ def main() -> int:
         # 4. Setup Datasets and DataLoaders
         # --------------------------------------------------------------------------
         def make_loader(dataset, batch_size, is_cuda):
+            """Create optimized DataLoader for big data processing."""
+            import os
+
             if torch.cuda.is_available() and hasattr(torch._dynamo.external_utils, "is_compiled"):
                 # If model is compiled – disable multiprocessing (avoid deadlock)
                 print("torch.compile() detected → using num_workers=0 to avoid deadlock")
@@ -244,16 +248,32 @@ def main() -> int:
                     pin_memory=True,
                     num_workers=0,
                 )
+
+            # Optimize num_workers based on available CPUs
+            if is_cuda:
+                slurm_cpus = os.environ.get("SLURM_CPUS_PER_TASK")
+                if slurm_cpus:
+                    available_cpus = int(slurm_cpus)
+                else:
+                    available_cpus = os.cpu_count() or 4
+
+                # Use most CPUs but leave 1-2 for main process
+                num_workers = max(4, min(available_cpus - 2, 12))  # Cap at 12 to avoid overhead
+                prefetch_factor = 4  # Increased prefetch for better pipeline
+                print(f"DataLoader: {num_workers} workers, prefetch={prefetch_factor}")
             else:
-                return DataLoader(
-                    dataset,
-                    batch_size=batch_size,
-                    shuffle=False,
-                    pin_memory=is_cuda,
-                    num_workers=6 if is_cuda else 0,
-                    prefetch_factor=2 if is_cuda else None,
-                    persistent_workers=is_cuda,
-                )
+                num_workers = 0
+                prefetch_factor = None
+
+            return DataLoader(
+                dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                pin_memory=is_cuda,
+                num_workers=num_workers,
+                prefetch_factor=prefetch_factor,
+                persistent_workers=num_workers > 0,
+            )
 
         # Load dataset paths
         dataset_path = Path(args.dataset_path)
@@ -292,12 +312,24 @@ def main() -> int:
         )
         print("✓ Sums for 'concept=false' computed")
 
+        # Clean up loader and force garbage collection
+        del loader_false
+        if is_cuda:
+            torch.cuda.empty_cache()
+        print("  Memory cleaned after false dataset processing")
+
         print("\nComputing activations for 'concept=true'...")
         loader_true = make_loader(dataset_concept_true, args.batch_size, is_cuda)
         sums_true, counts_true = compute_sums_per_timestep(
             loader_true, sae, device, nb_concepts, args.log_every, "compute_sums_true"
         )
         print("✓ Sums for 'concept=true' computed")
+
+        # Clean up loader
+        del loader_true
+        if is_cuda:
+            torch.cuda.empty_cache()
+        print("  Memory cleaned after true dataset processing")
 
         # --------------------------------------------------------------------------
         # 6. Save Results
