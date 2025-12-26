@@ -163,12 +163,12 @@ class RepresentationDataset(Dataset):
 
         # NEW: Return timestep if requested
         if self.return_timestep:
-            timestep = self._index[real_idx]["timestep"]
+            timestep = self._metadata[real_idx]["timestep"]
             if self.return_metadata:
                 return (
                     rep,
                     timestep,
-                    self._full_metadata[real_idx] if self._full_metadata else self._index[real_idx],
+                    self._metadata[real_idx],
                 )
             return rep, timestep
 
