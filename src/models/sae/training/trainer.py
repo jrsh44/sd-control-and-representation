@@ -15,7 +15,7 @@ from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 
 from .config import EpochMetrics, TrainingConfig, TrainingState
-from .losses import criterion_laux_detailed
+from .losses import criterion_laux
 from .metrics import (
     ActiveFeaturesTracker,
     MetricsAggregator,
@@ -303,8 +303,8 @@ class SAETrainer:
 
         if self.scaler is not None:
             with autocast("cuda"):
-                _, z, x_hat = self.model(x)
-                recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+                pre_codes, codes, x_hat = self.model(x)
+                recon_loss, aux_loss = criterion_laux(x, x_hat, pre_codes, codes, dictionary)
                 loss = recon_loss + self.config.aux_loss_alpha * aux_loss
 
             self.scaler.scale(loss).backward()
@@ -314,8 +314,8 @@ class SAETrainer:
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
-            _, z, x_hat = self.model(x)
-            recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+            pre_codes, codes, x_hat = self.model(x)
+            recon_loss, aux_loss = criterion_laux(x, x_hat, pre_codes, codes, dictionary)
             loss = recon_loss + self.config.aux_loss_alpha * aux_loss
             loss.backward()
             if self.config.clip_grad:
@@ -326,8 +326,8 @@ class SAETrainer:
             self.scheduler.step()
 
         if self.dead_tracker is None:
-            self.dead_tracker = DeadCodeTracker(z.shape[1], self.device)
-            print(f"   Initialized dead code tracker ({z.shape[1]} features)")
+            self.dead_tracker = DeadCodeTracker(codes.shape[1], self.device)
+            print(f"   Initialized dead code tracker ({codes.shape[1]} features)")
 
         metrics = {
             "loss": loss.item(),
@@ -338,13 +338,13 @@ class SAETrainer:
         should_compute_expensive = batch_idx % self.config.log_interval == 0
 
         if should_compute_expensive:
-            self.dead_tracker.update(z.detach())
+            self.dead_tracker.update(codes.detach())
 
             if self.config.compute_expensive_metrics:
                 with torch.no_grad():
                     metrics["r2"] = compute_reconstruction_error(x, x_hat)
 
-                    sparsity_metrics = compute_sparsity_metrics(z.detach())
+                    sparsity_metrics = compute_sparsity_metrics(codes.detach())
                     metrics["l0_sparsity"] = sparsity_metrics["l0_sparsity"]
                     metrics["z_l2"] = sparsity_metrics["z_l2"]
                     metrics["mean_activation"] = sparsity_metrics["mean_activation"]
@@ -402,22 +402,24 @@ class SAETrainer:
 
                 if self.scaler is not None:
                     with autocast("cuda"):
-                        _, z, x_hat = self.model(x)
-                        recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+                        pre_codes, codes, x_hat = self.model(x)
+                        recon_loss, aux_loss = criterion_laux(
+                            x, x_hat, pre_codes, codes, dictionary
+                        )
                         loss = recon_loss + self.config.aux_loss_alpha * aux_loss
                 else:
-                    _, z, x_hat = self.model(x)
-                    recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+                    pre_codes, codes, x_hat = self.model(x)
+                    recon_loss, aux_loss = criterion_laux(x, x_hat, pre_codes, codes, dictionary)
                     loss = recon_loss + self.config.aux_loss_alpha * aux_loss
 
                 # Initialize trackers
                 if val_dead_tracker is None:
-                    val_dead_tracker = DeadCodeTracker(z.shape[1], self.device)
-                    active_features_tracker = ActiveFeaturesTracker(z.shape[1], self.device)
+                    val_dead_tracker = DeadCodeTracker(codes.shape[1], self.device)
+                    active_features_tracker = ActiveFeaturesTracker(codes.shape[1], self.device)
 
-                val_dead_tracker.update(z)
+                val_dead_tracker.update(codes)
                 if active_features_tracker is not None:
-                    active_features_tracker.update(z)
+                    active_features_tracker.update(codes)
 
                 metrics = {
                     "loss": loss.item(),
@@ -426,7 +428,7 @@ class SAETrainer:
                     "r2": compute_reconstruction_error(x, x_hat),
                 }
 
-                sparsity_metrics = compute_sparsity_metrics(z)
+                sparsity_metrics = compute_sparsity_metrics(codes)
                 metrics["l0_sparsity"] = sparsity_metrics["l0_sparsity"]
                 metrics["z_l2"] = sparsity_metrics["z_l2"]
                 metrics["mean_activation"] = sparsity_metrics["mean_activation"]
