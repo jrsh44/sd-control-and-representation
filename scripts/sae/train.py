@@ -584,8 +584,6 @@ def main() -> int:
             wandb.define_metric("batch/*", step_metric="batch/step")
             wandb.define_metric("train/*", step_metric="epoch")
             wandb.define_metric("val/*", step_metric="epoch")
-            wandb.define_metric("gap/*", step_metric="epoch")
-            wandb.define_metric("hparams/*", step_metric="epoch")
             wandb.define_metric("meta/*", step_metric="epoch")
 
         # Load all datasets
@@ -850,7 +848,6 @@ def main() -> int:
                         "batch/l0_sparsity": "l0_sparsity",
                         "batch/z_l2": "z_l2",
                         "batch/mean_activation": "mean_activation",
-                        "batch/active_ratio": "active_ratio",
                     }
 
                     for wandb_key, metric_key in metric_mappings.items():
@@ -927,7 +924,6 @@ def main() -> int:
                     "train/l0_sparsity": train_logs["z_sparsity"][epoch],
                     "train/z_l2": train_logs.get("z_l2", [0] * num_logged_epochs)[epoch],
                     "train/dead_features_ratio": train_logs["dead_features"][epoch],
-                    "train/dead_features_pct": train_logs["dead_features"][epoch] * 100,
                     "train/epoch_time_s": train_logs["time_epoch"][epoch],
                     # Timing metrics
                     "train/data_loading_time_s": train_logs.get(
@@ -949,11 +945,6 @@ def main() -> int:
                     "train/dict_norms_mean": train_logs.get(
                         "dict_norms_mean", [0] * num_logged_epochs
                     )[epoch],
-                    # Hyperparameters (for filtering in wandb UI)
-                    "hparams/expansion_factor": args.expansion_factor,
-                    "hparams/top_k": args.top_k,
-                    "hparams/learning_rate": args.learning_rate,
-                    "hparams/batch_size": args.batch_size,
                     # Identifiers
                     "meta/datasets_name": args.datasets_name,
                     "meta/layer_name": layer_name,
@@ -977,7 +968,6 @@ def main() -> int:
                                 "val/l0_sparsity": val_logs["z_sparsity"][epoch],
                                 "val/z_l2": val_logs.get("z_l2", [0] * num_logged_epochs)[epoch],
                                 "val/dead_features_ratio": val_logs["dead_features"][epoch],
-                                "val/dead_features_pct": val_logs["dead_features"][epoch] * 100,
                                 # Timing metrics
                                 "val/data_loading_time_s": val_logs.get(
                                     "data_loading_time", [0] * num_logged_epochs
@@ -1001,26 +991,6 @@ def main() -> int:
                                 "val/decoder_mean_norm": val_logs.get(
                                     "decoder_mean_norm", [0] * num_logged_epochs
                                 )[epoch],
-                                # Active features at thresholds
-                                "val/active_features_0.5": val_logs.get(
-                                    "active_features_0.5", [0] * num_logged_epochs
-                                )[epoch],
-                                "val/active_features_0.4": val_logs.get(
-                                    "active_features_0.4", [0] * num_logged_epochs
-                                )[epoch],
-                                "val/active_features_0.3": val_logs.get(
-                                    "active_features_0.3", [0] * num_logged_epochs
-                                )[epoch],
-                                "val/active_features_0.2": val_logs.get(
-                                    "active_features_0.2", [0] * num_logged_epochs
-                                )[epoch],
-                                "val/active_features_0.1": val_logs.get(
-                                    "active_features_0.1", [0] * num_logged_epochs
-                                )[epoch],
-                                # Gap metrics (for overfitting detection)
-                                "gap/loss": train_logs["avg_loss"][epoch]
-                                - val_logs["avg_loss"][epoch],
-                                "gap/r2": train_logs["r2"][epoch] - val_logs["r2"][epoch],
                             }
                         )
 
@@ -1061,9 +1031,6 @@ def main() -> int:
                             )[-1],
                             "final/val_decoder_avg_max_cos": val_logs.get(
                                 "decoder_avg_max_cos", [0]
-                            )[-1],
-                            "final/val_active_features_0.1": val_logs.get(
-                                "active_features_0.1", [0]
                             )[-1],
                         }
                     )
