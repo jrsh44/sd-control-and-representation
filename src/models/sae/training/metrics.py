@@ -3,7 +3,6 @@ Metrics for Sparse Autoencoder training and evaluation.
 """
 
 import math
-from typing import Dict, List, Optional
 
 import torch
 from einops import rearrange
@@ -52,7 +51,6 @@ def compute_sparsity_metrics(z: torch.Tensor) -> dict:
         - z_l2: L2 norm of activations (average across batch)
         - mean_activation: Mean activation value
         - max_activation: Maximum activation value
-        - active_ratio: Ratio of active (non-zero) features
     """
     epsilon = 1e-8
 
@@ -62,7 +60,6 @@ def compute_sparsity_metrics(z: torch.Tensor) -> dict:
     z_norms = torch.norm(z, p=2, dim=-1)
     z_l2 = z_norms.mean().item()
 
-    active_ratio = is_active.mean().item()
     mean_act = z.abs().mean().item()
     max_act = z.abs().max().item()
 
@@ -76,7 +73,6 @@ def compute_sparsity_metrics(z: torch.Tensor) -> dict:
         "z_l2": z_l2,
         "mean_activation": mean_act,
         "max_activation": max_act,
-        "active_ratio": active_ratio,
     }
 
 
@@ -91,18 +87,10 @@ def compute_dictionary_metrics(dictionary: torch.Tensor) -> dict:
         Dictionary with:
         - sparsity: Average sparsity of dictionary columns
         - norms_mean: Mean L2 norm of dictionary columns
-        - norms_std: Std of L2 norms
-        - max_norm: Maximum L2 norm
-        - min_norm: Minimum L2 norm
     """
-    norms = l2(dictionary, dims=-1)
-
     return {
         "sparsity": l0_eps(dictionary).mean().item(),
-        "norms_mean": norms.mean().item(),
-        "norms_std": norms.std().item(),
-        "max_norm": norms.max().item(),
-        "min_norm": norms.min().item(),
+        "norms_mean": l2(dictionary, dims=-1).mean().item(),
     }
 
 
@@ -240,64 +228,3 @@ class MetricsAggregator:
     def get_sums(self) -> dict:
         """Get raw sums."""
         return self._sums.copy()
-
-
-class ActiveFeaturesTracker:
-    """
-    Tracks feature activations across batches for threshold-based counting.
-
-    Used during validation to count how many features are active
-    above various thresholds across the entire dataset.
-    """
-
-    def __init__(self, num_features: int, device: torch.device):
-        """
-        Initialize the tracker.
-
-        Args:
-            num_features: Number of features in the SAE
-            device: Device to store tensors on
-        """
-        self.num_features = num_features
-        self.device = device
-        self.active_counts = torch.zeros(num_features, device=device)
-        self.total_samples = 0
-
-    def update(self, z: torch.Tensor):
-        """
-        Update counts with a batch of activations.
-
-        Args:
-            z: Encoded tensor (batch_size, num_features)
-        """
-        # Count samples where each feature is active (> 0.01)
-        active_per_feature = (z > 0.01).sum(dim=0).float()
-        self.active_counts += active_per_feature
-        self.total_samples += z.shape[0]
-
-    def get_active_features(
-        self,
-        thresholds: Optional[List[float]] = None,
-    ) -> Dict[str, int]:
-        """
-        Get counts of features active above each threshold.
-
-        Args:
-            thresholds: List of thresholds (fraction of samples)
-
-        Returns:
-            Dictionary with active_features_{threshold} for each threshold
-        """
-        if thresholds is None:
-            thresholds = [0.1, 0.2, 0.3, 0.4, 0.5]
-
-        if self.total_samples == 0:
-            return {f"active_features_{t}": 0 for t in thresholds}
-
-        # Fraction of samples where each feature is active
-        active_ratio = self.active_counts / self.total_samples
-
-        return {
-            f"active_features_{thresh}": int((active_ratio > thresh).sum().item())
-            for thresh in thresholds
-        }
