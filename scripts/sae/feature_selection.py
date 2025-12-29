@@ -5,11 +5,9 @@ Example usage:
         --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1 \
         --dataset_name nudity \
         --concept object \
-        --concept_value exposed anus \
+        --concept_value 'exposed anus' \
         --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096 \
-        --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096/feature_sums \
-        --feature_sums_prefix unet_up_1_att_1_concept_object_exposed_anus \
-        --epsilon 1e-8
+        --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096/feature_sums
 
 """  # noqa: E501
 
@@ -63,15 +61,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--concept",
         type=str,
-        required=True,
-        help="Concept name for feature selection",
+        default=None,
+        help="Concept name for feature selection (optional, if None no filtering is applied)",
     )
     # concept value
     parser.add_argument(
         "--concept_value",
         type=str,
-        required=True,
-        help="Concept value for feature selection",
+        default=None,
+        help="Concept value for feature selection (optional, if None no filtering is applied)",
     )
     # SAE path
     parser.add_argument(
@@ -90,8 +88,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--feature_sums_prefix",
         type=str,
-        required=True,
-        help="Prefix for partial feature sum files (e.g., 'unet_mid_att_concept_object_cat')",
+        default=None,
+        help="Prefix for feature sum files (optional, auto-generated if not provided)",
     )
     # log every
     parser.add_argument(
@@ -134,9 +132,12 @@ def main() -> int:
 
         # Create a run name
         sae_stem = Path(args.sae_dir_path).stem
-        run_name = (
-            f"FeatureSelection_{args.dataset_name}_{sae_stem}_{args.concept}_{args.concept_value}"
+        concept_suffix = (
+            f"_{args.concept}_{args.concept_value}"
+            if args.concept and args.concept_value
+            else "_all"
         )
+        run_name = f"FeatureSelection_{args.dataset_name}_{sae_stem}{concept_suffix}"
 
         gpu_name = torch.cuda.get_device_name(0) if is_cuda else "Unknown"
 
@@ -148,8 +149,8 @@ def main() -> int:
                 "layer_name": Path(args.dataset_path).name,
             },
             "concept": {
-                "name": args.concept,
-                "value": args.concept_value,
+                "name": args.concept if args.concept else "none",
+                "value": args.concept_value if args.concept_value else "none",
             },
             "model": {
                 "sae_dir_path": args.sae_dir_path,
@@ -177,9 +178,10 @@ def main() -> int:
             entity="bartoszjezierski28-warsaw-university-of-technology",
             name=run_name,
             config=config,
-            group=f"feature_selection_{args.dataset_name}_{args.concept}",
+            group=f"feature_selection_{args.dataset_name}",
             job_type="feature_selection",
-            tags=["sae", "feature_selection", args.dataset_name, args.concept, args.concept_value],
+            tags=["sae", "feature_selection", args.dataset_name]
+            + ([args.concept, args.concept_value] if args.concept and args.concept_value else []),
             notes="Feature selection using pretrained SAE for concept analysis.",
         )
         print(f"🚀 WandB Initialized: {run_name}")
@@ -204,18 +206,21 @@ def main() -> int:
         match = re.search(r"topk(\d+)_.*_bs(\d+)", str(sae_path))
         if match:
             extracted_topk = int(match.group(1))
-            extracted_batch_size = int(match.group(2))
+            extracted_batch_size = 4096 // 16
+            # extracted_batch_size = int(match.group(2))
             print(
                 f"Extracted top_k={extracted_topk}, batch_size={extracted_batch_size} from SAE path"
             )
         else:
             print("Warning: Could not extract top_k and batch_size from SAE path")
             extracted_topk = 32
-            extracted_batch_size = 4096
+            extracted_batch_size = 4096 // 16
             print(f"Using default top_k={extracted_topk}, batch_size={extracted_batch_size}")
 
         # Load state dict
-        state_dict = torch.load(sae_path, map_location="cpu")
+        sae_dict = torch.load(sae_path, map_location="cpu")
+
+        state_dict = sae_dict.get("model_state_dict", sae_dict)
 
         # print keys in state_dict (for tests)
         print(f"SAE state_dict keys: {list(state_dict.keys())}")
@@ -292,56 +297,45 @@ def main() -> int:
         cache_dir = dataset_path.parent
         layer_name = dataset_path.name
 
-        # === CONCEPT FALSE ===
-        dataset_concept_false = RepresentationDataset(
-            cache_dir=cache_dir,
-            layer_name=layer_name,
-            filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
-            return_metadata=False,
-            return_timestep=True,
-        )
-        n_samples_false = dataset_concept_false._full_data.shape[0]
-        print(f"Loaded 'concept=false' dataset: {len(dataset_concept_false)} samples")
+        # === LOAD DATASET ===
+        # Use filter only if concept and concept_value are provided
+        filter_fn = None
+        if args.concept and args.concept_value:
+            filter_fn = concept_filtering_function(args.concept, args.concept_value)
+            print(f"Filtering dataset by concept='{args.concept}', value='{args.concept_value}'")
+        else:
+            print("No filtering applied (loading all samples)")
 
-        # === CONCEPT TRUE ===
-        dataset_concept_true = RepresentationDataset(
+        dataset = RepresentationDataset(
             cache_dir=cache_dir,
             layer_name=layer_name,
-            filter_fn=concept_filtering_function(args.concept, args.concept_value),
+            filter_fn=filter_fn,
             return_metadata=False,
             return_timestep=True,
         )
-        n_samples_true = dataset_concept_true._full_data.shape[0]
-        print(f"Loaded 'concept=true' dataset: {len(dataset_concept_true)} samples")
+        n_samples = dataset._full_data.shape[0]
+        print(f"Loaded dataset: {len(dataset)} samples")
 
         # --------------------------------------------------------------------------
         # 5. Compute Feature Sums
         # --------------------------------------------------------------------------
-        print("\nComputing activations for 'concept=false'...")
-        loader_false = make_loader(dataset_concept_false, extracted_batch_size, is_cuda)
-        sums_false, counts_false = compute_sums_per_timestep(
-            loader_false, sae, device, nb_concepts, args.log_every, "compute_sums_false"
+        print("\nComputing feature activations...")
+        loader = make_loader(dataset, extracted_batch_size, is_cuda)
+        sums_per_timestep, counts_per_timestep = compute_sums_per_timestep(
+            loader,
+            sae,
+            device,
+            nb_concepts,
+            args.log_every,
+            f"{dataset_path.name}/{args.concept}_{args.concept_value}",  # noqa: E501
         )
-        print("✓ Sums for 'concept=false' computed")
-
-        # Clean up loader and force garbage collection
-        del loader_false
-        if is_cuda:
-            torch.cuda.empty_cache()
-        print("  Memory cleaned after false dataset processing")
-
-        print("\nComputing activations for 'concept=true'...")
-        loader_true = make_loader(dataset_concept_true, extracted_batch_size, is_cuda)
-        sums_true, counts_true = compute_sums_per_timestep(
-            loader_true, sae, device, nb_concepts, args.log_every, "compute_sums_true"
-        )
-        print("✓ Sums for 'concept=true' computed")
+        print("✓ Feature sums computed")
 
         # Clean up loader
-        del loader_true
+        del loader
         if is_cuda:
             torch.cuda.empty_cache()
-        print("  Memory cleaned after true dataset processing")
+        print("  Memory cleaned after processing")
 
         # --------------------------------------------------------------------------
         # 6. Save Results
@@ -349,17 +343,30 @@ def main() -> int:
         features_dir = Path(args.features_dir_path)
         features_dir.mkdir(parents=True, exist_ok=True)
 
+        # Auto-generate prefix if not provided
+        if args.feature_sums_prefix:
+            prefix = args.feature_sums_prefix
+        else:
+            concept_suffix = (
+                f"_concept_{args.concept}_{args.concept_value}"
+                if args.concept and args.concept_value
+                else "_all"
+            )
+            prefix = f"{layer_name}{concept_suffix}"
+
         feature_sums = {
-            "sums_true_per_timestep": sums_true,  # dict[int, Tensor]
-            "counts_true_per_timestep": counts_true,  # dict[int, int]
-            "sums_false_per_timestep": sums_false,  # dict[int, Tensor]
-            "counts_false_per_timestep": counts_false,  # dict[int, int]
-            "timesteps": sorted(set(sums_true.keys()) | set(sums_false.keys())),
+            "sums_per_timestep": sums_per_timestep,  # dict[int, Tensor]
+            "counts_per_timestep": counts_per_timestep,  # dict[int, int]
+            "timesteps": sorted(sums_per_timestep.keys()),
+            "concept": args.concept,
+            "concept_value": args.concept_value,
+            "dataset_name": args.dataset_name,
+            "layer_name": layer_name,
         }
 
         job_id = os.environ.get("SLURM_ARRAY_TASK_ID", "0")
         dataset_hash = hashlib.md5(args.dataset_path.encode()).hexdigest()[:8]  # noqa: S324
-        partial_file = f"{args.feature_sums_prefix}_job{job_id}_{dataset_hash}.pt"
+        partial_file = f"{prefix}_job{job_id}_{dataset_hash}.pt"
         partial_path = features_dir / partial_file
 
         print("\n" + "=" * 80)
@@ -372,8 +379,8 @@ def main() -> int:
         if not args.skip_wandb:
             wandb.log(
                 {
-                    "final/samples_concept_true": n_samples_true,
-                    "final/samples_concept_false": n_samples_false,
+                    "final/samples_processed": n_samples,
+                    "final/samples_filtered": len(dataset),
                     "final/timesteps_processed": len(feature_sums["timesteps"]),
                     "final/feature_sums_path": str(partial_path),
                 }
