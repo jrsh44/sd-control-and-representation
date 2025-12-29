@@ -57,8 +57,8 @@ def merge_feature_sums(partial_files: List[Path]) -> Dict:
 
     print(f"\nFound {len(groups)} unique (concept, concept_value) combinations")
 
-    # Merge each group
-    merged_data = []
+    # Merge each group - indexed by concept_value
+    merged_data = {}
     for (concept, concept_value), group_data in groups.items():
         print(f"\nMerging: concept={concept}, concept_value={concept_value}")
 
@@ -76,13 +76,10 @@ def merge_feature_sums(partial_files: List[Path]) -> Dict:
         if len(unique_data) == 0:
             continue
 
-        # Start with the first entry
+        # Create entry for this concept_value
         merged = {
-            "concept": concept,
-            "concept_value": concept_value,
-            "layer_name": unique_data[0]["layer_name"],
             "timesteps": unique_data[0]["timesteps"],
-            "datasets": [unique_data[0]["dataset_name"]],  # Track which datasets were merged
+            "datasets": [unique_data[0]["dataset_name"]],
             "sums_per_timestep": {},
             "counts_per_timestep": {},
         }
@@ -114,17 +111,60 @@ def merge_feature_sums(partial_files: List[Path]) -> Dict:
                     merged["counts_per_timestep"][timestep] = count
 
         print(f"  Merged {len(unique_data)} datasets: {merged['datasets']}")
-        merged_data.append(merged)
+        merged_data[concept_value] = merged
 
-    # Create final output structure
-    output = {
-        "layer_name": all_data[0]["layer_name"],
-        "num_groups": len(merged_data),
-        "total_files_processed": len(partial_files),
-        "data": merged_data,
+    # Create "all" group that combines everything across all concepts, concept_values, and datasets
+    print(f"\nCreating 'all' group (combining all observations)...")
+    all_group = {
+        "timesteps": all_data[0]["timesteps"],
+        "datasets": [],
+        "sums_per_timestep": {},
+        "counts_per_timestep": {},
     }
 
-    return output
+    # Track unique datasets
+    seen_datasets_all = set()
+
+    # Combine all data from all files (deduplicating by dataset to avoid double-counting)
+    dataset_contributions = {}  # dataset_name -> data dict
+    for data in all_data:
+        dataset_name = data["dataset_name"]
+        if dataset_name not in dataset_contributions:
+            dataset_contributions[dataset_name] = data
+            seen_datasets_all.add(dataset_name)
+
+    all_group["datasets"] = sorted(list(seen_datasets_all))
+
+    # Sum across all unique datasets
+    first = True
+    for dataset_name, data in dataset_contributions.items():
+        if first:
+            # Initialize with first dataset's data
+            for timestep, sum_tensor in data["sums_per_timestep"].items():
+                all_group["sums_per_timestep"][timestep] = sum_tensor.clone()
+            for timestep, count in data["counts_per_timestep"].items():
+                all_group["counts_per_timestep"][timestep] = count
+            first = False
+        else:
+            # Add data from other datasets
+            for timestep, sum_tensor in data["sums_per_timestep"].items():
+                if timestep in all_group["sums_per_timestep"]:
+                    all_group["sums_per_timestep"][timestep] += sum_tensor
+                else:
+                    all_group["sums_per_timestep"][timestep] = sum_tensor.clone()
+
+            for timestep, count in data["counts_per_timestep"].items():
+                if timestep in all_group["counts_per_timestep"]:
+                    all_group["counts_per_timestep"][timestep] += count
+                else:
+                    all_group["counts_per_timestep"][timestep] = count
+
+    print(f"  Combined {len(dataset_contributions)} unique datasets: {all_group['datasets']}")
+
+    # Add the "all" group to merged_data dict
+    merged_data["all"] = all_group
+
+    return merged_data
 
 
 def parse_args() -> argparse.Namespace:
@@ -195,15 +235,11 @@ def main() -> int:
     print(f"\n{'=' * 60}")
     print("MERGE SUMMARY")
     print(f"{'=' * 60}")
-    print(f"Input files processed: {merged_data['total_files_processed']}")
-    print(f"Unique (concept, concept_value) groups: {merged_data['num_groups']}")
-    print(f"Layer: {merged_data['layer_name']}")
+    print(f"Input files processed: {len(partial_files)}")
+    print(f"Unique concept_value groups: {len(merged_data)}")
     print(f"\nGroups:")
-    for entry in merged_data["data"]:
-        print(
-            f"  - {entry['concept']}={entry['concept_value']}: "
-            f"{len(entry['datasets'])} datasets merged"
-        )
+    for concept_value, data in sorted(merged_data.items()):
+        print(f"  - concept_value={concept_value}: {len(data['datasets'])} datasets merged")
     print(f"{'=' * 60}")
 
     # Cleanup if requested
