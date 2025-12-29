@@ -20,13 +20,13 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
-#SBATCH --array=0-1          # Array size matches number of datasets
-#SBATCH --time 0-23:30:00
+#SBATCH --array=0-2          # 3 tasks: 3 nudity concepts
+#SBATCH --time 0-01:30:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
 #SBATCH --cpus-per-task 16
-#SBATCH --mem 256G
+#SBATCH --mem 64G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
 
@@ -76,34 +76,48 @@ echo ""
 # Python script
 PYTHON_SCRIPT="scripts/sae/feature_selection.py"
 
-# Array of dataset paths to process
+# Task 0: cc3m-wds (no filtering)
+# Task 1: nudity with 'exposed anus'
+# Task 2: nudity with 'exposed feet'
+# Task 3: nudity with 'exposed face'
+
+# Arrays for configuration (indexed by SLURM_ARRAY_TASK_ID)
 DATASET_PATHS=(
+#   "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/cc3m-wds/representations/unet_up_1_att_1"
   "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1"
-  "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/cc3m-wds/representations/unet_up_1_att_1"
+  "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1"
+  "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1"
 )
 
-# Select dataset for this task
-DATASET_PATH="${DATASET_PATHS[$SLURM_ARRAY_TASK_ID]}"
+DATASET_NAMES=(
+#   "cc3m-wds"
+  "nudity"
+  "nudity"
+  "nudity"
+)
 
-# Extract dataset name from path (e.g., "nudity" or "cc3m-wds")
-DATASET_NAME=$(basename $(dirname $(dirname "$DATASET_PATH")))
+# Concept values (empty string for cc3m-wds means no filtering)
+CONCEPT_VALUES=(
+#   ""
+  "exposed anus"
+  "exposed armpits"
+  "buttocks"
+)
+
+# Select configuration for this task
+DATASET_PATH="${DATASET_PATHS[$SLURM_ARRAY_TASK_ID]}"
+DATASET_NAME="${DATASET_NAMES[$SLURM_ARRAY_TASK_ID]}"
+CONCEPT_VALUE="${CONCEPT_VALUES[$SLURM_ARRAY_TASK_ID]}"
 
 # Model configuration
 LAYER_NAME="unet_up_1_att_1"
 SAE_DIR_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/${LAYER_NAME}/exp16_topk32_lr5em5_ep2_bs4096"
 
-# Concept configuration
+# Concept name (same for all tasks with concepts)
 CONCEPT_NAME="object"
-CONCEPT_VALUE="exposed anus"
 
 # Output configuration
 FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/${LAYER_NAME}/exp16_topk32_lr5em5_ep2_bs4096/feature_sums"
-FEATURE_SUMS_PREFIX="${LAYER_NAME}_concept_${CONCEPT_NAME}_exposed_anus"
-
-# Generation parameters
-# TOP_K=32
-# BATCH_SIZE=8192
-# EPSILON=1e-8
 
 #==============================================================================
 # VALIDATION
@@ -118,31 +132,35 @@ if [ ! -d "$SAE_DIR_PATH" ]; then
   exit 1
 fi
 
-mkdir -p "$FEATURES_DIR"
-
 #==============================================================================
 # RUN FEATURE SELECTION
 #==============================================================================
 
-echo "Starting feature selection for dataset: ${DATASET_NAME}..."
+echo ""
+echo "Starting feature selection..."
 echo ""
 
 echo "Configuration:"
 echo "  Dataset: ${DATASET_PATH}"
+echo "  Dataset Name: ${DATASET_NAME}"
 echo "  SAE: ${SAE_DIR_PATH}"
-echo "  Concept: '${CONCEPT_NAME}' == '${CONCEPT_VALUE}'"
-echo "  Features dir: ${FEATURES_DIR}"
-echo "  Feature prefix: ${FEATURE_SUMS_PREFIX}"
-echo "=========================================="
 
+# Build command - add concept arguments only if concept_value is not empty
 CMD="uv run ${PYTHON_SCRIPT} \
     --dataset_path \"${DATASET_PATH}\" \
     --dataset_name \"${DATASET_NAME}\" \
-    --concept \"${CONCEPT_NAME}\" \
-    --concept_value \"${CONCEPT_VALUE}\" \
     --sae_dir_path \"${SAE_DIR_PATH}\" \
-    --features_dir_path \"${FEATURES_DIR}\" \
-    --feature_sums_prefix \"${FEATURE_SUMS_PREFIX}\" "
+    --features_dir_path \"${FEATURES_DIR}\""
+
+if [ -n "$CONCEPT_VALUE" ]; then
+    echo "  Concept: '${CONCEPT_NAME}' == '${CONCEPT_VALUE}'"
+    CMD="${CMD} --concept \"${CONCEPT_NAME}\" --concept_value \"${CONCEPT_VALUE}\""
+else
+    echo "  Filtering: None (processing all samples)"
+fi
+
+echo "  Features dir: ${FEATURES_DIR}"
+echo "=========================================="
 
 
 # Optional: skip wandb
@@ -154,66 +172,8 @@ echo "${CMD}"
 echo ""
 
 eval ${CMD}
-EXIT_CODE=$?
 
-#==============================================================================
-# MERGE RESULTS (only run on task 0 after all tasks complete)
-#==============================================================================
-if [ $EXIT_CODE -eq 0 ] && [ ${SLURM_ARRAY_TASK_ID} -eq 0 ]; then
-    echo ""
-    echo "=========================================="
-    echo "Waiting for all array tasks to complete..."
-    echo "=========================================="
-    
-    # Wait for all tasks to finish
-    # This simple approach: keep checking if all partial files exist
-    EXPECTED_FILES=${#DATASET_PATHS[@]}
-    
-    while true; do
-        COMPLETED=$(ls ${FEATURES_DIR}/${FEATURE_SUMS_PREFIX}_job*_*.pt 2>/dev/null | wc -l)
-        if [ $COMPLETED -ge $EXPECTED_FILES ]; then
-            echo "All tasks completed. Starting merge..."
-            break
-        fi
-        echo "  Waiting... ($COMPLETED/$EXPECTED_FILES files ready)"
-        sleep 30
-    done
-    
-    # Run merge script
-    MERGE_SCRIPT="scripts/data/merge_feature_sums.py"
-    MERGE_INPUT_PATTERN="${FEATURES_DIR}/${FEATURE_SUMS_PREFIX}_job*.pt"
-    MERGE_OUTPUT_PATH="${FEATURES_DIR}/${FEATURE_SUMS_PREFIX}.pt"
-    
-    echo ""
-    echo "Merging partial results..."
-    MERGE_CMD="uv run ${MERGE_SCRIPT} \
-        --input_pattern \"${MERGE_INPUT_PATTERN}\" \
-        --output_path \"${MERGE_OUTPUT_PATH}\""
-    
-    # Note: NOT using --cleanup to validate results
-    
-    echo "Running:"
-    echo "${MERGE_CMD}"
-    echo ""
-    
-    eval ${MERGE_CMD}
-    MERGE_EXIT_CODE=$?
-    
-    if [ $MERGE_EXIT_CODE -eq 0 ]; then
-        echo ""
-        echo "=========================================="
-        echo "✓ Merge completed successfully"
-        echo "  Output: ${MERGE_OUTPUT_PATH}"
-        echo "  Partial files kept for validation"
-        echo "=========================================="
-    else
-        echo ""
-        echo "=========================================="
-        echo "✗ Merge FAILED (code: ${MERGE_EXIT_CODE})"
-        echo "=========================================="
-        EXIT_CODE=$MERGE_EXIT_CODE
-    fi
-fi
+EXIT_CODE=$?
 
 #==============================================================================
 # SUMMARY
@@ -221,14 +181,16 @@ fi
 echo ""
 echo "=========================================="
 if [ $EXIT_CODE -eq 0 ]; then
-    if [ ${SLURM_ARRAY_TASK_ID} -eq 0 ]; then
-        echo "Feature selection and merge completed successfully"
-        echo "Final output: ${MERGE_OUTPUT_PATH}"
-    else
-        echo "Feature selection completed for task ${SLURM_ARRAY_TASK_ID}"
+    echo "Feature selection completed successfully for task ${SLURM_ARRAY_TASK_ID}"
+    echo "  Dataset: ${DATASET_NAME}"
+    if [ -n "$CONCEPT_VALUE" ]; then
+        echo "  Concept: ${CONCEPT_VALUE}"
     fi
+    echo "  Output directory: ${FEATURES_DIR}"
 else
     echo "Feature selection FAILED (code: ${EXIT_CODE})"
+    echo "  Task: ${SLURM_ARRAY_TASK_ID}"
+    echo "  Dataset: ${DATASET_NAME}"
 fi
 echo "End: $(date)"
 echo "=========================================="

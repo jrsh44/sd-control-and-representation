@@ -2,6 +2,8 @@ import time
 
 import torch
 
+from src.models.sae.training.utils import extract_input, get_dictionary
+
 # --- Bezpieczne importowanie wandb ---
 try:
     import wandb  # noqa: F401
@@ -137,19 +139,26 @@ def compute_sums_per_timestep(
 
         # Process batch on GPU
         codes = get_codes(sae, batch, device)
+        # print(f"Codes shape: {codes.shape}")
 
         # Move to CPU as float32 (saves bandwidth in GPU->CPU transfer)
         codes_cpu = codes.to("cpu", dtype=torch.float32)
         del codes  # Explicitly release GPU tensor
 
+        # Ensure timesteps is a tensor on CPU
+        if not isinstance(timesteps, torch.Tensor):
+            timesteps = torch.tensor(timesteps, dtype=torch.long)
+        else:
+            timesteps = timesteps.cpu()
+
         # Group by timestep within batch
         unique_timesteps = torch.unique(timesteps)
         for t in unique_timesteps:
-            t_val = t.item()
+            t_val = int(t.item())
             mask = timesteps == t
             codes_t = codes_cpu[mask]
 
-            if t_val not in sums_per_timestep:
+            if t_val not in sums_per_timestep.keys():
                 # Use float64 for accumulation to prevent precision loss
                 # when adding many small numbers to large sums (millions of samples)
                 sums_per_timestep[t_val] = torch.zeros(nb_concepts, dtype=torch.float64)
@@ -174,6 +183,7 @@ def compute_sums_per_timestep(
             elapsed = time.time() - start_time
             avg_time = sum(batch_times[-log_every:]) / len(batch_times[-log_every:])
             speed_samples = total_samples / elapsed
+            speed_batches = (i + 1) / elapsed
 
             mem_info = ""
             if is_cuda:
@@ -188,10 +198,39 @@ def compute_sums_per_timestep(
                 f"Timesteps: {len(sums_per_timestep)}{mem_info}"
             )
 
+            # Logowanie do wandb (jeśli dostępne)
+            if WANDB_AVAILABLE and wandb.run is not None:
+                wandb.log(
+                    {
+                        f"{phase_name}/batch_time_ms": avg_time * 1000,
+                        f"{phase_name}/min_batch_time_ms": min(batch_times) * 1000,
+                        f"{phase_name}/max_batch_time_ms": max(batch_times) * 1000,
+                        f"{phase_name}/throughput_samples_per_s": speed_samples,
+                        f"{phase_name}/throughput_batches_per_s": speed_batches,
+                        f"{phase_name}/processed_batches": i + 1,
+                        f"{phase_name}/processed_samples": total_samples,
+                        f"{phase_name}/unique_timesteps": len(sums_per_timestep),
+                        f"{phase_name}/elapsed_time_s": elapsed,
+                    },
+                    step=i,
+                    commit=True,
+                )
+
     total_time = time.time() - start_time
     print(
         f"{phase_name} finished in {total_time:.1f}s "
         f"({total_samples:,} samples, {len(sums_per_timestep)} timesteps)"
     )
+
+    # Final log do wandb
+    if WANDB_AVAILABLE and wandb.run is not None:
+        wandb.log(
+            {
+                f"total_{phase_name}/total_time_s": total_time,
+                f"total_{phase_name}/final_throughput_samples_per_s": total_samples / total_time,
+                f"total_{phase_name}/total_samples": total_samples,
+                f"total_{phase_name}/total_timesteps": len(sums_per_timestep),
+            }
+        )
 
     return sums_per_timestep, counts_per_timestep

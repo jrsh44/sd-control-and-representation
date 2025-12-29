@@ -100,7 +100,7 @@ class RepresentationDataset(Dataset):
         # Load metadata from metadata.json if needed (for filtering or metadata)
         self._metadata = None
         self.return_timestep = return_timestep  # NEW
-        if filter_fn is not None or return_metadata or indices is not None:
+        if filter_fn is not None or return_metadata or return_timestep or indices is not None:
             # Load entries from metadata.json (can be "entries" or "metadata" key)
             self._metadata = info.get("entries", info.get("metadata", []))
             if not self._metadata:
@@ -115,13 +115,21 @@ class RepresentationDataset(Dataset):
             self.use_direct_indexing = False
             print(f"  Using {len(indices)} pre-filtered indices")
         elif filter_fn is not None:
-            # Apply filter on metadata
+            # Apply filter on metadata (each entry is a prompt with multiple samples)
             if self._metadata is None:
                 raise ValueError("Metadata not loaded but filter_fn provided")
             print("  Applying filter function on metadata...")
-            self.indices = [i for i, entry in enumerate(self._metadata) if filter_fn(entry)]
+            self.indices = []
+            filtered_prompts = 0
+            for entry in self._metadata:
+                if filter_fn(entry):
+                    # Add ALL sample indices for this prompt
+                    self.indices.extend(range(entry["start_idx"], entry["end_idx"]))
+                    filtered_prompts += 1
             self.use_direct_indexing = False
-            print(f"  Filtered: {len(self.indices)}/{len(self._metadata)} samples")
+            print(
+                f"  Filtered: {len(self.indices)} samples from {filtered_prompts}/{len(self._metadata)} prompts"
+            )
         else:
             # No filtering - use direct indexing
             self.indices = None
@@ -144,6 +152,44 @@ class RepresentationDataset(Dataset):
         """Return the feature dimension of the representations."""
         return self._feature_dim
 
+    def _find_entry_for_index(self, real_idx: int) -> Optional[Dict]:
+        """Find metadata entry that contains the given sample index."""
+        if self._metadata is None:
+            return None
+
+        # Binary search for efficiency (entries are sorted by start_idx)
+        for entry in self._metadata:
+            if entry["start_idx"] <= real_idx < entry["end_idx"]:
+                return entry
+        return None
+
+    def _get_metadata_for_index(self, real_idx: int) -> Dict:
+        """Get metadata for a given sample index."""
+        entry = self._find_entry_for_index(real_idx)
+        if entry is None:
+            return {}
+        return entry
+
+    def _calculate_timestep(self, real_idx: int) -> int:
+        """
+        Calculate timestep for a given sample index.
+
+        Each prompt's data is stored as [n_timesteps, n_spatial, features]
+        flattened to (n_timesteps * n_spatial, features).
+
+        So for a sample at position i within the prompt's range:
+        timestep = (i - start_idx) // n_spatial
+        """
+        entry = self._find_entry_for_index(real_idx)
+        if entry is None:
+            return 0  # Fallback
+
+        position_in_entry = real_idx - entry["start_idx"]
+        n_spatial = entry["n_spatial"]
+        timestep = position_in_entry // n_spatial
+
+        return timestep
+
     def __len__(self):
         if self.use_direct_indexing:
             return self.total_samples
@@ -163,17 +209,23 @@ class RepresentationDataset(Dataset):
 
         # NEW: Return timestep if requested
         if self.return_timestep:
-            timestep = self._metadata[real_idx]["timestep"]
+            # Find which entry this sample belongs to and calculate timestep
+            # Each entry has samples from [start_idx, end_idx)
+            # Structure: [n_timesteps, n_spatial] flattened to (n_timesteps * n_spatial)
+            # So: timestep = (position_within_entry) // n_spatial
+            timestep = self._calculate_timestep(real_idx)
             if self.return_metadata:
                 return (
                     rep,
                     timestep,
-                    self._metadata[real_idx],
+                    self._get_metadata_for_index(real_idx),
                 )
             return rep, timestep
 
         if not self.return_metadata:
             return rep
+
+        return rep, self._get_metadata_for_index(real_idx)
 
     def _is_network_fs(self, path: Path) -> bool:
         """Check if path is on network filesystem (Lustre, NFS, etc.)"""

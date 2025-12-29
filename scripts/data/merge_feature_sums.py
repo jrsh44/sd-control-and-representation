@@ -4,9 +4,9 @@ Merge partial feature sum files from parallel array jobs into a single file.
 
 Example usage:
     python scripts/data/merge_feature_sums.py \
-        --input_pattern "results/sae_scores/unet_mid_att_canvas_present_job*.pt" \
-        --output_path "results/sae_scores/unet_mid_att_canvas_present_feature_sums.pt" \
-        --cleanup
+        --input_dir "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_sums" \
+        --pattern "*.pt" \
+        --output_path "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_sums/merged_feature_sums.pt"
 """
 
 import argparse
@@ -28,195 +28,151 @@ def find_partial_files(pattern: str) -> List[Path]:
 
 
 def merge_feature_sums(partial_files: List[Path]) -> Dict:
-    """
-    Merge multiple partial feature sum files into one.
+    """Merge multiple feature sum files, combining across datasets.
 
-    Args:
-        partial_files: List of paths to partial .pt files
-
-    Returns:
-        Merged dictionary with aggregated sums and counts
+    Files with same concept, concept_value but different datasets: add sums and counts
+    Files with same dataset, concept, concept_value: keep only one (duplicate)
     """
     if not partial_files:
-        raise ValueError("No partial files found to merge")
+        raise ValueError("No files to merge")
 
-    print(f"Found {len(partial_files)} partial files to merge")
+    print(f"Loading {len(partial_files)} files...")
 
-    # Initialize merged dictionaries
-    merged_sums_true = {}
-    merged_counts_true = {}
-    merged_sums_false = {}
-    merged_counts_false = {}
-    all_timesteps = set()
+    # Load all data
+    all_data = []
+    for file_path in partial_files:
+        data = torch.load(file_path, map_location="cpu")
+        all_data.append(data)
+        print(f"  Loaded {file_path.name}")
 
-    # Process each partial file
-    for i, file_path in enumerate(partial_files, 1):
-        print(f"  [{i}/{len(partial_files)}] Loading {file_path.name}...")
+    # Group by (concept, concept_value) and track unique datasets
+    # Key: (concept, concept_value), Value: list of data dicts
+    groups = {}
 
-        try:
-            data = torch.load(file_path, map_location="cpu")
-        except Exception as e:
-            print(f"    ✗ Failed to load {file_path}: {e}")
+    for data in all_data:
+        key = (data["concept"], data["concept_value"])
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(data)
+
+    print(f"\nFound {len(groups)} unique (concept, concept_value) combinations")
+
+    # Merge each group
+    merged_data = []
+    for (concept, concept_value), group_data in groups.items():
+        print(f"\nMerging: concept={concept}, concept_value={concept_value}")
+
+        # Remove duplicates (same dataset)
+        seen_datasets = {}
+        unique_data = []
+        for data in group_data:
+            dataset_name = data["dataset_name"]
+            if dataset_name not in seen_datasets:
+                seen_datasets[dataset_name] = data
+                unique_data.append(data)
+            else:
+                print(f"  Skipping duplicate from dataset: {dataset_name}")
+
+        if len(unique_data) == 0:
             continue
 
-        # Validate structure
-        required_keys = [
-            "sums_true_per_timestep",
-            "counts_true_per_timestep",
-            "sums_false_per_timestep",
-            "counts_false_per_timestep",
-        ]
-        if not all(k in data for k in required_keys):
-            print(f"    ✗ Skipping {file_path}: missing required keys")
-            continue
+        # Start with the first entry
+        merged = {
+            "concept": concept,
+            "concept_value": concept_value,
+            "layer_name": unique_data[0]["layer_name"],
+            "timesteps": unique_data[0]["timesteps"],
+            "datasets": [unique_data[0]["dataset_name"]],  # Track which datasets were merged
+            "sums_per_timestep": {},
+            "counts_per_timestep": {},
+        }
 
-        # Merge sums_true_per_timestep
-        for timestep, tensor in data["sums_true_per_timestep"].items():
-            all_timesteps.add(timestep)
-            if timestep not in merged_sums_true:
-                # Initialize with float64 for precision
-                merged_sums_true[timestep] = tensor.clone().to(dtype=torch.float64)
-                merged_counts_true[timestep] = 0
-            else:
-                # Accumulate in float64
-                merged_sums_true[timestep] += tensor.to(dtype=torch.float64)
+        # Initialize with first entry's data
+        for timestep, sum_tensor in unique_data[0]["sums_per_timestep"].items():
+            merged["sums_per_timestep"][timestep] = sum_tensor.clone()
+        for timestep, count in unique_data[0]["counts_per_timestep"].items():
+            merged["counts_per_timestep"][timestep] = count
 
-            merged_counts_true[timestep] += data["counts_true_per_timestep"][timestep]
+        # Add data from other datasets
+        for data in unique_data[1:]:
+            dataset_name = data["dataset_name"]
+            print(f"  Adding data from dataset: {dataset_name}")
+            merged["datasets"].append(dataset_name)
 
-        # Merge sums_false_per_timestep
-        for timestep, tensor in data["sums_false_per_timestep"].items():
-            all_timesteps.add(timestep)
-            if timestep not in merged_sums_false:
-                merged_sums_false[timestep] = tensor.clone().to(dtype=torch.float64)
-                merged_counts_false[timestep] = 0
-            else:
-                merged_sums_false[timestep] += tensor.to(dtype=torch.float64)
+            # Add sums
+            for timestep, sum_tensor in data["sums_per_timestep"].items():
+                if timestep in merged["sums_per_timestep"]:
+                    merged["sums_per_timestep"][timestep] += sum_tensor
+                else:
+                    merged["sums_per_timestep"][timestep] = sum_tensor.clone()
 
-            merged_counts_false[timestep] += data["counts_false_per_timestep"][timestep]
+            # Add counts
+            for timestep, count in data["counts_per_timestep"].items():
+                if timestep in merged["counts_per_timestep"]:
+                    merged["counts_per_timestep"][timestep] += count
+                else:
+                    merged["counts_per_timestep"][timestep] = count
 
-        print(f"    ✓ Merged (timesteps: {len(data.get('timesteps', []))})")
+        print(f"  Merged {len(unique_data)} datasets: {merged['datasets']}")
+        merged_data.append(merged)
 
-    # Create final merged structure
-    merged_data = {
-        "sums_true_per_timestep": merged_sums_true,
-        "counts_true_per_timestep": merged_counts_true,
-        "sums_false_per_timestep": merged_sums_false,
-        "counts_false_per_timestep": merged_counts_false,
-        "timesteps": sorted(all_timesteps),
+    # Create final output structure
+    output = {
+        "layer_name": all_data[0]["layer_name"],
+        "num_groups": len(merged_data),
+        "total_files_processed": len(partial_files),
+        "data": merged_data,
     }
 
-    return merged_data
-
-
-def print_summary(merged_data: Dict):
-    """Print summary statistics of merged data."""
-    print("\n" + "=" * 80)
-    print("MERGE SUMMARY")
-    print("=" * 80)
-
-    timesteps = merged_data["timesteps"]
-    print(f"Total timesteps: {len(timesteps)}")
-    if timesteps:
-        print(f"Timestep range: {min(timesteps)} - {max(timesteps)}")
-
-    # Concept TRUE stats
-    total_samples_true = sum(merged_data["counts_true_per_timestep"].values())
-    print(f"\nConcept=TRUE samples: {total_samples_true:,}")
-    if merged_data["sums_true_per_timestep"]:
-        example_timestep = timesteps[0]
-        num_features = merged_data["sums_true_per_timestep"][example_timestep].shape[0]
-        print(f"  Features per timestep: {num_features:,}")
-        dtype = merged_data["sums_true_per_timestep"][example_timestep].dtype
-        print(f"  Dtype: {dtype}")
-
-    # Concept FALSE stats
-    total_samples_false = sum(merged_data["counts_false_per_timestep"].values())
-    print(f"\nConcept=FALSE samples: {total_samples_false:,}")
-    if merged_data["sums_false_per_timestep"]:
-        example_timestep = timesteps[0]
-        num_features = merged_data["sums_false_per_timestep"][example_timestep].shape[0]
-        print(f"  Features per timestep: {num_features:,}")
-        dtype = merged_data["sums_false_per_timestep"][example_timestep].dtype
-        print(f"  Dtype: {dtype}")
-
-    # Memory estimate
-    if merged_data["sums_true_per_timestep"]:
-        bytes_per_tensor = num_features * 8  # float64
-        total_tensors = len(timesteps) * 2  # true + false
-        total_bytes = bytes_per_tensor * total_tensors
-        print(f"\nEstimated size: {total_bytes / (1024**2):.1f} MB")
+    return output
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Merge partial feature sum files from parallel array jobs"
     )
+
     parser.add_argument(
-        "--input_pattern",
-        type=str,
-        required=True,
-        help='Glob pattern for input files (e.g., "results/sae_scores/job*.pt")',
+        "--input_dir", type=str, required=True, help="Directory containing .pt files to merge"
     )
     parser.add_argument(
-        "--output_path",
-        type=str,
-        required=True,
-        help="Path to save merged output file",
+        "--pattern", type=str, default="*.pt", help="Glob pattern to match files (default: *.pt)"
     )
     parser.add_argument(
-        "--cleanup",
-        action="store_true",
-        help="Delete partial files after successful merge",
+        "--output_path", type=str, required=True, help="Path where merged file will be saved"
     )
     parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show what would be merged without actually merging",
+        "--cleanup", action="store_true", help="Delete input files after successful merge"
     )
+
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
 
-    print("=" * 80)
-    print("MERGE FEATURE SUMS")
-    print("=" * 80)
-    print(f"Input pattern: {args.input_pattern}")
-    print(f"Output path: {args.output_path}")
-    print("-" * 80)
-
-    # Find partial files
-    try:
-        partial_files = find_partial_files(args.input_pattern)
-        if not partial_files:
-            print(f"✗ No files found matching pattern: {args.input_pattern}")
-            return 1
-
-        print(f"\nFound {len(partial_files)} files:")
-        for f in partial_files:
-            size_mb = f.stat().st_size / (1024**2)
-            print(f"  - {f.name} ({size_mb:.2f} MB)")
-
-        if args.dry_run:
-            print("\n[DRY RUN] Would merge these files. Exiting.")
-            return 0
-
-    except Exception as e:
-        print(f"✗ Error finding files: {e}")
+    # Find input files
+    input_dir = Path(args.input_dir)
+    if not input_dir.exists():
+        print(f"✗ Error: Input directory does not exist: {input_dir}")
         return 1
 
+    if not input_dir.is_dir():
+        print(f"✗ Error: Input path is not a directory: {input_dir}")
+        return 1
+
+    partial_files = sorted(input_dir.glob(args.pattern))
+
+    if not partial_files:
+        print(f"✗ Error: No files found matching pattern '{args.pattern}' in {input_dir}")
+        return 1
+
+    print(f"Found {len(partial_files)} files to merge")
+    print(f"Output will be saved to: {args.output_path}\n")
+
     # Merge files
-    print("\n" + "=" * 80)
-    print("MERGING FILES")
-    print("=" * 80)
     try:
         merged_data = merge_feature_sums(partial_files)
-        print("✓ Merge complete")
-
-        # Print summary
-        print_summary(merged_data)
-
     except Exception as e:
         print(f"\n✗ Error during merge: {e}")
         import traceback
@@ -225,38 +181,39 @@ def main() -> int:
         return 1
 
     # Save merged file
-    print("\n" + "=" * 80)
-    print("SAVING MERGED FILE")
-    print("=" * 80)
-    try:
-        output_path = Path(args.output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = Path(args.output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        print(f"Saving to {output_path}...")
-        torch.save(merged_data, output_path)
+    print(f"\nSaving merged data to {output_path}...")
+    torch.save(merged_data, output_path)
 
-        output_size_mb = output_path.stat().st_size / (1024**2)
-        print(f"✓ Saved successfully ({output_size_mb:.2f} MB)")
+    # Verify saved file
+    file_size_mb = output_path.stat().st_size / (1024 * 1024)
+    print(f"✓ Saved successfully ({file_size_mb:.2f} MB)")
 
-    except Exception as e:
-        print(f"✗ Error saving file: {e}")
-        return 1
+    # Print summary
+    print(f"\n{'=' * 60}")
+    print("MERGE SUMMARY")
+    print(f"{'=' * 60}")
+    print(f"Input files processed: {merged_data['total_files_processed']}")
+    print(f"Unique (concept, concept_value) groups: {merged_data['num_groups']}")
+    print(f"Layer: {merged_data['layer_name']}")
+    print(f"\nGroups:")
+    for entry in merged_data["data"]:
+        print(
+            f"  - {entry['concept']}={entry['concept_value']}: "
+            f"{len(entry['datasets'])} datasets merged"
+        )
+    print(f"{'=' * 60}")
 
     # Cleanup if requested
     if args.cleanup:
-        print("\n" + "=" * 80)
-        print("CLEANING UP PARTIAL FILES")
-        print("=" * 80)
-        for f in partial_files:
-            try:
-                f.unlink()
-                print(f"  ✓ Deleted {f.name}")
-            except Exception as e:
-                print(f"  ✗ Failed to delete {f.name}: {e}")
+        print(f"\nCleaning up {len(partial_files)} input files...")
+        for file_path in partial_files:
+            file_path.unlink()
+            print(f"  Deleted {file_path.name}")
+        print("✓ Cleanup complete")
 
-    print("\n" + "=" * 80)
-    print("✓ MERGE COMPLETE")
-    print("=" * 80)
     return 0
 
 
