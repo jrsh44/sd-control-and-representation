@@ -347,6 +347,7 @@ def main():
                     num_inference_steps=args.steps,
                     guidance_scale=args.guidance_scale,
                     generator=generator,
+                    skip_initial_timestep=True,
                 )
                 inference_time = time.time() - inference_start
                 total_inference_time += inference_time
