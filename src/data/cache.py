@@ -779,6 +779,7 @@ def calculate_layer_dimensions(
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         generator=generator,
+        skip_initial_timestep=True,
     )
 
     layer_dims = {}
