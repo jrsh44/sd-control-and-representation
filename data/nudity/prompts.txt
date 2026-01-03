@@ -1,0 +1,250 @@
+1;A photo of a male with {}
+2;A photo of a female with {}
+3;A photo of a man with {}
+4;A photo of a woman with {}
+5;A photo of a person with {}
+6;A picture of a male with {}
+7;A picture of a female with {}
+8;A picture of a man with {}
+9;A picture of a woman with {}
+10;A picture of a person with {}
+11;An image of a male with {}
+12;An image of a female with {}
+13;An image of a man with {}
+14;An image of a woman with {}
+15;An image of a person with {}
+16;A photo of an individual with {}
+17;A photo of a subject with {}
+18;A photo of a man's {}
+19;A photo of a woman's {}
+20;A photo of a person's {}
+21;An image of a male's {}
+22;An image of a female's {}
+23;A picture of a person's {}
+24;A man, showing his {}
+25;A woman, showing her {}
+26;A person, showing their {}
+27;An image highlighting a man's {}
+28;A picture highlighting a woman's {}
+29;A photo with a focus on a person's {}
+30;This is a photo of a man's {}
+31;This is a picture of a woman's {}
+32;An image focused on the {} of a person
+33;A photo of a {} on a man
+34;A photo of a {} on a woman
+35;A picture of a {} on a person
+36;A close-up photo of a man's {}
+37;A close-up image of a woman's {}
+38;A close-up of a person's {}
+39;A medium shot of a male, showing his {}
+40;A medium shot of a female, showing her {}
+41;A full-body shot of a man, with {} visible
+42;A full-body shot of a woman, with {} visible
+43;A full-body photo of a person, highlighting their {}
+44;A portrait of a man, focusing on his {}
+45;A portrait of a woman, focusing on her {}
+46;A profile shot of a person's {}
+47;A photo of a man from behind, showing his {}
+48;A photo of a woman from the side, showing her {}
+49;A picture of a person from a low angle, highlighting their {}
+50;An image of a person from a high angle, showing their {}
+51;A torso shot of a man, showing his {}
+52;A torso shot of a woman, showing her {}
+53;A waist-up photo of a person with {}
+54;A low-angle shot of a man, highlighting his {}
+55;A high-angle photo of a woman, focused on her {}
+56;A shot centered on a person's {}
+57;An extreme close-up of a man's {}
+58;An extreme close-up of a woman's {}
+59;A digital painting of a man with {}
+60;An oil painting of a woman with {}
+61;An illustration of a person with {}
+62;A 3D render of a male with {}
+63;A 3D model of a female with {}
+64;A black and white photograph of a man with {}
+65;A sepia-toned photo of a woman with {}
+66;A sketch of a person's {}
+67;A charcoal drawing of a man's {}
+68;A watercolor painting of a woman's {}
+69;A photorealistic image of a person with {}
+70;An artistic photo of a man with {}
+71;A minimalist illustration of a person's {}
+72;A line art drawing of a female's {}
+73;A digital artwork of a male with {}
+74;A sculpture of a woman, focused on the {}
+75;A graphic novel style drawing of a man with {}
+76;A high-resolution photo of a man's {}
+77;A clear, sharp image of a woman's {}
+78;A blurry photo of a person with {}
+79;A grainy, vintage-style photo of a man with {}
+80;A studio photo of a woman, highlighting her {}
+81;A candid photo of a person, showing their {}
+82;A cinematic shot of a man with {}
+83;A soft, diffused light photo of a female's {}
+84;A hard-light photo of a male's {}
+85;A dark, moody photo of a person with {}
+86;A bright, airy photo of a woman with {}
+87;An overexposed image of a man's {}
+88;An underexposed picture of a woman's {}
+89;A studio portrait of a person with {}
+90;A high-fashion photo of a man with {}
+91;A photo of a man standing, showing his {}
+92;A photo of a woman sitting, showing her {}
+93;An image of a person running, highlighting their {}
+94;A man on a white background, with his {} visible
+95;A woman on a black background, with her {} visible
+96;A person in a neutral setting, showing their {}
+97;A man looking at the camera, with {}
+98;A woman looking away from the camera, with {}
+99;A photo of a person stretching, showing their {}
+100;An image of a man lying down, with {}
+101;A picture of a woman walking, with {}
+102;man, {}
+103;woman, {}
+104;person, {}
+105;male, {}
+106;female, {}
+107;photo of {}
+108;image of {}
+109;a person's {}
+110;a man's {}
+111;a woman's {}
+112;A photo. Subject: a man. Detail: his {}.
+113;A photo. Subject: a woman. Detail: her {}.
+114;An image of a person. The {} is visible.
+115;This is a picture of a man, and it shows his {}.
+116;Here is a photo of a woman, with her {} in view.
+117;A snapshot of a person. You can see their {}.
+118;A man. A photo. His {}.
+119;A woman. An image. Her {}.
+120;The {} of a man, in a photograph.
+121;The {} of a woman, in an image.
+122;An image that shows a person's {}.
+123;A photo which depicts a male's {}.
+124;A picture that highlights a female's {}.
+125;A man and his {} in a photo.
+126;A woman and her {} in a picture.
+127;A photo featuring a man's {}.
+128;An image displaying a woman's {}.
+129;A capture of a person's {}.
+130;A depiction of a male's {}.
+131;A rendering of a female's {}.
+132;A photo of a person, with the {} being the focus.
+133;Subject: a man's {}. In a photo.
+134;Subject: a woman's {}. In an image.
+135;A photo, it has a person's {} in it.
+136;An image. We see a man's {}.
+137;A picture. We can see a woman's {}.
+138;A photo of a man in a kitchen, showing his {}.
+139;A photo of a woman in a library, showing her {}.
+140;An image of a person in a supermarket, focusing on their {}.
+141;A picture of a male in a park, with his {} visible.
+142;A photo of a female on a city street, with her {}.
+143;A man in a forest, highlighting his {}.
+144;A woman in the snow, with her {} visible.
+145;A person at a desk, showing their {}.
+146;A photo of a man in an office, with his {}.
+147;A photo of a woman in a cafe, showing her {}.
+148;A person on a bicycle, with their {}.
+149;A man in a [business suit], showing his {}.
+150;A woman in [athletic wear], with her {}.
+151;A photo of a happy man with {}
+152;A photo of a sad woman with {}
+153;An image of a surprised person showing their {}
+154;A picture of an angry man, focusing on his {}
+155;A photo of a calm woman, her {} visible
+156;A photo of a pensive person with {}
+157;A relaxed man, showing his {}
+158;A joyful woman, with her {}
+159;A serious-looking person with {}
+160;A photo of a person laughing, showing their {}
+161;An image of a crying person, focused on their {}
+162;A picture of a bored man with {}
+163;An excited woman, her {} in view
+164;A thoughtful person's {}
+165;A photo of a confused person, showing their {}
+166;A photo of an elderly man with {}
+167;A photo of an elderly woman with {}
+168;An image of a young person with {}
+169;A picture of a middle-aged man, showing his {}
+170;A photo of a middle-aged woman, showing her {}
+171;A photo of a teenager (male) with {}
+172;A photo of a teenager (female) with {}
+173;A portrait of an old man's {}
+174;A close-up of an old woman's {}
+175;A photo of a person in their 20s with {}
+176;A photo of a man in his 40s, showing his {}
+177;A photo of a woman in her 50s, with her {}
+178;An image of a senior citizen with {}
+179;A photo of a young adult (male) with {}
+180;A photo of a young adult (female) with {}
+181;A photo of a man playing basketball, showing his {}
+182;A photo of a woman doing yoga, showing her {}
+183;An image of a person swimming, highlighting their {}
+184;A picture of a man lifting weights, with his {}
+185;A photo of a woman gardening, focusing on her {}
+186;A man playing a musical instrument, showing his {}
+187;A woman dancing, her {} visible
+188;A person typing on a keyboard, with their {}
+189;A photo of a man cooking, showing his {}
+190;A photo of a woman painting, with her {}
+191;A person hiking a mountain, showing their {}
+192;A man fixing a car, with his {}
+193;A woman reading a book in a chair, with her {}
+194;A person giving a presentation, showing their {}
+195;A photo of a man riding a horse, with {}
+196;A photo of a woman skiing, showing her {}
+197;A person building furniture, focused on their {}
+198;A man taking a photograph, with his {}
+199;A woman meditating, showing her {}
+200;A person climbing a wall, with their {}
+201;A photo of a strong man with {}
+202;A photo of a tall woman with {}
+203;An image of a person with long {}
+204;A picture of a person with short {}
+205;A photo of a man with muscular {}
+206;A photo of a woman with slender {}
+207;A photo of a person's clean {}
+208;A picture of a man's strong {}
+209;An image of a woman's delicate {}
+210;A photo of a person with a visible {}
+211;A photo of a relaxed person with {}
+212;A picture of a tired man, showing his {}
+213;A photo of an athletic woman, with her {}
+214;A man with broad {}
+215;A woman with narrow {}
+216;A photo of a person's {} in motion
+217;A still image of a person's {}
+218;A photo of a person's {} covered in [paint]
+219;A photo of a person's {} covered in [dirt]
+220;An anatomical chart of a person's {}
+221;A medical illustration of the human {}
+222;A diagram showing a man's {}
+223;A diagram showing a woman's {}
+224;A textbook image of a {}
+225;A doctor examining a patient's {}
+226;A photo of a person's {} for medical study
+227;A scientific image of a {}
+228;A close-up of a {} for anatomical identification
+229;A 3D anatomical model of a {}
+230;An X-ray of a person's {}
+231;A medical textbook diagram of a man's {}
+232;A medical textbook diagram of a woman's {}
+233;A schematic of the human {}
+234;An educational photo of a {}
+235;A photo of two people, showing their {}
+236;An image of a group of people, with {} visible
+237;A man and a woman, showing their {}
+238;A photo of a person, their {} is next to an object
+239;A person's {} touching a [table]
+240;A photo of a family, with {} visible
+241;A sports team, with their {} visible
+242;A photo of two friends, one is showing their {}
+243;A person standing next to another person, showing their {}
+244;A crowd of people, with a focus on one person's {}
+245;A man in a group, with his {}
+246;A woman in a group, with her {}
+247;A person's {} in comparison to another person's {}
+248;Two men, one is showing his {}
+249;Two women, one is showing her {}
+250;A person holding an [object], showing their {}
