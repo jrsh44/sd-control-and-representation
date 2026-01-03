@@ -33,7 +33,7 @@ def compute_sums(
     loader, sae, device, nb_concepts, log_every: int = 50, phase_name: str = "compute_sums"
 ):
     """
-    Oblicza sumę aktywacji koncepcji i loguje do wandb czas przetwarzania batchy.
+    Oblicza średnią aktywacji koncepcji i loguje do wandb czas przetwarzania batchy.
 
     Args:
         loader: DataLoader
@@ -108,3 +108,70 @@ def compute_sums(
         )
 
     return total_sum
+
+
+@torch.no_grad()
+def compute_sums_per_timestep(
+    loader, sae, device, nb_concepts, log_every: int = 50, phase_name: str = "compute_sums"
+):
+    """
+    Computes sum of activations PER TIMESTEP.
+
+    Returns:
+        sums_per_timestep: dict[int, torch.Tensor] - sum of activations for each timestep
+        counts_per_timestep: dict[int, int] - number of samples for each timestep
+    """
+    sums_per_timestep = {}  # timestep -> sum tensor
+    counts_per_timestep = {}  # timestep -> count
+
+    batch_times = []
+    total_samples = 0
+    start_time = time.time()
+
+    print(f"Starting {phase_name} (per-timestep)...")
+
+    for i, (batch, timesteps) in enumerate(loader):
+        batch_start = time.time()
+
+        codes = get_codes(sae, batch, device)
+        codes_cpu = codes.to("cpu", dtype=torch.float64)
+
+        # Group by timestep within batch
+        unique_timesteps = torch.unique(timesteps)
+        for t in unique_timesteps:
+            t_val = t.item()
+            mask = timesteps == t
+            codes_t = codes_cpu[mask]
+
+            if t_val not in sums_per_timestep:
+                sums_per_timestep[t_val] = torch.zeros(nb_concepts, dtype=torch.float64)
+                counts_per_timestep[t_val] = 0
+
+            sums_per_timestep[t_val] += codes_t.sum(dim=0)
+            counts_per_timestep[t_val] += codes_t.shape[0]
+
+        batch_end = time.time()
+        batch_time = batch_end - batch_start
+        batch_times.append(batch_time)
+        total_samples += batch.size(0)
+
+        # Logging (same as before)
+        if (i + 1) % log_every == 0 or (i + 1) == len(loader):
+            elapsed = time.time() - start_time
+            avg_time = sum(batch_times[-log_every:]) / len(batch_times[-log_every:])
+            speed_samples = total_samples / elapsed
+
+            print(
+                f"  [{phase_name}] Batch {i + 1}/{len(loader)} | "
+                f"Avg batch time: {avg_time * 1000:.1f}ms | "
+                f"Speed: {speed_samples:,.0f} samples/s | "
+                f"Timesteps seen: {len(sums_per_timestep)}"
+            )
+
+    total_time = time.time() - start_time
+    print(
+        f"{phase_name} finished in {total_time:.1f}s "
+        f"({total_samples:,} samples, {len(sums_per_timestep)} timesteps)"
+    )
+
+    return sums_per_timestep, counts_per_timestep

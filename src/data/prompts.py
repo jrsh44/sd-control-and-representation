@@ -4,7 +4,7 @@ Shared across all model implementations.
 """
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List, Tuple
 
 
 def load_prompts_from_directory(prompts_dir: Path) -> Dict[str, Dict[int, str]]:
@@ -52,3 +52,98 @@ def load_prompts_from_directory(prompts_dir: Path) -> Dict[str, Dict[int, str]]:
             print(status)
 
     return prompts_by_object
+
+
+def load_base_prompts(path: Path) -> List[Tuple[int, str]]:
+    """
+    Load base prompts file with {} placeholders.
+    Expected format: id;prompt_with_{}
+
+    Args:
+        path: Path to base prompts file
+
+    Returns:
+        List of tuples (prompt_id, prompt_template)
+    """
+    prompts: List[Tuple[int, str]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            if ";" in line:
+                idx_str, template = line.split(";", 1)
+                try:
+                    idx = int(idx_str.strip())
+                except ValueError:
+                    # fallback to sequential numbering
+                    idx = len(prompts) + 1
+            else:
+                idx = len(prompts) + 1
+                template = line
+            prompts.append((idx, template.strip()))
+    return prompts
+
+
+def load_classes_file(path: Path) -> Dict[int, str]:
+    """
+    Load classes file.
+    Expected format: id;label
+
+    Args:
+        path: Path to classes file
+
+    Returns:
+        Dictionary mapping class_id to class_label
+    """
+    classes: Dict[int, str] = {}
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            if ";" in line:
+                idx_str, label = line.split(";", 1)
+                try:
+                    idx = int(idx_str.strip())
+                except ValueError:
+                    continue
+                classes[idx] = label.strip()
+            else:
+                # if no id, assign next integer
+                idx = max(classes.keys(), default=0) + 1
+                classes[idx] = line
+    return classes
+
+
+def build_prompts_by_class(
+    base_prompts: List[Tuple[int, str]],
+    class_map: Dict[int, str],
+    selected_ids: List[int],
+) -> Dict[str, Dict[int, str]]:
+    """
+    Build prompts for each class by filling {} placeholders.
+
+    Args:
+        base_prompts: List of (prompt_id, prompt_template) tuples
+        class_map: Dictionary mapping class_id to class_label
+        selected_ids: List of class IDs to process
+
+    Returns:
+        Dictionary mapping class_label -> {prompt_nr: prompt_text}
+    """
+    prompts_by_class: Dict[str, Dict[int, str]] = {}
+    for cid in selected_ids:
+        if cid not in class_map:
+            print(f"Warning: class id {cid} not found in classes file, skipping")
+            continue
+        label = class_map[cid]
+        obj_prompts: Dict[int, str] = {}
+        for idx, template in base_prompts:
+            if "{}" in template:
+                prompt_text = template.replace("{}", label)
+            else:
+                prompt_text = f"{template} {label}"
+            obj_prompts[idx] = prompt_text
+        prompts_by_class[label] = obj_prompts
+    return prompts_by_class

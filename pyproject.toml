@@ -18,12 +18,25 @@ dependencies = [
     "nudenet>=3.4.2",
     "overcomplete>=0.2.8",
     "psutil>=7.1.2",
-    "torch>=2.9.0",
+    "torch>=2.7.0",
+    "torchvision>=0.22.1",
     "transformers>=4.57.1",
     "wandb>=0.22.3",
 ]
 
 [tool.uv]
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu118", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu118", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
 
 [tool.ruff]
 select = ["E", "W", "F", "I", "N", "B", "S", "TID", "C4"]
