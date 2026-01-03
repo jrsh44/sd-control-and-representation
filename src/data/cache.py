@@ -225,7 +225,17 @@ class RepresentationCache:
                 with open(counter_file, "r") as f:
                     current = int(f.read().strip())
             else:
-                current = 0
+                layer_dir = self.get_layer_path(layer_name)
+                metadata_path = layer_dir / "metadata.json"
+                if metadata_path.exists():
+                    with open(metadata_path, "r") as f:
+                        info = json.load(f)
+                        max_idx = 0
+                        for entry in info.get("entries", []):
+                            max_idx = max(max_idx, entry.get("end_idx", 0))
+                        current = max_idx
+                else:
+                    current = 0
 
             next_value = current + count
             with open(counter_file, "w") as f:
@@ -769,6 +779,7 @@ def calculate_layer_dimensions(
         num_inference_steps=num_inference_steps,
         guidance_scale=guidance_scale,
         generator=generator,
+        skip_initial_timestep=True,
     )
 
     layer_dims = {}

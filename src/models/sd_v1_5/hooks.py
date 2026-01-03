@@ -40,6 +40,7 @@ def capture_layer_representations(
     num_inference_steps: int = 50,
     guidance_scale: float = 7.5,
     generator: torch.Generator = None,
+    skip_initial_timestep: bool = False,
 ) -> tuple[List[torch.Tensor], Any]:
     """
     Captures intermediate representations from specified layers during SD generation.
@@ -52,6 +53,8 @@ def capture_layer_representations(
         num_inference_steps (int): Number of denoising steps.
         guidance_scale (float): Classifier-free guidance scale.
         generator (torch.Generator): Random generator for reproducibility.
+        skip_initial_timestep (bool): If True, skips the very first captured representation
+                                      for U-Net layers (the initial noisy latent).
 
     Returns:
         Tuple[List[torch.Tensor], Any]:
@@ -82,8 +85,8 @@ def capture_layer_representations(
                 # We only want the conditional part (second half)
                 batch_size = tensor.shape[0]
                 if batch_size == 2:
-                    # Keep only conditional (index 1)
-                    tensor = tensor[1:2]  # Keep batch dim: [1, ...]
+                    # Keep batch dim: [1, ...]
+                    tensor = tensor[1:2]
                 captured_representations[name].append(tensor)
             else:
                 # No CFG, capture as-is
@@ -123,8 +126,19 @@ def capture_layer_representations(
     for i in range(len(layer_paths)):
         hook_name = f"hook_{i}"
         if hook_name in captured_representations and captured_representations[hook_name]:
-            # Stack all timesteps into first dimension
             timestep_tensors = captured_representations[hook_name]
+
+            # Apply skip_initial_timestep logic for U-Net related layers
+            # Text encoder layers (TEXT_EMBEDDING_FINAL etc.) only have 1 timestep
+            # so this check should only apply to layers that might have > 1 timestep
+            if (
+                skip_initial_timestep
+                and len(timestep_tensors) > 1
+                and "unet." in str(layer_paths[i])
+            ):
+                timestep_tensors = timestep_tensors[1:]
+
+            # Stack all timesteps into first dimension
             stacked = torch.stack(timestep_tensors, dim=0)  # [timesteps, batch, ...]
 
             # Flatten spatial dimensions if present
