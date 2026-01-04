@@ -1,29 +1,26 @@
 #!/usr/bin/env python3
 """
-Generate images with Stable Diffusion and capture layer representations for unlearned concepts.
-
-Structure: {results_dir}/{model_name}/cached_representations/{layer_name}/
-Each dataset contains: object, style, prompt_nr, prompt_text, representation
-
 EXAMPLE:
 uv run scripts/sd_v1_5/generate_unlearned_image.py \
     --prompt "A black cat sitting in grass next to a red toy car." \
-    --preferred_device cuda \
+    --preferred_device cpu \
     --guidance_scale 4 \
     --steps 50 \
     --seed 42 \
     --output_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
-    --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
-    --concept_means_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cats.npy \
-    --influence_factor 50.0 \
-    --features_number 2 \
+    --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096 \
+    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_sums/merged_feature_sums.pt \
     --epsilon 1e-8 \
-    --ignore_modification true \
+    --ignore_modification false \
+    --layers UNET_UP_1_ATT_2 UNET_DOWN_1_RES_0 \
+    --unlearn_concept "exposed anus" 140 25 \
+    --unlearn_concept "buttocks" 100 20 \
     --skip_wandb \
 """  # noqa: E501
 
 import argparse
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -47,31 +44,12 @@ load_dotenv(dotenv_path=project_root / ".env")
 # from src.data import load_prompts_from_directory  # noqa: E402
 # from src.data.cache import RepresentationCache  # noqa: E402
 # from src.models.config import ModelRegistry  # noqa: E402
-from src.models.sd_v1_5 import LayerPath  # noqa: E402
 from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearning  # noqa: E402
+from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
 
 # from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.RepresentationModifier import RepresentationModifier  # noqa: E402
-
-
-def parse_layer_names(layer_names: List[str]) -> List[LayerPath]:
-    """
-    Convert string layer names to LayerPath enum values.
-
-    Args:
-        layer_names: List of layer name strings
-
-    Returns:
-        List of LayerPath enum values
-    """
-    layers = []
-    for name in layer_names:
-        try:
-            layer = LayerPath[name.upper()]
-            layers.append(layer)
-        except KeyError:
-            print(f"Warning: Unknown layer name '{name}', skipping...")
-    return layers
+from src.utils.script_functions import parse_layer_names  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -95,28 +73,16 @@ def parse_args() -> argparse.Namespace:
         help="Custom output directory (optional, overrides default)",
     )
     parser.add_argument(
-        "--sae_path",
+        "--sae_dir_path",
         type=str,
         required=True,  # lub default=None jeśli chcesz opcjonalny
         help="Path to SAE weights (.pt)",
     )
     parser.add_argument(
-        "--concept_means_path",
+        "--concept_sums_path",
         type=str,
         required=True,
-        help="Path to concept means (true/false)",
-    )
-    parser.add_argument(
-        "--influence_factor",
-        type=float,
-        default=1.0,
-        help="Influence factor for unlearning",
-    )
-    parser.add_argument(
-        "--features_number",
-        type=int,
-        default=25,
-        help="Number of top features to unlearn",
+        help="Path to concept sums (true/false)",
     )
     parser.add_argument(
         "--epsilon",
@@ -130,7 +96,22 @@ def parse_args() -> argparse.Namespace:
         default="true",
         help="Type of generation: 'true' (no modification), 'false' (with modification)",  # noqa: E501
     )
+    parser.add_argument(
+        "--layers",
+        type=str,
+        nargs="+",
+        required=True,
+        help="List of layer names to capture",
+    )
     parser.add_argument("--skip_wandb", action="store_true", help="Skip wandb logging")
+    parser.add_argument(
+        "--unlearn_concept",
+        action="append",
+        nargs=3,
+        metavar=("CONCEPT_NAME", "INFLUENCE_FACTOR", "FEATURES_NUMBER"),
+        help="Concept to unlearn with parameters. Can be specified multiple times. "
+        "Example: --unlearn_concept 'exposed anus' 140 25 --unlearn_concept 'nudity' 100 20",
+    )
 
     return parser.parse_args()
 
@@ -145,10 +126,10 @@ def main():
             wandb.init(
                 project="sd-control-representation",
                 entity="bartoszjezierski28-warsaw-university-of-technology",
-                name=f"Image_Generation_SAE_Unlearning {Path(args.sae_path).stem} ",
+                name=f"Image_Generation_SAE_Unlearning {Path(args.sae_dir_path).stem} ",
                 config={
-                    "sae_path": args.sae_path,
-                    "concept_means_path": args.concept_means_path,
+                    "sae_dir_path": args.sae_dir_path,
+                    "concept_sums_path": args.concept_sums_path,
                     "epsilon": args.epsilon,
                 },
                 tags=["cache_generation", "sae", "feature_selection"],
@@ -184,9 +165,9 @@ def main():
         print(f"[Results Base Dir: {results_base_path}]")
         print("=" * 50)
 
-        #############################################
-        # MODEL
-        #############################################
+        # --------------------------------------------------------------------------
+        # 1. MODEL
+        # --------------------------------------------------------------------------
         model_load_start = time.time()
         # loader = ModelLoader(model_enum=ModelRegistry.FINETUNED_SAEURON)
         # pipe = loader.load_model(device=device)
@@ -200,84 +181,124 @@ def main():
         model_load_time = time.time() - model_load_start
         print(f"Model loaded in {model_load_time:.2f} seconds")
 
-        #############################################
-        # Load SAE → infer config
-        #############################################
-        sae_path = Path(args.sae_path)
-        if not sae_path.exists():
-            raise FileNotFoundError(f"SAE not found: {sae_path}")
+        # --------------------------------------------------------------------------
+        # 2. Load SAE → infer config
+        # --------------------------------------------------------------------------
+        sae_dir_path = Path(args.sae_dir_path)
+        if not sae_dir_path.exists():
+            raise FileNotFoundError(f"SAE directory not found: {sae_dir_path}")
+
+        # Find the first model.pt or checkpoint.pt file in the sae_dir_path
+        pt_files = list(sae_dir_path.glob("model.pt")) + list(sae_dir_path.glob("checkpoint.pt"))
+        if not pt_files:
+            raise FileNotFoundError(f"No model.pt or checkpoint.pt file found in {sae_dir_path}")
+
+        sae_path = pt_files[0]
+        print(f"Using SAE weights file: {sae_path}")
+
+        # extract topk and batch_size from sae_path e.g. wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096  # noqa: E501
+        match = re.search(r"topk(\d+)_.*_bs(\d+)", str(sae_path))
+        if match:
+            extracted_topk = int(match.group(1))
+            print(f"Extracted top_k={extracted_topk} from SAE path")
+        else:
+            print("Warning: Could not extract top_k and batch_size from SAE path")
+            extracted_topk = 32
+            print(f"Using default top_k={extracted_topk}")
 
         # Load state dict
-        state_dict = torch.load(sae_path, map_location="cpu")
+        sae_dict = torch.load(sae_path, map_location="cpu")
 
-        # Automatyczne wykrycie i usunięcie prefiksu _orig_mod.
+        state_dict = sae_dict.get("model_state_dict", sae_dict)
+
+        # print keys in state_dict (for tests)
+        print(f"SAE state_dict keys: {list(state_dict.keys())}")
+
+        # Auto-detect and remove _orig_mod prefix from torch.compile()
         if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
             print("Detected torch.compile() prefix → removing '_orig_mod.'")
             state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
 
-        # Wnioskowanie wymiarów
+        # Infer dimensions from weights
         enc_weight = state_dict["encoder.final_block.0.weight"]
         input_shape = enc_weight.shape[1]
         nb_concepts = enc_weight.shape[0]
         print(f"Inferred input_dim={input_shape}, nb_concepts={nb_concepts}")
 
-        # Tworzymy model i ładujemy wagi
+        # Create model and load weights
         sae = TopKSAE(
             input_shape=input_shape,
             nb_concepts=nb_concepts,
+            top_k=extracted_topk,
             device=device,
         )
-        sae.load_state_dict(state_dict)  # teraz działa idealnie
+        sae.load_state_dict(state_dict)
         sae = sae.to(device)
         sae.eval()
-        sae_layer_path = LayerPath.UNET_UP_1_ATT_1  # Example layer path for SAE unlearning
-        print("SAE loaded and moved to device")
+        print("✓ SAE loaded and moved to device")
 
-        #############################################
-        # Prepare modifier
-        #############################################
-        concept_scores_path = Path(args.concept_means_path)
+        sae_layer_path = LayerPath.UNET_UP_1_ATT_1  # hardcoded for test
+
+        # --------------------------------------------------------------------------
+        # 3. Prepare RepresentationModifier
+        # --------------------------------------------------------------------------
+        concept_scores_path = Path(args.concept_sums_path)
         if not concept_scores_path.exists():
             raise FileNotFoundError(f"Concept means not found: {concept_scores_path}")
 
-        # file is a disc {'true': tensor([...]), 'false': tensor([...])} saved in format .npy
-        concept_means = torch.load(concept_scores_path, map_location="cpu")
-        if (
-            "sums_true_per_timestep" not in concept_means
-            or "counts_true_per_timestep" not in concept_means
-            or "sums_false_per_timestep" not in concept_means
-            or "counts_false_per_timestep" not in concept_means
-            or "timesteps" not in concept_means
-        ):
-            raise ValueError(
-                "Concept means file must contain 'sums_true_per_timestep', 'counts_true_per_timestep', 'sums_false_per_timestep', 'counts_false_per_timestep', and 'timesteps' keys."  # noqa: E501
-            )
+        concept_sums = torch.load(concept_scores_path, map_location=device)
 
         modifier = RepresentationModifier(
             sae=sae,
-            stats_dict=concept_means,
-            influence_factor=args.influence_factor,
-            features_number=args.features_number,
+            stats_dict=concept_sums,
             epsilon=args.epsilon,
             ignore_modification=args.ignore_modification,
+            device=device,
         )
+
         modifier.attach_to(pipe, sae_layer_path)
 
-        #############################################
-        # GENERATION & REPRESENTATION CAPTURING
-        #############################################
-        layers_to_capture = [
-            # Text conditioning
-            LayerPath.TEXT_EMBEDDING_FINAL,
-            # Critical attention layers
-            LayerPath.UNET_MID_ATT,
-            LayerPath.UNET_DOWN_2_ATT_0,
-            LayerPath.UNET_UP_1_ATT_2,
-            # ResNet features for comparison
-            LayerPath.UNET_DOWN_1_RES_0,
-            LayerPath.UNET_MID_RES_1,
-            LayerPath.UNET_UP_0_RES_2,
-        ]
+        # Add concepts to unlearn based on user arguments
+        if args.unlearn_concept:
+            print(f"\nAdding {len(args.unlearn_concept)} concept(s) to unlearn:")
+            for concept_params in args.unlearn_concept:
+                concept_name = concept_params[0]
+                influence_factor = float(concept_params[1])
+                features_number = int(concept_params[2])
+
+                print(
+                    f"  - {concept_name}: influence={influence_factor}, features={features_number}"
+                )
+                modifier.add_concept_to_unlearn(
+                    concept_name=concept_name,
+                    influence_factor=influence_factor,
+                    features_number=features_number,
+                )
+        else:
+            print(
+                "\nWarning: No concepts specified for unlearning. Image will be generated without modification."
+            )
+
+        # --------------------------------------------------------------------------
+        # 4. GENERATION & REPRESENTATION CAPTURING
+        # --------------------------------------------------------------------------
+        # layers_to_capture = [
+        #     # Text conditioning
+        #     # LayerPath.TEXT_EMBEDDING_FINAL,
+        #     # Critical attention layers
+        #     # LayerPath.UNET_MID_ATT,
+        #     # LayerPath.UNET_DOWN_2_ATT_0,
+        #     LayerPath.UNET_UP_1_ATT_2,
+        #     # ResNet features for comparison
+        #     LayerPath.UNET_DOWN_1_RES_0,
+        #     # LayerPath.UNET_MID_RES_1,
+        #     # LayerPath.UNET_UP_0_RES_2,
+        # ]
+
+        layers_to_capture = parse_layer_names(args.layers)
+        if not layers_to_capture:
+            print("ERROR: No valid layers specified")
+            return 1
 
         generator = torch.Generator(device).manual_seed(args.seed)
         print("\nGenerating unlearned image and capturing representations...")
@@ -300,9 +321,9 @@ def main():
             f"Image generated and {num_repr} representations captured in {inference_time:.2f} seconds"  # noqa: E501
         )
 
-        #############################################
-        # SAVE OUTPUTS
-        #############################################
+        # --------------------------------------------------------------------------
+        # 5. SAVE OUTPUTS
+        # --------------------------------------------------------------------------
         # Determine output directory
         if args.output_dir:
             # Use custom output directory if specified
