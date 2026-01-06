@@ -40,7 +40,8 @@ def capture_layer_representations(
     num_inference_steps: int = 50,
     guidance_scale: float = 7.5,
     generator: torch.Generator = None,
-) -> tuple[List[torch.Tensor], Any]:
+    capture_latents: bool = False,
+) -> tuple[List[torch.Tensor], Any] | tuple[List[torch.Tensor], Any, torch.Tensor]:
     """
     Captures intermediate representations from specified layers during SD generation.
     Collects representations for ALL timesteps during denoising process.
@@ -52,11 +53,17 @@ def capture_layer_representations(
         num_inference_steps (int): Number of denoising steps.
         guidance_scale (float): Classifier-free guidance scale.
         generator (torch.Generator): Random generator for reproducibility.
+        capture_latents (bool): If True, also captures raw latent tensors [timesteps, batch, 4, 64, 64].
 
     Returns:
-        Tuple[List[torch.Tensor], Any]:
-            - List of captured activation tensors with shape [timesteps, ...], one per layer
-            - Generated PIL Image
+        If capture_latents=False:
+            Tuple[List[torch.Tensor], Any]: (representations, image)
+        If capture_latents=True:
+            Tuple[List[torch.Tensor], Any, torch.Tensor]: (representations, image, latents)
+        Where:
+            - representations: List of captured activation tensors with shape [timesteps, ...], one per layer
+            - image: Generated PIL Image
+            - latents: Captured latents [timesteps, batch, 4, 64, 64] (only when capture_latents=True)
     """
     # Store representations for each timestep: {hook_name: [list of tensors per timestep]}
     captured_representations: Dict[str, List[torch.Tensor]] = {
@@ -103,14 +110,37 @@ def capture_layer_representations(
         except Exception as e:
             print(f"ERROR: Cannot find module for path '{path}'. Error: {e}")
 
+    # Setup latent capture if requested
+    captured_latents_list = []
+
+    if capture_latents:
+
+        def latent_callback(pipe_obj, step_idx, timestep, callback_kwargs):
+            """Capture latent sample at each step."""
+            latents = callback_kwargs["latents"]
+            # Handle CFG: keep only conditional part
+            if do_classifier_free_guidance and latents.shape[0] == 2:
+                latents = latents[1:2]  # Keep batch dim: [1, ...]
+            captured_latents_list.append(latents.cpu().clone())
+            return callback_kwargs
+
+        actual_callback = latent_callback
+        actual_tensor_inputs = ["latents"]
+    else:
+        actual_callback = None
+        actual_tensor_inputs = ["latents"]
+
     # Generate image to trigger activations
     pipe_args = {
         "prompt": prompt,
         "num_inference_steps": num_inference_steps,
         "guidance_scale": guidance_scale,
         "generator": generator,
-        "callback_on_step_end_tensor_inputs": ["latents"],
+        "callback_on_step_end_tensor_inputs": actual_tensor_inputs,
     }
+
+    if actual_callback is not None:
+        pipe_args["callback_on_step_end"] = actual_callback
 
     image = pipe(**pipe_args).images[0]
 
@@ -126,7 +156,7 @@ def capture_layer_representations(
             # Stack all timesteps into first dimension
             timestep_tensors = captured_representations[hook_name]
             stacked = torch.stack(timestep_tensors, dim=0)  # [timesteps, batch, ...]
-
+            print(f"Timestep: {i}, layer: {layer_paths[i].name}, stacked.shape: {stacked.shape}")
             # Flatten spatial dimensions if present
             if stacked.dim() == 5:
                 # [timesteps, batch, h, w, features] -> [timesteps, batch, h*w, features]
@@ -137,4 +167,13 @@ def capture_layer_representations(
         else:
             results.append(None)
 
-    return results, image
+    # Process captured latents if requested and return appropriate tuple
+    if capture_latents:
+        latents_tensor = None
+        if captured_latents_list:
+            latents_tensor = torch.stack(
+                captured_latents_list, dim=0
+            )  # [timesteps, batch, 4, 64, 64]
+        return results, image, latents_tensor
+    else:
+        return results, image
