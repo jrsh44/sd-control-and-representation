@@ -51,7 +51,7 @@ class ModelRegistry(Enum):
         return self.value.source
 
     @property
-    def name(self) -> str:
+    def config_name(self) -> str:
         return self.value.name
 
     @property
