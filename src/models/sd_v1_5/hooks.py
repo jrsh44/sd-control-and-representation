@@ -3,10 +3,13 @@ Representation capture logic for Stable Diffusion v1.5.
 Handles hook registration and activation capture during generation.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from diffusers import StableDiffusionPipeline
+
+# from einops import rearrange
+from src.utils.RepresentationModifier import RepresentationModifier
 
 from .layers import LayerPath
 
@@ -150,5 +153,90 @@ def capture_layer_representations(
             results.append(stacked)
         else:
             results.append(None)
+
+    return results, image
+
+
+def capture_layer_representations_with_unlearning(
+    pipe: StableDiffusionPipeline,
+    prompt: str,
+    layer_paths: List[LayerPath],
+    modifier: RepresentationModifier,  # ← gotowy modyfikator!
+    num_inference_steps: int = 50,
+    guidance_scale: float = 7.5,
+    generator: Optional[torch.Generator] = None,
+) -> Tuple[List[torch.Tensor], torch.Tensor]:
+    """
+    Generuje obraz z unlearningiem przy użyciu gotowego RepresentationModifier.
+    Przechwytuje aktywacje ze wszystkich timestepów z wybranych warstw.
+
+    Args:
+        pipe: Stable Diffusion pipeline
+        prompt: tekstowy prompt
+        layer_paths: warstwy do przechwytywania aktywacji
+        modifier: gotowy obiekt RepresentationModifier (już skonfigurowany z sae, means, top-N itd.)
+        ... reszta parametrów generowania
+
+    Returns:s
+        (list_of_activations_per_layer, generated_image)
+    """
+    # === 0. Zresetowanie modyfikatora (indeks timestepów) ===
+    modifier.reset_timestep()
+
+    # === 1. Hooki do przechwytywania aktywacji (wszystkie warstwy) ===
+    captured = {f"hook_{i}": [] for i in range(len(layer_paths))}
+    capture_handles = []
+
+    do_cfg = guidance_scale > 1.0
+
+    def make_capture_hook(name: str):
+        def hook(module, input, output):
+            if isinstance(output, tuple):
+                x = output[0]
+            else:
+                x = output
+            x = x.detach().cpu()
+            if do_cfg and x.shape[0] == 2:
+                x = x[1:2]  # tylko conditional (CFG)
+            captured[name].append(x)
+
+        return hook
+
+    # Rejestrujemy hooki przechwytywania
+    for i, layer_path in enumerate(layer_paths):
+        module = get_nested_module(pipe, str(layer_path.value))
+        handle = module.register_forward_hook(make_capture_hook(f"hook_{i}"))
+        capture_handles.append(handle)
+
+    # === 2. Podłączamy modyfikator (on sam wie, do której warstwy się podpiąć) ===
+    with modifier:
+        # === 3. Generowanie obrazu (modyfikator działa tylko w tym bloku) ===
+        image = pipe(
+            prompt=prompt,
+            num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            generator=generator,
+        ).images[0]
+
+    # === 4. Usuwamy hooki przechwytywania ===
+    for h in capture_handles:
+        h.remove()
+
+    # === 5. Przygotowanie wyników ===
+    results = []
+    for i in range(len(layer_paths)):
+        tensors = captured[f"hook_{i}"]
+        if not tensors:
+            results.append(None)
+            continue
+
+        stacked = torch.stack(tensors, dim=0)  # [timesteps, ...]
+
+        # Spłaszcz wymiary przestrzenne jeśli są
+        if stacked.dim() == 5:  # [T, B, H, W, C]
+            t, b, h, w, c = stacked.shape
+            stacked = stacked.reshape(t, b, h * w, c)
+
+        results.append(stacked)
 
     return results, image
