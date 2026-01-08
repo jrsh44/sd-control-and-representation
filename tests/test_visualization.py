@@ -4,10 +4,11 @@ import matplotlib
 
 matplotlib.use("Agg")  # Use non-GUI backend for tests
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 from PIL import Image
-import pytest
-from src.utils.visualization import display_image, display_sequence, display_gif
+
+from src.utils.visualization import display_gif, display_image, display_sequence
 
 
 @patch("src.utils.visualization.plt.show")

@@ -18,11 +18,9 @@ import sys
 from pathlib import Path
 
 import torch
+import wandb
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
-from torch.utils.data import DataLoader
-
-import wandb
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -30,12 +28,6 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 load_dotenv(dotenv_path=project_root / ".env")
-
-from src.data.dataset import RepresentationDataset  # noqa: E402
-from src.models.sae.feature_selection import (  # noqa: E402
-    compute_sums,
-    concept_filtering_function,
-)
 
 
 def parse_args() -> argparse.Namespace:

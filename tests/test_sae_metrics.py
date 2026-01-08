@@ -4,11 +4,12 @@ import pytest
 
 try:
     import torch
+
     from src.models.sae.training.metrics import (
+        compute_avg_max_cosine_similarity,
+        compute_dictionary_metrics,
         compute_reconstruction_error,
         compute_sparsity_metrics,
-        compute_dictionary_metrics,
-        compute_avg_max_cosine_similarity,
     )
 
     TORCH_AVAILABLE = True
