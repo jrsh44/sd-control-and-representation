@@ -82,6 +82,7 @@ DATASETS_NAME="cc3m-wds_nudity"
 
 # Model configuration
 MODEL_NAME="sd_v1_5"
+
 # LAYER_NAME="unet_up_1_att_1"
 LAYER_NAME="unet_up_1_att_1"
 
