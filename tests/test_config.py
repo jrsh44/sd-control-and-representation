@@ -1,7 +1,5 @@
 """Unit tests for src/models/config.py"""
 
-import pytest
-
 from src.models.config import ModelConfig, ModelRegistry
 
 

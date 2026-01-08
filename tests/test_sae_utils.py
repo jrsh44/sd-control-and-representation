@@ -4,12 +4,13 @@ import pytest
 
 try:
     import torch
+
+    from src.models.sae.training.config import SchedulerConfig
     from src.models.sae.training.utils import (
         create_warmup_cosine_scheduler,
         extract_input,
         get_dictionary,
     )
-    from src.models.sae.training.config import SchedulerConfig
 
     TORCH_AVAILABLE = True
 except (ImportError, AttributeError):

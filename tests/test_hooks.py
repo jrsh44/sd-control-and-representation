@@ -4,6 +4,7 @@ import pytest
 
 try:
     import torch
+
     from src.models.sd_v1_5.hooks import get_nested_module
 
     TORCH_AVAILABLE = True

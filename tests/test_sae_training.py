@@ -8,10 +8,11 @@ import pytest
 
 try:
     import torch
+
     from src.models.sae.training import (
-        criterion_laux,
         _compute_reconstruction_error,
         _log_metrics,
+        criterion_laux,
     )
 
     TORCH_AVAILABLE = True
