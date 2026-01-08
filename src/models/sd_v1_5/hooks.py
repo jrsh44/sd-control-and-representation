@@ -25,6 +25,9 @@ def get_nested_module(model: torch.nn.Module, path: str) -> torch.nn.Module:
     Returns:
         torch.nn.Module: The target module at the specified path.
     """
+    if not path:
+        return model
+
     path_segments = path.split(".")
     current_module = model
     for name in path_segments:
