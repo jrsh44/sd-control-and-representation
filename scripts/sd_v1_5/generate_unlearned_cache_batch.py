@@ -32,11 +32,10 @@ from pathlib import Path
 from typing import List
 
 import torch
+import wandb
 from diffusers import StableDiffusionPipeline  # noqa: E402
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
-
-import wandb
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -52,7 +51,6 @@ from src.models.sd_v1_5 import (  # noqa: E402
     LayerPath,  # noqa: E402
 )
 from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearning  # noqa: E402
-from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.RepresentationModifier import RepresentationModifier  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
 

@@ -51,11 +51,10 @@ from typing import Iterator
 
 import numpy as np
 import torch
+import wandb
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
 from torch.utils.data import ConcatDataset, DataLoader, Sampler
-
-import wandb
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
