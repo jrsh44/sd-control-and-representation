@@ -83,7 +83,7 @@ echo ""
 #==============================================================================
 
 # Python script
-PYTHON_SCRIPT="src/tests/test_image_generation.py"
+PYTHON_SCRIPT="./scripts/tests/image_generation.py"
 
 # Prompts to test
 PROMPTS=(

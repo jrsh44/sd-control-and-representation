@@ -2,11 +2,11 @@
 """
 Example usage:
     python scripts/sae/feature_selection.py \
-        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/cached_representations/unet_up_1_att_1 \
+        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/unlearn_canvas/representations/train/unet_up_1_att_1 \
         --concept object \
         --concept_value cats \
         --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt \
-        --feature_scores_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cat.npy \
+        --feature_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae_scores/unet_up_1_att_1_concept_object_cat.npy \
         --epsilon 1e-8 \
         --batch_size 4096 \
         --top_k 32
@@ -14,6 +14,7 @@ Example usage:
 """  # noqa: E501
 
 import argparse
+import platform
 import sys
 from pathlib import Path
 
@@ -33,7 +34,7 @@ load_dotenv(dotenv_path=project_root / ".env")
 
 from src.data.dataset import RepresentationDataset  # noqa: E402
 from src.models.sae.feature_selection import (  # noqa: E402
-    compute_sums,
+    compute_sums_per_timestep,
     concept_filtering_function,
 )
 
@@ -48,6 +49,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         required=True,
         help="Path to training dataset directory (e.g., results/sd_1_5/unet_mid_att)",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        type=str,
+        default="unlearn_canvas",
+        help="Name of the dataset (used for WandB logging and organization)",
     )
     # concept
     parser.add_argument(
@@ -70,12 +77,12 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help="Path to .pt file for SAE weights (load if exists, create and save if not)",
     )
-    # feature score path
+    # feature means path
     parser.add_argument(
-        "--feature_scores_path",
+        "--feature_sums_path",
         type=str,
         required=True,
-        help="Path to .npy file for feature scores (load if exists, create and save if not)",
+        help="Path to .npy file for feature means (load if exists, create and save if not)",
     )
     # epsilon
     parser.add_argument(
@@ -114,43 +121,85 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    # --------------------------------------------------------------------------
+    # 1. Parse Arguments and Setup
+    # --------------------------------------------------------------------------
     args = parse_args()
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    is_cuda = device == "cuda"
 
     print("=" * 80)
-    print("LOAD DATASETS AND SELECT FEATURES USING PRETRAINED SAE GIVEN CONCEPT")
+    print("FEATURE SELECTION USING PRETRAINED SAE")
     print("=" * 80)
     print(f"Dataset path: {args.dataset_path}")
     print(f"Concept: {args.concept}")
     print(f"Concept value: {args.concept_value}")
     print(f"SAE path: {args.sae_path}")
-    print(f"Feature scores path: {args.feature_scores_path}")
-    print(f"Epsilon: {args.epsilon}")
+    print(f"Feature sums path: {args.feature_sums_path}")
     print(f"Device: {device}")
     print("-" * 80)
 
-    try:
-        # Initialize wandb
-        if not args.skip_wandb:
-            wandb.login()
-            wandb.init(
-                project="sd-control-representation",
-                entity="bartoszjezierski28-warsaw-university-of-technology",
-                name=f"feature_selection_SAE_{Path(args.sae_path).stem}",
-                config={
-                    "sae_path": args.sae_path,
-                    "dataset_path": args.dataset_path,
-                    "concept": args.concept,
-                    "concept_value": args.concept_value,
-                    "epsilon": args.epsilon,
-                    "batch_size": args.batch_size,
-                },
-                tags=["sae", "feature_selection"],
-                notes="Feature selection using pretrained SAE",
-            )
+    # --------------------------------------------------------------------------
+    # 2. Initialize WandB
+    # --------------------------------------------------------------------------
+    if not args.skip_wandb:
+        wandb.login()
 
-        # Load SAE → infer config
+        # Create a run name
+        sae_stem = Path(args.sae_path).stem
+        run_name = (
+            f"FeatureSelection_{args.dataset_name}_{sae_stem}_{args.concept}_{args.concept_value}"
+        )
+
+        gpu_name = torch.cuda.get_device_name(0) if is_cuda else "Unknown"
+
+        # Structured Configuration
+        config = {
+            "dataset": {
+                "name": args.dataset_name,
+                "path": args.dataset_path,
+                "layer_name": Path(args.dataset_path).name,
+            },
+            "concept": {
+                "name": args.concept,
+                "value": args.concept_value,
+            },
+            "model": {
+                "sae_path": args.sae_path,
+                "architecture": "TopKSAE",
+                "top_k": args.top_k,
+            },
+            "feature_selection": {
+                "epsilon": args.epsilon,
+                "batch_size": args.batch_size,
+                "log_every": args.log_every,
+                "feature_sums_path": args.feature_sums_path,
+            },
+            "hardware": {
+                "device": str(device),
+                "gpu_name": gpu_name,
+                "platform": platform.platform(),
+                "python_version": sys.version.split()[0],
+                "node": platform.node(),
+            },
+        }
+
+        wandb.init(
+            project="sd-control-representation",
+            entity="bartoszjezierski28-warsaw-university-of-technology",
+            name=run_name,
+            config=config,
+            group=f"feature_selection_{args.dataset_name}_{args.concept}",
+            job_type="feature_selection",
+            tags=["sae", "feature_selection", args.dataset_name, args.concept, args.concept_value],
+            notes="Feature selection using pretrained SAE for concept analysis.",
+        )
+        print(f"🚀 WandB Initialized: {run_name}")
+
+    # --------------------------------------------------------------------------
+    # 3. Load SAE Model
+    # --------------------------------------------------------------------------
+    try:
         sae_path = Path(args.sae_path)
         if not sae_path.exists():
             raise FileNotFoundError(f"SAE not found: {sae_path}")
@@ -158,42 +207,42 @@ def main() -> int:
         # Load state dict
         state_dict = torch.load(sae_path, map_location="cpu")
 
-        # Automatyczne wykrycie i usunięcie prefiksu _orig_mod.
+        # Auto-detect and remove _orig_mod prefix from torch.compile()
         if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
             print("Detected torch.compile() prefix → removing '_orig_mod.'")
             state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
 
-        # Wnioskowanie wymiarów
+        # Infer dimensions from weights
         enc_weight = state_dict["encoder.final_block.0.weight"]
         input_shape = enc_weight.shape[1]
         nb_concepts = enc_weight.shape[0]
         print(f"Inferred input_dim={input_shape}, nb_concepts={nb_concepts}")
 
-        # Tworzymy model i ładujemy wagi
+        # Create model and load weights
         sae = TopKSAE(
             input_shape=input_shape,
             nb_concepts=nb_concepts,
             top_k=args.top_k,
             device=device,
         )
-        sae.load_state_dict(state_dict)  # teraz działa idealnie
+        sae.load_state_dict(state_dict)
         sae = sae.to(device)
         sae.eval()
-        print("SAE loaded and moved to device")
+        print("✓ SAE loaded and moved to device")
 
-        # Prepare dataloader functions
-        is_cuda = device == "cuda"
-
+        # --------------------------------------------------------------------------
+        # 4. Setup Datasets and DataLoaders
+        # --------------------------------------------------------------------------
         def make_loader(dataset, batch_size, is_cuda):
             if torch.cuda.is_available() and hasattr(torch._dynamo.external_utils, "is_compiled"):
-                # Jeśli model jest skompilowany – wyłącz wieloprocesowość (unikamy deadlocka)
+                # If model is compiled – disable multiprocessing (avoid deadlock)
                 print("torch.compile() detected → using num_workers=0 to avoid deadlock")
                 return DataLoader(
                     dataset,
                     batch_size=batch_size,
                     shuffle=False,
                     pin_memory=True,
-                    num_workers=0,  # ← KLUCZOWA ZMIANA
+                    num_workers=0,
                 )
             else:
                 return DataLoader(
@@ -206,7 +255,7 @@ def main() -> int:
                     persistent_workers=is_cuda,
                 )
 
-        # Load dataset
+        # Load dataset paths
         dataset_path = Path(args.dataset_path)
         cache_dir = dataset_path.parent
         layer_name = dataset_path.name
@@ -217,16 +266,10 @@ def main() -> int:
             layer_name=layer_name,
             filter_fn=concept_filtering_function(args.concept, args.concept_value, negate=True),
             return_metadata=False,
+            return_timestep=True,
         )
         n_samples_false = dataset_concept_false._full_data.shape[0]
-        print(f"Loaded dataset: {len(dataset_concept_false)} samples, input_dim={n_samples_false}")
-
-        print("\nComputing activations for 'concept=false'...")
-        loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
-        sum_false = compute_sums(
-            loader_false, sae, device, nb_concepts, args.log_every, "compute_sums_false"
-        )  # noqa: E501
-        print("Sums for 'concept=false' computed")
+        print(f"Loaded 'concept=false' dataset: {len(dataset_concept_false)} samples")
 
         # === CONCEPT TRUE ===
         dataset_concept_true = RepresentationDataset(
@@ -234,34 +277,57 @@ def main() -> int:
             layer_name=layer_name,
             filter_fn=concept_filtering_function(args.concept, args.concept_value),
             return_metadata=False,
+            return_timestep=True,
         )
         n_samples_true = dataset_concept_true._full_data.shape[0]
-        print(f"Loaded dataset: {len(dataset_concept_true)} samples, input_dim={n_samples_true}")
+        print(f"Loaded 'concept=true' dataset: {len(dataset_concept_true)} samples")
 
-        # Compute sequentially
-        print("Computing activations for 'concept=true'...")
+        # --------------------------------------------------------------------------
+        # 5. Compute Feature Sums
+        # --------------------------------------------------------------------------
+        print("\nComputing activations for 'concept=false'...")
+        loader_false = make_loader(dataset_concept_false, args.batch_size, is_cuda)
+        sums_false, counts_false = compute_sums_per_timestep(
+            loader_false, sae, device, nb_concepts, args.log_every, "compute_sums_false"
+        )
+        print("✓ Sums for 'concept=false' computed")
+
+        print("\nComputing activations for 'concept=true'...")
         loader_true = make_loader(dataset_concept_true, args.batch_size, is_cuda)
-        sum_true = compute_sums(
+        sums_true, counts_true = compute_sums_per_timestep(
             loader_true, sae, device, nb_concepts, args.log_every, "compute_sums_true"
-        )  # noqa: E501
-        print("Sums for 'concept=true' computed")
+        )
+        print("✓ Sums for 'concept=true' computed")
 
-        # Calculate score
-        epsilon = args.epsilon
-        normalized_mean_true = sum_true / (sum_true.sum() + epsilon * sum_true.shape[0])
-        normalized_mean_false = sum_false / (sum_false.sum() + epsilon * sum_false.shape[0])
-        feature_scores = normalized_mean_true - normalized_mean_false
-        feature_scores_np = feature_scores.numpy()
+        # --------------------------------------------------------------------------
+        # 6. Save Results
+        # --------------------------------------------------------------------------
+        feature_sums_path = Path(args.feature_sums_path)
+        feature_sums_path.parent.mkdir(parents=True, exist_ok=True)
+        feature_sums = {
+            "sums_true_per_timestep": sums_true,  # dict[int, Tensor]
+            "counts_true_per_timestep": counts_true,  # dict[int, int]
+            "sums_false_per_timestep": sums_false,  # dict[int, Tensor]
+            "counts_false_per_timestep": counts_false,  # dict[int, int]
+            "timesteps": sorted(set(sums_true.keys()) | set(sums_false.keys())),
+        }
 
-        # Save scores
-        feature_scores_path = Path(args.feature_scores_path)
-        feature_scores_path.parent.mkdir(parents=True, exist_ok=True)
         print("\n" + "=" * 80)
-        print("SAVING FEATURE SCORES")
+        print("SAVING FEATURE SUMS")
         print("=" * 80)
-        print(f"Saving feature scores to {feature_scores_path}...")
-        torch.save(feature_scores_np, feature_scores_path)
-        print("✓ Feature scores saved successfully.")
+        print(f"Saving feature sums to {feature_sums_path}...")
+        torch.save(feature_sums, feature_sums_path)
+        print("✓ Feature sums saved successfully.")
+
+        if not args.skip_wandb:
+            wandb.log(
+                {
+                    "final/samples_concept_true": n_samples_true,
+                    "final/samples_concept_false": n_samples_false,
+                    "final/timesteps_processed": len(feature_sums["timesteps"]),
+                    "final/feature_sums_path": str(feature_sums_path),
+                }
+            )
 
         print("\n" + "=" * 80)
         print("Done.")
@@ -273,6 +339,10 @@ def main() -> int:
 
         traceback.print_exc()
         return 1
+
+    finally:
+        if not args.skip_wandb:
+            wandb.finish()
 
 
 if __name__ == "__main__":
