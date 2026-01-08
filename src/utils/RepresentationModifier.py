@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 from einops import rearrange
 from overcomplete.sae import TopKSAE
-from torch import Tensor
 
 
 class RepresentationModifier:

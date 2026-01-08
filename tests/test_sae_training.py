@@ -1,30 +1,24 @@
-"""Unit tests for src/models/sae/training.py"""
+"""Unit tests for src/models/sae/training.py
+
+Note: Tests for extract_input are in test_sae_utils.py
+Note: Tests for compute_avg_max_cosine_similarity are in test_sae_metrics.py
+"""
 
 import pytest
 
 try:
     import torch
+
     from src.models.sae.training import (
-        compute_avg_max_cosine_similarity,
-        criterion_laux,
-        extract_input,
         _compute_reconstruction_error,
         _log_metrics,
+        criterion_laux,
     )
 
     TORCH_AVAILABLE = True
 except (ImportError, AttributeError):
     TORCH_AVAILABLE = False
     torch = None
-
-
-@pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
-def test_compute_avg_max_cosine_similarity():
-    """Test cosine similarity computation."""
-    weight_matrix = torch.ones(5, 10)
-    result = compute_avg_max_cosine_similarity(weight_matrix)
-    assert isinstance(result, float)
-    assert 0.99 <= result <= 1.0
 
 
 @pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
@@ -38,21 +32,6 @@ def test_criterion_laux():
     loss = criterion_laux(x, x_hat, codes, codes, dictionary)
     assert isinstance(loss, torch.Tensor)
     assert loss.item() >= 0
-
-
-@pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
-def test_extract_input():
-    """Test input extraction from batches."""
-    data = torch.randn(4, 10)
-
-    # Test tuple
-    assert torch.equal(extract_input((data, torch.randint(0, 5, (4,)))), data)
-
-    # Test dict
-    assert torch.equal(extract_input({"data": data}), data)
-
-    # Test tensor
-    assert torch.equal(extract_input(data), data)
 
 
 @pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
@@ -90,10 +69,3 @@ def test_log_metrics():
 
     except (ImportError, AttributeError):
         pytest.skip("overcomplete library not available")
-
-
-@pytest.mark.skipif(not TORCH_AVAILABLE, reason="PyTorch not available")
-def test_extract_input_error():
-    """Test extract_input raises error for invalid dict."""
-    with pytest.raises(ValueError, match="does not contain 'data' key"):
-        extract_input({"wrong_key": torch.randn(4, 10)})
