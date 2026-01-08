@@ -4,10 +4,22 @@ Example usage:
     python scripts/sae/feature_selection.py \
         --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1 \
         --dataset_name nudity \
+        --filter_type concept \
         --concept object \
         --concept_value 'exposed anus' \
         --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096 \
         --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096/feature_sums
+
+        python scripts/sae/feature_selection.py \
+        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1_test_subset \
+        --dataset_name nudity_subset \
+        --filter_type id_range \
+        --lower_index 0 \
+        --upper_index 2560000 \
+        --batch_size 32768 \
+        --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096 \
+        --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1_test_subset/exp8_topk16_lr4em4_ep5_bs4096/feature_sums \
+        --device cpu
 
 """  # noqa: E501
 
@@ -57,20 +69,6 @@ def parse_args() -> argparse.Namespace:
         default="unlearn_canvas",
         help="Name of the dataset (used for WandB logging and organization)",
     )
-    # concept
-    parser.add_argument(
-        "--concept",
-        type=str,
-        default=None,
-        help="Concept name for feature selection (optional, if None no filtering is applied)",
-    )
-    # concept value
-    parser.add_argument(
-        "--concept_value",
-        type=str,
-        default=None,
-        help="Concept value for feature selection (optional, if None no filtering is applied)",
-    )
     # SAE path
     parser.add_argument(
         "--sae_dir_path",
@@ -99,8 +97,56 @@ def parse_args() -> argparse.Namespace:
         required=False,
         help="Log every N batches",
     )
+    # filter type (concept/id_range)
+    parser.add_argument(
+        "--filter_type",
+        type=str,
+        default="concept",
+        help="Type of filtering to apply: 'concept' or 'id_range' (default: 'concept')",
+    )
+    # concept
+    parser.add_argument(
+        "--concept",
+        type=str,
+        default=None,
+        help="Concept name for feature selection (optional, if None no filtering is applied)",
+    )
+    # concept value
+    parser.add_argument(
+        "--concept_value",
+        type=str,
+        default=None,
+        help="Concept value for feature selection (optional, if None no filtering is applied)",
+    )
+    # lower and upper index range (for id_range filter type)
+    parser.add_argument(
+        "--lower_index",
+        type=int,
+        default=None,
+        help="Lower index for id_range filtering (inclusive, optional)",
+    )
+    parser.add_argument(
+        "--upper_index",
+        type=int,
+        default=None,
+        help="Upper index for id_range filtering (exclusive, optional)",
+    )
     # skip wandb
     parser.add_argument("--skip-wandb", action="store_true")
+    # batch size
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=32768,
+        help="Batch size for dataloader (optional, auto-detected from SAE path if not provided)",
+    )
+    # device
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda" if torch.cuda.is_available() else "cpu",
+        help="Device to use (default: cuda if available, else cpu)",
+    )
     return parser.parse_args()
 
 
@@ -116,8 +162,14 @@ def main() -> int:
     print("FEATURE SELECTION USING PRETRAINED SAE")
     print("=" * 80)
     print(f"Dataset path: {args.dataset_path}")
-    print(f"Concept: {args.concept}")
-    print(f"Concept value: {args.concept_value}")
+    print(f"Dataset name: {args.dataset_name}")
+    print(f"Type of filtering: {args.filter_type}")
+    if args.filter_type == "concept":
+        print(f"Concept: {args.concept}")
+        print(f"Concept value: {args.concept_value}")
+    elif args.filter_type == "id_range":
+        print(f"Lower index: {args.lower_index}")
+        print(f"Upper index: {args.upper_index}")
     print(f"SAE path: {args.sae_dir_path}")
     print(f"Features dir: {args.features_dir_path}")
     print(f"Feature sums prefix: {args.feature_sums_prefix}")
@@ -158,8 +210,7 @@ def main() -> int:
                 # "top_k": args.top_k,
             },
             "feature_selection": {
-                # "epsilon": args.epsilon,
-                # "batch_size": args.batch_size,
+                "batch_size": args.batch_size,
                 "log_every": args.log_every,
                 "features_dir_path": args.features_dir_path,
                 "feature_sums_prefix": args.feature_sums_prefix,
@@ -206,16 +257,15 @@ def main() -> int:
         match = re.search(r"topk(\d+)_.*_bs(\d+)", str(sae_path))
         if match:
             extracted_topk = int(match.group(1))
-            extracted_batch_size = 4096 // 16
-            # extracted_batch_size = int(match.group(2))
-            print(
-                f"Extracted top_k={extracted_topk}, batch_size={extracted_batch_size} from SAE path"
-            )
+            print(f"Extracted top_k={extracted_topk} from SAE path")
         else:
             print("Warning: Could not extract top_k and batch_size from SAE path")
             extracted_topk = 32
-            extracted_batch_size = 4096 // 16
-            print(f"Using default top_k={extracted_topk}, batch_size={extracted_batch_size}")
+            print(f"Using default top_k={extracted_topk}")
+
+        # Use command-line batch_size if provided, otherwise use default
+        extracted_batch_size = args.batch_size
+        print(f"Final batch_size: {extracted_batch_size}")
 
         # Load state dict
         sae_dict = torch.load(sae_path, map_location="cpu")
@@ -268,16 +318,23 @@ def main() -> int:
 
             # Optimize num_workers based on available CPUs
             if is_cuda:
-                slurm_cpus = os.environ.get("SLURM_CPUS_PER_TASK")
-                if slurm_cpus:
-                    available_cpus = int(slurm_cpus)
-                else:
-                    available_cpus = os.cpu_count() or 4
+                # slurm_cpus = os.environ.get("SLURM_CPUS_PER_TASK")
+                # if slurm_cpus:
+                #     available_cpus = int(slurm_cpus)
+                # else:
+                #     available_cpus = os.cpu_count() or 4
 
-                # Use most CPUs but leave 1-2 for main process
-                num_workers = max(4, min(available_cpus - 2, 12))  # Cap at 12 to avoid overhead
-                prefetch_factor = 4  # Increased prefetch for better pipeline
-                print(f"DataLoader: {num_workers} workers, prefetch={prefetch_factor}")
+                #  # Use most CPUs but leave 1-2 for main process
+                #                 num_workers = max(4, min(available_cpus - 2, 14))  # Cap at 14 to avoid overhead
+                #                 prefetch_factor = 4  # Increased prefetch for better pipeline
+                #                 print(f"DataLoader: {num_workers} workers, prefetch={prefetch_factor}")
+                # CRITICAL: Use only 2-4 workers to reduce I/O contention on shared 1TB network memmap
+                # With 4 parallel jobs, this gives 8-16 total workers instead of 56
+                num_workers = 2  # Dramatically reduced for large network storage
+                prefetch_factor = 2  # Reduced to limit memory usage
+                print(
+                    f"DataLoader: {num_workers} workers (reduced for network I/O), prefetch={prefetch_factor}"  # noqa: E501
+                )
             else:
                 num_workers = 0
                 prefetch_factor = None
@@ -300,11 +357,25 @@ def main() -> int:
         # === LOAD DATASET ===
         # Use filter only if concept and concept_value are provided
         filter_fn = None
-        if args.concept and args.concept_value:
-            filter_fn = concept_filtering_function(args.concept, args.concept_value)
-            print(f"Filtering dataset by concept='{args.concept}', value='{args.concept_value}'")
-        else:
-            print("No filtering applied (loading all samples)")
+        # if args.concept and args.concept_value:
+        #     filter_fn = concept_filtering_function(args.concept, args.concept_value)
+        #     print(f"Filtering dataset by concept='{args.concept}', value='{args.concept_value}'")
+        # else:
+        #     print("No filtering applied (loading all samples)")
+        if args.filter_type == "concept":
+            if args.concept and args.concept_value:
+                filter_fn = concept_filtering_function(args.concept, args.concept_value)
+                print(
+                    f"Filtering dataset by concept='{args.concept}', value='{args.concept_value}'"
+                )
+            else:
+                print("No filtering applied (loading all samples)")
+        elif args.filter_type == "id_range":
+            lower_idx = args.lower_index if args.lower_index is not None else 0
+            upper_idx = args.upper_index if args.upper_index is not None else float("inf")
+
+            filter_fn = lambda x: x["start_idx"] >= lower_idx and x["start_idx"] < upper_idx  # noqa: E731
+            print(f"Filtering dataset by index range: [{lower_idx}, {upper_idx})")
 
         dataset = RepresentationDataset(
             cache_dir=cache_dir,
@@ -347,12 +418,20 @@ def main() -> int:
         if args.feature_sums_prefix:
             prefix = args.feature_sums_prefix
         else:
-            concept_suffix = (
-                f"_concept_{args.concept}_{args.concept_value}"
-                if args.concept and args.concept_value
-                else "_all"
-            )
-            prefix = f"{layer_name}{concept_suffix}"
+            if args.filter_type == "concept":
+                concept_suffix = (
+                    f"_concept_{args.concept}_{args.concept_value}"
+                    if args.concept and args.concept_value
+                    else "_all"
+                )
+                prefix = f"{layer_name}{concept_suffix}"
+            elif args.filter_type == "id_range":
+                range_suffix = (
+                    f"_idrange_{args.lower_index}_{args.upper_index}"
+                    if args.lower_index is not None and args.upper_index is not None
+                    else "_all"
+                )
+                prefix = f"{layer_name}{range_suffix}"
 
         feature_sums = {
             "sums_per_timestep": sums_per_timestep,  # dict[int, Tensor]

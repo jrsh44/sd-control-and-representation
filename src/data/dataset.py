@@ -2,6 +2,8 @@
 Fast memmap-based dataset for representations.
 """
 
+import bisect
+import functools
 import json
 import os
 import random
@@ -147,20 +149,39 @@ class RepresentationDataset(Dataset):
         # Store feature_dim as instance variable for external access
         self._feature_dim = feature_dim
 
+        # Build sorted start_idx list for binary search (if metadata loaded)
+        self._entry_start_indices = None
+        if self._metadata:
+            self._entry_start_indices = [entry["start_idx"] for entry in self._metadata]
+            print(
+                f"  Built binary search index for {len(self._entry_start_indices)} metadata entries"
+            )
+
     @property
     def feature_dim(self) -> int:
         """Return the feature dimension of the representations."""
         return self._feature_dim
 
+    @functools.lru_cache(maxsize=8192)  # Cache lookups for consecutive indices  # noqa: B019
     def _find_entry_for_index(self, real_idx: int) -> Optional[Dict]:
-        """Find metadata entry that contains the given sample index."""
-        if self._metadata is None:
+        """Find metadata entry that contains the given sample index using binary search."""
+        if self._metadata is None or self._entry_start_indices is None:
             return None
 
-        # Binary search for efficiency (entries are sorted by start_idx)
-        for entry in self._metadata:
-            if entry["start_idx"] <= real_idx < entry["end_idx"]:
-                return entry
+        # Binary search O(log n) to find the entry containing real_idx
+        # Find rightmost entry whose start_idx <= real_idx
+        pos = bisect.bisect_right(self._entry_start_indices, real_idx) - 1
+
+        if pos < 0 or pos >= len(self._metadata):
+            return None
+
+        entry = self._metadata[pos]
+
+        # Verify the index is actually within this entry's range
+        if entry["start_idx"] <= real_idx < entry["end_idx"]:
+            # Convert to hashable dict for caching
+            return entry
+
         return None
 
     def _get_metadata_for_index(self, real_idx: int) -> Dict:
@@ -201,8 +222,10 @@ class RepresentationDataset(Dataset):
         else:
             real_idx = self.indices[idx]
 
-        rep_fp16 = self._full_data[real_idx].copy()
-        rep = torch.from_numpy(rep_fp16).float()
+        # Read from memmap and convert to torch (no intermediate copy needed)
+        # torch.from_numpy() creates a view without copying, then .float() converts dtype
+        rep_fp16 = self._full_data[real_idx]
+        rep = torch.from_numpy(rep_fp16.copy()).float()  # Copy only once during torch conversion
 
         if self.transform is not None:
             rep = self.transform(rep)
