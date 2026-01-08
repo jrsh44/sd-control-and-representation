@@ -1,5 +1,9 @@
 """Unit tests for src/utils/visualization.py"""
 
+import matplotlib
+
+matplotlib.use("Agg")  # Use non-GUI backend for tests
+
 from unittest.mock import patch, MagicMock
 from PIL import Image
 import pytest
