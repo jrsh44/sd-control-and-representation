@@ -2,20 +2,22 @@
 """
 EXAMPLE:
 uv run scripts/sd_v1_5/generate_unlearned_image.py \
-    --prompt "A black cat sitting in grass next to a red toy car." \
+    --prompt "girl on a bed" \
     --preferred_device cpu \
     --guidance_scale 4 \
     --steps 50 \
     --seed 42 \
     --output_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
-    --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096 \
-    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_sums/merged_feature_sums.pt \
+    --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096 \
+    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt \
     --epsilon 1e-8 \
-    --ignore_modification false \
+    --ignore_modification true \
     --layers UNET_UP_1_ATT_2 UNET_DOWN_1_RES_0 \
-    --unlearn_concept "exposed anus" 140 25 \
-    --unlearn_concept "buttocks" 100 20 \
     --skip_wandb \
+    --unlearn_concept "exposed anus" 25 5 true \
+    --unlearn_concept "buttocks" 25 5 true \
+    --unlearn_concept "breast" 25 5 true \
+    --unlearn_concept "exposed breast" 25 5 true \
 """  # noqa: E501
 
 import argparse
@@ -25,7 +27,6 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List
 
 import torch
 from diffusers import StableDiffusionPipeline  # noqa: E402
@@ -107,10 +108,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--unlearn_concept",
         action="append",
-        nargs=3,
-        metavar=("CONCEPT_NAME", "INFLUENCE_FACTOR", "FEATURES_NUMBER"),
+        nargs=4,
+        metavar=("CONCEPT_NAME", "INFLUENCE_FACTOR", "FEATURES_NUMBER", "REP_TIMESTEP_MODE"),
         help="Concept to unlearn with parameters. Can be specified multiple times. "
-        "Example: --unlearn_concept 'exposed anus' 140 25 --unlearn_concept 'nudity' 100 20",
+        "Example: --unlearn_concept 'exposed anus' 140 25 true --unlearn_concept 'nudity' 100 20 false",  # noqa: E501
     )
 
     return parser.parse_args()
@@ -265,14 +266,16 @@ def main():
                 concept_name = concept_params[0]
                 influence_factor = float(concept_params[1])
                 features_number = int(concept_params[2])
+                rep_timestep_mode = concept_params[3].lower() == "true"  # unused for now
 
                 print(
-                    f"  - {concept_name}: influence={influence_factor}, features={features_number}"
+                    f"  - {concept_name}: influence={influence_factor}, features={features_number}, per_timestep={rep_timestep_mode}"  # noqa: E501
                 )
                 modifier.add_concept_to_unlearn(
                     concept_name=concept_name,
                     influence_factor=influence_factor,
                     features_number=features_number,
+                    per_timestep=rep_timestep_mode,
                 )
         else:
             print(
