@@ -14,6 +14,33 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+# Platform-specific imports
+try:
+    import fcntl
+
+    HAS_FCNTL = True
+except ImportError:
+    # fcntl not available on Windows
+    HAS_FCNTL = False
+    fcntl = None  # type: ignore
+
+
+def _lock_file(fd, nonblocking=False):
+    """Cross-platform file locking."""
+    if HAS_FCNTL:
+        flags = fcntl.LOCK_EX
+        if nonblocking:
+            flags |= fcntl.LOCK_NB
+        fcntl.flock(fd, flags)
+    # On Windows, file locking happens automatically
+
+
+def _unlock_file(fd):
+    """Cross-platform file unlocking."""
+    if HAS_FCNTL:
+        _unlock_file(fd)
+    # On Windows, unlocking happens automatically
+
 
 class RepresentationDataset(Dataset):
     """
@@ -139,6 +166,27 @@ class RepresentationDataset(Dataset):
         # Store feature_dim as instance variable for external access
         self._feature_dim = feature_dim
 
+    def close(self):
+        """Explicitly close memmap to release file handle."""
+        if hasattr(self, "_full_data"):
+            try:
+                del self._full_data
+            except Exception:
+                pass
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensure cleanup."""
+        self.close()
+        return False
+
+    def __del__(self):
+        """Cleanup: explicitly delete memmap to release file handle on Windows."""
+        self.close()
+
     @property
     def feature_dim(self) -> int:
         """Return the feature dimension of the representations."""
@@ -197,7 +245,6 @@ class RepresentationDataset(Dataset):
         Uses reference counting to track how many processes are using the
         shared copy, so cleanup only happens when the last process exits.
         """
-        import fcntl
         import hashlib
         import time
 
@@ -220,11 +267,11 @@ class RepresentationDataset(Dataset):
             try:
                 # Try to acquire exclusive lock (non-blocking first)
                 try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError:
+                    _lock_file(lock_file.fileno(), nonblocking=True)
+                except (BlockingIOError, OSError):
                     # Another process is copying, wait for it
                     print("  ⏳ Another process is copying data, waiting...")
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # Blocking wait
+                    _lock_file(lock_file.fileno())  # Blocking wait
 
                 # After acquiring lock, check if copy was completed by another process
                 if done_path.exists() and tmp_path.exists():
@@ -285,7 +332,7 @@ class RepresentationDataset(Dataset):
 
             finally:
                 # Release lock
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                _unlock_file(lock_file.fileno())
 
     def _register_cleanup(self):
         """Register cleanup handlers for signals"""
@@ -308,8 +355,6 @@ class RepresentationDataset(Dataset):
             return
 
         try:
-            import fcntl
-
             tmp_dir = self._local_copy_path.parent
             lock_path = tmp_dir / ".copy.lock"
             refcount_path = tmp_dir / ".refcount"
@@ -318,7 +363,7 @@ class RepresentationDataset(Dataset):
                 return
 
             with open(lock_path, "w") as lock_file:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                _lock_file(lock_file.fileno())
                 try:
                     # Read and decrement refcount
                     count = 1
@@ -332,16 +377,16 @@ class RepresentationDataset(Dataset):
                     if count <= 0:
                         # Last user - safe to delete
                         # Release lock before deleting (lock file is inside tmp_dir)
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                        _unlock_file(lock_file.fileno())
                         shutil.rmtree(tmp_dir, ignore_errors=True)
                         print(f"\n  🧹 Cleaned up local copy (last user): {tmp_dir}")
                     else:
                         # Other tasks still using it
                         refcount_path.write_text(str(count))
                         print(f"\n  ℹ️  Local copy still in use by {count} task(s)")
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                        _unlock_file(lock_file.fileno())
                 except Exception:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    _unlock_file(lock_file.fileno())
                     raise
 
             self._local_copy_path = None

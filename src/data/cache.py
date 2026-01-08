@@ -4,7 +4,6 @@ Class for fast numpy memmap cache for representations.
 """
 
 import atexit
-import fcntl
 import json
 import math
 import os
@@ -16,6 +15,30 @@ from typing import Dict, Optional, Set
 
 import numpy as np
 import torch
+
+# Platform-specific imports
+try:
+    import fcntl
+
+    HAS_FCNTL = True
+except ImportError:
+    # fcntl not available on Windows
+    HAS_FCNTL = False
+    fcntl = None  # type: ignore
+
+
+def _lock_file(fd):
+    """Cross-platform file locking."""
+    if HAS_FCNTL:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    # On Windows, file locking is automatic through OS, so we can skip explicit locking
+
+
+def _unlock_file(fd):
+    """Cross-platform file unlocking."""
+    if HAS_FCNTL:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    # On Windows, file locking is automatic through OS
 
 
 class RepresentationCache:
@@ -63,6 +86,30 @@ class RepresentationCache:
 
         self._register_cleanup_handlers()
 
+    def close(self):
+        """Explicitly close all memmap files to release file handles."""
+        for layer_info in self._active_memmaps.values():
+            if "memmap" in layer_info and layer_info["memmap"] is not None:
+                try:
+                    # Delete memmap reference to close the file
+                    del layer_info["memmap"]
+                except Exception:
+                    pass
+        self._active_memmaps.clear()
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensure cleanup."""
+        self.close()
+        return False
+
+    def __del__(self):
+        """Cleanup: close all memmap files to release file handles."""
+        self.close()
+
     def _register_cleanup_handlers(self):
         """Register handlers to save metadata on unexpected exit."""
 
@@ -72,7 +119,7 @@ class RepresentationCache:
             self._cleanup_done = True
 
             signal_name = signal.Signals(signum).name if signum else "atexit"
-            print(f"\n⚠️  Process {self.pid} interrupted ({signal_name}), saving metadata...")
+            print(f"\n[WARNING] Process {self.pid} interrupted ({signal_name}), saving metadata...")
 
             self._emergency_save_and_merge()
 
@@ -92,7 +139,7 @@ class RepresentationCache:
                 if layer_info.get("pending_metadata"):
                     self._save_metadata_to_temp_file(layer_name, layer_info["pending_metadata"])
                     count = len(layer_info["pending_metadata"])
-                    print(f"  ✓ Saved {count} pending entries for {layer_name}")
+                    print(f"  [OK] Saved {count} pending entries for {layer_name}")
                     layer_info["pending_metadata"] = []
 
                 if "memmap" in layer_info and layer_info["memmap"] is not None:
@@ -134,7 +181,7 @@ class RepresentationCache:
 
         lock_fd = open(lock_file, "w")
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            _lock_file(lock_fd)
 
             if metadata_path.exists():
                 with open(metadata_path, "r") as f:
@@ -179,13 +226,13 @@ class RepresentationCache:
                 with open(metadata_path, "w") as f:
                     json.dump(info, f, indent=2)
 
-                print(f"    ✓ Merged {len(new_entries)} new entries into metadata.json")
+                print(f"    [OK] Merged {len(new_entries)} new entries into metadata.json")
 
             for temp_file in temp_files:
                 temp_file.unlink()
 
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            _unlock_file(lock_fd)
             lock_fd.close()
 
     def get_layer_path(self, layer_name: str) -> Path:
@@ -219,7 +266,7 @@ class RepresentationCache:
 
         lock_fd = open(lock_file, "w")
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            _lock_file(lock_fd)
 
             if counter_file.exists():
                 with open(counter_file, "r") as f:
@@ -244,7 +291,7 @@ class RepresentationCache:
             return current
 
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            _unlock_file(lock_fd)
             lock_fd.close()
 
     def _resize_memmap(self, layer_name: str, min_size: int):
@@ -264,7 +311,7 @@ class RepresentationCache:
         lock_file.touch(exist_ok=True)
         lock_fd = open(lock_file, "w")
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            _lock_file(lock_fd)
 
             with open(metadata_path, "r") as f:
                 info = json.load(f)
@@ -329,10 +376,10 @@ class RepresentationCache:
                 shape=(new_size, layer_info["feature_dim"]),
             )
             layer_info["total_samples"] = new_size
-            print("  ✓ Resize complete")
+            print("  [OK] Resize complete")
 
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            _unlock_file(lock_fd)
             lock_fd.close()
 
     def initialize_layer(
@@ -367,14 +414,14 @@ class RepresentationCache:
 
         lock_fd = open(init_lock, "w")
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            _lock_file(lock_fd)
 
             if metadata_path.exists() and data_path.exists():
                 with open(metadata_path, "r") as f:
                     info = json.load(f)
 
                 if info["total_samples"] >= total_samples and info["feature_dim"] == feature_dim:
-                    print(f"  ✓ Layer {layer_name} already initialized, opening existing")
+                    print(f"  [OK] Layer {layer_name} already initialized, opening existing")
                     memmap_array = np.memmap(
                         str(data_path),
                         dtype=self.dtype,
@@ -392,7 +439,7 @@ class RepresentationCache:
 
                     return memmap_array
 
-            print(f"  📦 Creating cache for {layer_name}: {total_samples:,} x {feature_dim}")
+            print(f"  [INIT] Creating cache for {layer_name}: {total_samples:,} x {feature_dim}")
 
             memmap_array = np.memmap(
                 str(data_path),
@@ -428,11 +475,11 @@ class RepresentationCache:
                 "samples_per_prompt": samples_per_prompt,
             }
 
-            print(f"  ✓ Initialized {layer_name}: {data_path}")
+            print(f"  [OK] Initialized {layer_name}: {data_path}")
             return memmap_array
 
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            _unlock_file(lock_fd)
             lock_fd.close()
 
     def get_existing_prompt_nrs(self, layer_name: str) -> Set[int]:
@@ -648,7 +695,7 @@ class RepresentationCache:
         if layer_name in self._active_memmaps:
             del self._active_memmaps[layer_name]
 
-        print(f"  ✓ Finalized {layer_name}")
+        print(f"  [OK] Finalized {layer_name}")
 
     @classmethod
     def merge_all_process_files(cls, cache_dir: Path, layer_name: str) -> dict:
@@ -674,7 +721,7 @@ class RepresentationCache:
         lock_fd = open(lock_file, "w")
 
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+            _lock_file(lock_fd)
 
             if metadata_path.exists():
                 with open(metadata_path, "r") as f:
@@ -730,8 +777,8 @@ class RepresentationCache:
             if counter_file.exists():
                 counter_file.unlink()
 
-            print(f"  ✓ Merged {len(new_entries)} entries from {files_processed} files")
-            print(f"  ✓ Total entries: {len(all_entries)}")
+            print(f"  [OK] Merged {len(new_entries)} entries from {files_processed} files")
+            print(f"  [OK] Total entries: {len(all_entries)}")
 
             return {
                 "layer": layer_name,
@@ -741,7 +788,7 @@ class RepresentationCache:
             }
 
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            _unlock_file(lock_fd)
             lock_fd.close()
 
 
@@ -849,7 +896,7 @@ def initialize_cache_from_dimensions(
         total_samples: Output from calculate_total_samples()
         total_prompts: Total number of prompts across all jobs
     """
-    print("📦 Pre-initializing cache layers...")
+    print("[INIT] Pre-initializing cache layers...")
 
     for layer_name, dims in layer_dims.items():
         if layer_name in total_samples:
