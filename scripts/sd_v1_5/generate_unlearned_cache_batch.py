@@ -117,10 +117,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--unlearn_concept",
         action="append",
-        nargs=3,
-        metavar=("CONCEPT_NAME", "INFLUENCE_FACTOR", "FEATURES_NUMBER"),
+        nargs=4,
+        metavar=("CONCEPT_NAME", "INFLUENCE_FACTOR", "FEATURES_NUMBER", "PER_TIMESTEP"),
         help="Concept to unlearn with parameters. Can be specified multiple times. "
-        "Example: --unlearn_concept 'exposed anus' 140 25 --unlearn_concept 'nudity' 100 20",
+        "Example: --unlearn_concept 'exposed anus' 140 25 true",
     )
     parser.add_argument(
         "--layers",
@@ -277,12 +277,17 @@ def main():
             concept_name = concept_params[0]
             influence_factor = float(concept_params[1])
             features_number = int(concept_params[2])
+            per_timestep = concept_params[3].lower() == "true"
+            # Calculate scores (this also serves as a validation step)
 
-            print(f"  - {concept_name}: influence={influence_factor}, features={features_number}")
+            print(
+                f"  - {concept_name}: influence={influence_factor}, features={features_number}, per_timestep={per_timestep}"  # noqa: E501
+            )  # noqa: E501
             modifier.add_concept_to_unlearn(
                 concept_name=concept_name,
                 influence_factor=influence_factor,
                 features_number=features_number,
+                per_timestep=per_timestep,
             )
     else:
         print(
