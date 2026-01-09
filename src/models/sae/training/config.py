@@ -73,7 +73,6 @@ class EpochMetrics:
     z_l2: float = 0.0
     mean_activation: float = 0.0
     max_activation: float = 0.0
-    active_ratio: float = 0.0
 
     # Dead features
     dead_features_ratio: float = 0.0
@@ -86,13 +85,6 @@ class EpochMetrics:
     encoder_avg_max_cos: float = 0.0
     decoder_avg_max_cos: float = 0.0
     decoder_mean_norm: float = 0.0
-
-    # Active features at thresholds (validation only)
-    active_features_0_5: int = 0
-    active_features_0_4: int = 0
-    active_features_0_3: int = 0
-    active_features_0_2: int = 0
-    active_features_0_1: int = 0
 
     # Timing and metadata
     time_seconds: float = 0.0
