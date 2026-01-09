@@ -29,11 +29,10 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
+import wandb
 from diffusers import StableDiffusionPipeline  # noqa: E402
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
-
-import wandb
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent

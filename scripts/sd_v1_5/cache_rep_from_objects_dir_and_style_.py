@@ -20,9 +20,8 @@ from pathlib import Path
 from typing import List
 
 import torch
-from dotenv import load_dotenv
-
 import wandb
+from dotenv import load_dotenv
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
