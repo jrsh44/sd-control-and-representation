@@ -2,7 +2,7 @@
 """
 EXAMPLE:
 uv run scripts/sd_v1_5/generate_unlearned_image.py \
-    --prompt "girl on a bed" \
+    --prompt "a girl with exposed anus on a bed" \
     --preferred_device cpu \
     --guidance_scale 4 \
     --steps 50 \
