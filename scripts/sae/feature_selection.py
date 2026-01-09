@@ -53,7 +53,7 @@ from src.models.sae.feature_selection import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Feature selection using pretrained Sparse Autoencoder (SAE) given a concept",
+        description="Train SAE on representations from SD layer using RepresentationDataset."
     )
     # Dataset parameters
     parser.add_argument(

@@ -19,12 +19,14 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
+#SBATCH --time 0-5:00:00
 #SBATCH --array=0-15         # 16 tasks: 16 nudity concepts
 #SBATCH --time 0-1:30:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
 #SBATCH --cpus-per-task 16
+#SBATCH --mem 32G
 #SBATCH --mem 64G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
@@ -54,6 +56,7 @@ echo "=========================================="
 
 # Navigate to project directory
 cd /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation
+source .venv/bin/activate
 source ./.venv/bin/activate
 
 # Create directories

@@ -1,36 +1,32 @@
 #!/usr/bin/env python3
 """
-Generate cached representations for Stable Diffusion v1.5 using memmap format.
-
-Structure: {results_dir}/{model_name}/cached_representations/{layer_name}/
-Each dataset contains: object, style, prompt_nr, prompt_text, representation
-
-EXAMPLE:
 uv run scripts/sd_v1_5/generate_unlearned_cache_batch.py \
-    --results_dir ./results \
-    --prompts_dir ./data/prompts/validation \
-    --sae_path ./models/sae/sae_weights.pt \
-    --concept_means_path ./data/concept_means/concept_means.pt \
-    --influence_factor 50.0 \
-    --features_number 2 \
+    --results_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
+    --prompts_csv /mnt/evafs/groups/mi2lab/jcwalina/results/test/prompts/prompts.csv \
+    --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096 \
+    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_sums/merged_feature_sums.pt \
     --epsilon 1e-8 \
-    --ignore_modification true \
+    --ignore_modification false \
     --layers UNET_UP_1_ATT_1 UNET_DOWN_2_RES_0 \
-    --device cuda \
+    --device cpu \
     --guidance_scale 7.5 \
     --steps 50 \
     --seed 42 \
     --skip_wandb \
+    --unlearn_concept "exposed anus" 140 25 \
+    --unlearn_concept "buttocks" 100 20 \
     --skip_existence_check
 """
 
 import argparse
 import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import List
 
+import pandas as pd
 import torch
 import wandb
 from diffusers import StableDiffusionPipeline  # noqa: E402
@@ -44,13 +40,15 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
-from src.data import load_prompts_from_directory  # noqa: E402
 from src.data.cache import RepresentationCache  # noqa: E402
 from src.models.config import ModelRegistry  # noqa: E402
-from src.models.sd_v1_5 import (  # noqa: E402
+from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearning  # noqa: E402
+from src.models.sd_v1_5.layers import (  # noqa: E402
     LayerPath,  # noqa: E402
 )
 from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearning  # noqa: E402
+
+# from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.RepresentationModifier import RepresentationModifier  # noqa: E402
 from src.utils.wandb import get_system_metrics  # noqa: E402
 
@@ -86,34 +84,22 @@ def parse_args() -> argparse.Namespace:
         help="Results directory (default: $RESULTS_DIR from .env, required if not set)",
     )
     parser.add_argument(
-        "--prompts_dir",
+        "--prompts_csv",
         type=str,
         required=True,
-        help="Path to directory containing .txt prompt files",
+        help="Path to CSV file with prompts (columns: id, prompt)",
     )
     parser.add_argument(
-        "--sae_path",
+        "--sae_dir_path",
         type=str,
-        required=True,  # lub default=None jeśli chcesz opcjonalny
+        required=True,
         help="Path to SAE weights (.pt)",
     )
     parser.add_argument(
-        "--concept_means_path",
+        "--concept_sums_path",
         type=str,
         required=True,
-        help="Path to concept means (true/false)",
-    )
-    parser.add_argument(
-        "--influence_factor",
-        type=float,
-        default=1.0,
-        help="Influence factor for unlearning",
-    )
-    parser.add_argument(
-        "--features_number",
-        type=int,
-        default=5,
-        help="Number of top features to unlearn",
+        help="Path to concept sums file",
     )
     parser.add_argument(
         "--epsilon",
@@ -127,6 +113,14 @@ def parse_args() -> argparse.Namespace:
         default="false",
         choices=["false", "no_sae", "raw_sae"],
         help="Type of generation modification",
+    )
+    parser.add_argument(
+        "--unlearn_concept",
+        action="append",
+        nargs=4,
+        metavar=("CONCEPT_NAME", "INFLUENCE_FACTOR", "FEATURES_NUMBER", "PER_TIMESTEP"),
+        help="Concept to unlearn with parameters. Can be specified multiple times. "
+        "Example: --unlearn_concept 'exposed anus' 140 25 true",
     )
     parser.add_argument(
         "--layers",
@@ -154,13 +148,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def main():
+    # --------------------------------------------------------------------------
+    # 0. Parse arguments
+    # --------------------------------------------------------------------------
     args = parse_args()
 
     # Setup paths
     device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
-    prompts_dir = Path(args.prompts_dir)
-    if not prompts_dir.exists():
-        print(f"ERROR: Prompts directory does not exist: {prompts_dir}")
+    prompts_csv = Path(args.prompts_csv)
+    if not prompts_csv.exists():
+        print(f"ERROR: Prompts CSV does not exist: {prompts_csv}")
         return 1
 
     layers_to_capture = parse_layer_names(args.layers)
@@ -180,9 +177,9 @@ def main():
         print("  2. Set RESULTS_DIR in .env file")
         return 1
 
-    #############################################
-    # MODEL
-    #############################################
+    # --------------------------------------------------------------------------
+    # 1. MODEL
+    # --------------------------------------------------------------------------
     print("\nLoading model...")
     model_load_start = time.time()
     model_registry = ModelRegistry.FINETUNED_SAEURON
@@ -199,89 +196,115 @@ def main():
     model_load_time = time.time() - model_load_start
     print(f"Model loaded in {model_load_time:.2f}s")
 
-    #############################################
-    # Load SAE → infer config
-    #############################################
-    sae_path = Path(args.sae_path)
-    if not sae_path.exists():
-        raise FileNotFoundError(f"SAE not found: {sae_path}")
+    # --------------------------------------------------------------------------
+    # 2. Load SAE → infer config
+    # --------------------------------------------------------------------------
+    sae_dir_path = Path(args.sae_dir_path)
+    if not sae_dir_path.exists():
+        raise FileNotFoundError(f"SAE directory not found: {sae_dir_path}")
+
+    # Find the first model.pt or checkpoint.pt file in the sae_dir_path
+    pt_files = list(sae_dir_path.glob("model.pt")) + list(sae_dir_path.glob("checkpoint.pt"))
+    if not pt_files:
+        raise FileNotFoundError(f"No model.pt or checkpoint.pt file found in {sae_dir_path}")
+
+    sae_path = pt_files[0]
+    print(f"Using SAE weights file: {sae_path}")
+
+    # extract topk and batch_size from sae_path e.g. wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096  # noqa: E501
+    match = re.search(r"topk(\d+)_.*_bs(\d+)", str(sae_path))
+    if match:
+        extracted_topk = int(match.group(1))
+        print(f"Extracted top_k={extracted_topk} from SAE path")
+    else:
+        print("Warning: Could not extract top_k and batch_size from SAE path")
+        extracted_topk = 32
 
     # Load state dict
-    state_dict = torch.load(sae_path, map_location="cpu")
+    sae_dict = torch.load(sae_path, map_location=device)
+    state_dict = sae_dict.get("model_state_dict", sae_dict)
 
-    # Automatyczne wykrycie i usunięcie prefiksu _orig_mod.
+    # print keys in state_dict (for tests)
+    print(f"SAE state_dict keys: {list(state_dict.keys())}")
+
+    # Auto-detect and remove _orig_mod prefix from torch.compile()
     if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
         print("Detected torch.compile() prefix → removing '_orig_mod.'")
         state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
 
-    # Wnioskowanie wymiarów
+    # Infer dimensions from weights
     enc_weight = state_dict["encoder.final_block.0.weight"]
     input_shape = enc_weight.shape[1]
     nb_concepts = enc_weight.shape[0]
     print(f"Inferred input_dim={input_shape}, nb_concepts={nb_concepts}")
 
-    # Tworzymy model i ładujemy wagi
+    # Create model and load weights
     sae = TopKSAE(
         input_shape=input_shape,
         nb_concepts=nb_concepts,
+        top_k=extracted_topk,
         device=device,
     )
-    sae.load_state_dict(state_dict)  # teraz działa idealnie
-    sae = sae.to(device).to(dtype=torch.float32)
+    sae.load_state_dict(state_dict)
+    sae = sae.to(device)
     sae.eval()
-    sae_layer_path = LayerPath.UNET_UP_1_ATT_1
-    print("SAE loaded and moved to device")
+    sae_layer_path = LayerPath.UNET_UP_1_ATT_1  # hardcoded for test
 
-    #############################################
-    # Prepare modifier
-    #############################################
-    concept_scores_path = Path(args.concept_means_path)
+    print("✓ SAE loaded and moved to device")
+
+    # --------------------------------------------------------------------------
+    # 3. Prepare modifier
+    # --------------------------------------------------------------------------
+    concept_scores_path = Path(args.concept_sums_path)
     if not concept_scores_path.exists():
-        raise FileNotFoundError(f"Concept means not found: {concept_scores_path}")
+        raise FileNotFoundError(f"Concept sums not found: {concept_scores_path}")
 
-    concept_means = torch.load(concept_scores_path, map_location="cpu")
-    if (
-        "sums_true_per_timestep" not in concept_means
-        or "counts_true_per_timestep" not in concept_means
-        or "sums_false_per_timestep" not in concept_means
-        or "counts_false_per_timestep" not in concept_means
-        or "timesteps" not in concept_means
-    ):
-        raise ValueError(
-            "Concept means file must contain 'sums_true_per_timestep', 'counts_true_per_timestep', 'sums_false_per_timestep', 'counts_false_per_timestep', and 'timesteps' keys."  # noqa: E501
-        )
+    concept_sums = torch.load(concept_scores_path, map_location=device)
 
     modifier = RepresentationModifier(
         sae=sae,
-        stats_dict=concept_means,
-        influence_factor=args.influence_factor,
-        features_number=args.features_number,
+        stats_dict=concept_sums,
         epsilon=args.epsilon,
         ignore_modification=args.ignore_modification,
+        device=device,
     )
     modifier.attach_to(pipe, sae_layer_path)
 
-    # Build cache path:
-    # - With style: {results_dir}/{model_name}/cached_representations/
-    # - No style: {results_dir}/{model_name}/validation/
-    model_name = model_registry.name
-    if args.style:
-        cache_dir = results_dir / model_name / "cached_representations"
-    else:
-        cache_dir = results_dir / model_name / "validation"
+    # Add concepts to unlearn based on user arguments
+    if args.unlearn_concept:
+        print(f"\nAdding {len(args.unlearn_concept)} concept(s) to unlearn:")
+        for concept_params in args.unlearn_concept:
+            concept_name = concept_params[0]
+            influence_factor = float(concept_params[1])
+            features_number = int(concept_params[2])
+            per_timestep = concept_params[3].lower() == "true"
+            # Calculate scores (this also serves as a validation step)
 
-    # Setup device
-    device = "cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu"
+            print(
+                f"  - {concept_name}: influence={influence_factor}, features={features_number}, per_timestep={per_timestep}"  # noqa: E501
+            )  # noqa: E501
+            modifier.add_concept_to_unlearn(
+                concept_name=concept_name,
+                influence_factor=influence_factor,
+                features_number=features_number,
+                per_timestep=per_timestep,
+            )
+    else:
+        print(
+            "\nWarning: No concepts specified for unlearning. Images will be generated without modification."
+        )
+
+    # Build cache path
+    model_name = model_registry.name
+    cache_dir = results_dir / model_name / "unlearned_representations"
 
     # Print configuration
     print("=" * 70)
-    print("Generate Representations Cache (SD 1.5)")
+    print("Generate Unlearned Representations Cache (SD 1.5)")
     print("=" * 70)
     print(f"Model: {model_name}")
     print(f"Cache Dir: {cache_dir}")
-    print(f"Cache Type: {'Validation (no style)' if not args.style else 'Training (with style)'}")
-    print(f"Prompts: {prompts_dir}")
-    print(f"Style: {args.style if args.style else 'None (validation)'}")
+    print(f"Prompts CSV: {prompts_csv}")
     print(f"Layers: {', '.join(layer.name for layer in layers_to_capture)}")
     print(f"Device: {device}")
     print("=" * 70)
@@ -289,17 +312,21 @@ def main():
     # Initialize memmap cache
     cache = RepresentationCache(cache_dir, use_fp16=True)
 
-    # Load prompts
-    print("\nLoading prompts...")
-    prompts_by_object = load_prompts_from_directory(prompts_dir)
-    if not prompts_by_object:
-        print("ERROR: No prompts loaded")
+    # Load prompts from CSV
+    print("\nLoading prompts from CSV...")
+    try:
+        prompts_df = pd.read_csv(prompts_csv)
+        if "id" not in prompts_df.columns or "prompt" not in prompts_df.columns:
+            print("ERROR: CSV must have 'id' and 'prompt' columns")
+            return 1
+        print(f"Loaded {len(prompts_df)} prompts from CSV")
+    except Exception as e:
+        print(f"ERROR: Failed to load CSV: {e}")
         return 1
 
     # Calculate dataset size for memmap cache
     print("\n📊 Calculating dataset size...")
-    # Count total prompts
-    total_prompts = sum(len(prompts) for prompts in prompts_by_object.values())
+    total_prompts = len(prompts_df)
 
     # Each prompt generates representations with shape [timesteps, 1, spatial, features]
     # We initialize layers dynamically after first generation to get actual dimensions
@@ -316,19 +343,19 @@ def main():
             config={
                 "model": model_name,
                 "device": device,
-                "style": args.style or "no_style",
                 "guidance_scale": args.guidance_scale,
                 "steps": args.steps,
                 "base_seed": args.seed,
                 "storage_format": "npy_memmap",
                 "layers": [layer.name for layer in layers_to_capture],
+                "unlearn_concepts": args.unlearn_concept if args.unlearn_concept else [],
+                "sae_dir": str(args.sae_dir_path),
             },
             tags=[
                 "memmap",
                 "cache_generation",
-                args.style or "no_style",
+                "unlearned",
                 "sae",
-                "feature_selection",
             ],
         )
 
@@ -340,153 +367,144 @@ def main():
     total_save_time = 0.0
     generated = 0
 
-    style = args.style
-    if style:
-        print(f"\nStarting generation for style: {style}")
-    else:
-        print("\nStarting generation (no style applied)")
+    print("\nStarting unlearned generation...")
     print("=" * 70)
 
-    for object_name, prompts in prompts_by_object.items():
-        print(f"\n[Object: {object_name}] Processing {len(prompts)} prompts...")
+    for _, row in prompts_df.iterrows():
+        prompt_id = row["id"]
+        prompt_text = row["prompt"]
 
-        for prompt_nr, base_prompt in prompts.items():
-            # Check if all layers already have this representation
-            if not args.skip_existence_check:
-                all_exist = all(
-                    cache.check_exists(layer.name, object_name, style or "", prompt_nr)
-                    for layer in layers_to_capture
-                )
+        # Use prompt_id as both object_name and prompt_nr for cache
+        object_name = f"prompt_{prompt_id}"
+        prompt_nr = 1  # Single prompt per ID
 
-                if all_exist:
-                    skipped_generations += 1
-                    print(f"  [{prompt_nr}] ⏭️  Skipping (already cached)")
-                    continue
+        # Check if all layers already have this representation
+        if not args.skip_existence_check:
+            all_exist = True
+            for layer in layers_to_capture:
+                existing_entries = cache.get_existing_entries(layer.name)
+                if (prompt_nr, object_name, "") not in existing_entries:
+                    all_exist = False
+                    break
 
-            # Generate with optional style
-            if style:
-                styled_prompt = f"{base_prompt} in {style} style"
-            else:
-                styled_prompt = base_prompt
-            print(f"  [{prompt_nr}] 🎨 Generating: {styled_prompt[:60]}...")
+            if all_exist:
+                skipped_generations += 1
+                print(f"  [ID {prompt_id}] ⏭️  Skipping (already cached)")
+                continue
 
-            try:
-                generator = torch.Generator(device).manual_seed(args.seed + prompt_nr)
-                system_metrics_start = get_system_metrics(device) if not args.skip_wandb else {}
+        print(f"  [ID {prompt_id}] 🎨 Generating: {prompt_text[:60]}...")
 
-                # Capture representations
-                inference_start = time.time()
-                representations, image = capture_layer_representations_with_unlearning(
-                    pipe=pipe,
-                    prompt=styled_prompt,
-                    layers_to_capture=layers_to_capture,
-                    num_inference_steps=args.steps,
-                    guidance_scale=args.guidance_scale,
-                    generator=generator,
-                    modifier=modifier,
-                    device=device,
-                )
-                inference_time = time.time() - inference_start
-                total_inference_time += inference_time
-                generated += 1
+        try:
+            generator = torch.Generator(device).manual_seed(args.seed + prompt_id)
+            system_metrics_start = get_system_metrics(device) if not args.skip_wandb else {}
 
-                # Save each representation immediately
-                save_start = time.time()
-                for layer, tensor in zip(layers_to_capture, representations, strict=True):
-                    if tensor is not None:
-                        # Auto-initialize layer on first save
-                        if layer.name not in cache._active_memmaps:
-                            # Calculate total samples for this layer
-                            # tensor shape: [timesteps, 1, spatial, features]
-                            n_timesteps, _, n_spatial, n_features = tensor.shape
-                            samples_per_prompt = n_timesteps * n_spatial
-                            total_samples_estimate = total_prompts * samples_per_prompt
+            # Capture representations
+            inference_start = time.time()
+            representations, image = capture_layer_representations_with_unlearning(
+                pipe=pipe,
+                prompt=prompt_text,
+                layer_paths=layers_to_capture,
+                num_inference_steps=args.steps,
+                guidance_scale=args.guidance_scale,
+                generator=generator,
+                modifier=modifier,
+            )
+            inference_time = time.time() - inference_start
+            total_inference_time += inference_time
+            generated += 1
 
-                            print(f"\n  📦 Initializing layer '{layer.name}'")
-                            print(
-                                f"     Shape per prompt: [{n_timesteps}, {n_spatial}, {n_features}]"
-                            )
-                            print(f"     Samples per prompt: {samples_per_prompt}")
-                            print(f"     Estimated total: {total_samples_estimate:,}")
+            # Save each representation immediately
+            save_start = time.time()
+            for layer, tensor in zip(layers_to_capture, representations, strict=True):
+                if tensor is not None:
+                    # Auto-initialize layer on first save
+                    if layer.name not in cache._active_memmaps:
+                        # Calculate total samples for this layer
+                        # tensor shape: [timesteps, 1, spatial, features]
+                        n_timesteps, _, n_spatial, n_features = tensor.shape
+                        samples_per_prompt = n_timesteps * n_spatial
+                        total_samples_estimate = total_prompts * samples_per_prompt
 
-                            cache.initialize_layer(
-                                layer_name=layer.name,
-                                total_samples=total_samples_estimate,
-                                feature_dim=n_features,
-                            )
+                        print(f"\n  📦 Initializing layer '{layer.name}'")
+                        print(f"     Shape per prompt: [{n_timesteps}, {n_spatial}, {n_features}]")
+                        print(f"     Samples per prompt: {samples_per_prompt}")
+                        print(f"     Estimated total: {total_samples_estimate:,}")
 
-                        cache.save_representation(
+                        cache.initialize_layer(
                             layer_name=layer.name,
-                            object_name=object_name,
-                            style=style or "",
-                            prompt_nr=prompt_nr,
-                            prompt_text=styled_prompt,
-                            representation=tensor,
-                            num_steps=args.steps,
-                            guidance_scale=args.guidance_scale,
+                            total_samples=total_samples_estimate,
+                            feature_dim=n_features,
                         )
 
-                # Optional: save image
-                img_dir = cache_dir / "images"
-                img_dir.mkdir(exist_ok=True)
-                img_path = img_dir / f"{object_name}_prompt{prompt_nr:04d}.png"
-                image.save(img_path)
-
-                print(f"      Done in {inference_time:.2f}s → {img_path.name}")
-
-                if not args.skip_wandb:
-                    wandb.log(
-                        {
-                            "object": object_name,
-                            "prompt_nr": prompt_nr,
-                            "inference_time": inference_time,
-                            "generated": generated,
-                        }
+                    cache.save_representation(
+                        layer_name=layer.name,
+                        prompt_nr=prompt_nr,
+                        prompt_text=prompt_text,
+                        representation=tensor,
+                        num_steps=args.steps,
+                        guidance_scale=args.guidance_scale,
+                        object_name=object_name,
+                        style="",
                     )
 
-                save_time = time.time() - save_start
-                total_save_time += save_time
+            # Optional: save image
+            img_dir = cache_dir / "images"
+            img_dir.mkdir(exist_ok=True)
+            img_path = img_dir / f"prompt_{prompt_id}.png"
+            image.save(img_path)
 
-                # Free GPU memory
-                del representations
-                if image is not None:
-                    del image
-                torch.cuda.empty_cache()
+            print(f"      Done in {inference_time:.2f}s → {img_path.name}")
 
-                total_generations += 1
-                print(f"      ✅ Generated in {inference_time:.2f}s, saved in {save_time:.2f}s")
+            if not args.skip_wandb:
+                wandb.log(
+                    {
+                        "prompt_id": prompt_id,
+                        "inference_time": inference_time,
+                        "generated": generated,
+                    }
+                )
 
-                if not args.skip_wandb:
-                    system_metrics_end = get_system_metrics(device)
-                    wandb.log(
-                        {
-                            "object": object_name,
-                            "prompt_nr": prompt_nr,
-                            "inference_time": inference_time,
-                            "save_time": save_time,
-                            "total_generations": total_generations,
-                            "skipped_generations": skipped_generations,
-                            **system_metrics_end,
-                            "gpu_memory_delta_mb": system_metrics_end.get("gpu_memory_mb", 0)
-                            - system_metrics_start.get("gpu_memory_mb", 0),
-                        }
-                    )
+            save_time = time.time() - save_start
+            total_save_time += save_time
 
-            except Exception as e:
-                if not args.skip_wandb:
-                    wandb.log(
-                        {
-                            "error": str(e),
-                            "object": object_name,
-                            "prompt_nr": prompt_nr,
-                            "styled_prompt": styled_prompt,
-                        }
-                    )
-                failed_generations += 1
-                print(f"      ❌ ERROR: {e}")
-                import traceback
+            # Free GPU memory
+            del representations
+            if image is not None:
+                del image
+            torch.cuda.empty_cache()
 
-                traceback.print_exc()
+            total_generations += 1
+            print(f"      ✅ Generated in {inference_time:.2f}s, saved in {save_time:.2f}s")
+
+            if not args.skip_wandb:
+                system_metrics_end = get_system_metrics(device)
+                wandb.log(
+                    {
+                        "prompt_id": prompt_id,
+                        "inference_time": inference_time,
+                        "save_time": save_time,
+                        "total_generations": total_generations,
+                        "skipped_generations": skipped_generations,
+                        **system_metrics_end,
+                        "gpu_memory_delta_mb": system_metrics_end.get("gpu_memory_mb", 0)
+                        - system_metrics_start.get("gpu_memory_mb", 0),
+                    }
+                )
+
+        except Exception as e:
+            if not args.skip_wandb:
+                wandb.log(
+                    {
+                        "error": str(e),
+                        "prompt_id": prompt_id,
+                        "prompt_text": prompt_text,
+                    }
+                )
+            failed_generations += 1
+            print(f"      ❌ ERROR: {e}")
+            import traceback
+
+            traceback.print_exc()
 
     # Save all accumulated metadata
     print("\n💾 Finalizing cache...")
@@ -503,7 +521,7 @@ def main():
     print("\n" + "=" * 70)
     print("GENERATION SUMMARY")
     print("=" * 70)
-    print(f"Style: {style if style else 'None'}")
+    print(f"Prompts CSV: {prompts_csv}")
     print(f"Device: {device}")
     print(f"Model Load Time: {model_load_time:.2f}s")
     print(f"Total Inference Time: {total_inference_time:.2f}s")
