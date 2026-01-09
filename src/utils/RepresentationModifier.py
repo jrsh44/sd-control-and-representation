@@ -11,22 +11,19 @@ class RepresentationModifier:
         self,
         sae: TopKSAE,
         stats_dict: Dict[str, Any],
-        # concepts_params_dict: Dict[str, Any],
-        # features_number: int = 25,
-        # influence_factor: float = 1.0,
         epsilon: float = 1e-8,
         device: str = "cuda",
         ignore_modification: str = "false",
+        max_concepts_number: int = 32,
     ):
         self.sae = sae.to(device)
         self.sae.eval()
         self.device = device
         self.stats_dict = stats_dict
-        # self.influence_factor = influence_factor
         self.epsilon = epsilon
-        # self.features_number = features_number
         self.timestep_idx = 0
         self.ignore_modification = ignore_modification
+        self.max_concepts_number = max_concepts_number
         self.concepts_to_unlearn_dict = {}
 
         # save means for 'all' stats for default feature selection
@@ -41,66 +38,13 @@ class RepresentationModifier:
         #     1,
         # )
 
-        # n_all is a tensor of numbers of samples per timestep (not sumed, it should be the size of number of timesteps)
+        # n_all is a tensor of numbers of samples per timestep (not sumed, it should be the size of number of timesteps)  # noqa: E501
         n_all = torch.tensor(
             [stats_dict["all"]["counts_per_timestep"][t] for t in all_timesteps],
             dtype=torch.float32,
         ).to(self.device)
 
         self.mean_all_per_timestep = sums_all / n_all.unsqueeze(1)  # float32
-
-        # === 1. Kluczowa poprawka: wymuś float32! ===
-        # sums_true = torch.stack(
-        #     [
-        #         stats_dict["sums_true_per_timestep"][t].to(torch.float32)
-        #         for t in stats_dict["timesteps"]
-        #     ]
-        # )
-        # n_true = max(
-        #     sum([stats_dict["counts_true_per_timestep"][t] for t in stats_dict["timesteps"]]),
-        #     1,
-        # )
-        # sums_false = torch.stack(
-        #     [
-        #         stats_dict["sums_false_per_timestep"][t].to(torch.float32)
-        #         for t in stats_dict["timesteps"]
-        #     ]
-        # )
-        # n_false = max(
-        #     sum([stats_dict["counts_false_per_timestep"][t] for t in stats_dict["timesteps"]]),
-        #     1,
-        # )
-
-        # self.mean_true_per_timestep = sums_true / n_true  # float32
-        # self.mean_false_per_timestep = sums_false / n_false  # float32
-        # self.mean_all_per_timestep = (sums_true + sums_false) / (n_true + n_false)  # float32
-
-        # # === 2. Reszta bez zmian ===
-        # prob_true_per_timestep = self.mean_true_per_timestep / (
-        #     self.mean_true_per_timestep.sum(dim=1, keepdim=True) + self.epsilon
-        # )
-        # prob_false_per_timestep = self.mean_false_per_timestep / (
-        #     self.mean_false_per_timestep.sum(dim=1, keepdim=True) + self.epsilon
-        # )
-        # scores_per_timestep = prob_true_per_timestep - prob_false_per_timestep
-
-        # self.top_indices = torch.topk(
-        #     scores_per_timestep, k=features_number, dim=1
-        # ).indices  # (timesteps, features_number)
-
-        # # Zapisz jako float32!
-        # self.mask_threshold = self.mean_all_per_timestep[
-        #     torch.arange(len(stats_dict["timesteps"])).unsqueeze(1),
-        #     self.top_indices,
-        # ].to(self.device, dtype=torch.float32)  # (timesteps, features_number)
-        # self.mean_true_top = self.mean_true_per_timestep[
-        #     torch.arange(len(stats_dict["timesteps"])).unsqueeze(1),
-        #     self.top_indices,
-        # ].to(self.device, dtype=torch.float32)  # (timesteps, features_number)
-
-        # print("RepresentationModifier initialized (float32 mode):")
-        # print(f"  → Top {features_number} features: {self.top_indices}")
-        # print(f"  → Dtype: {self.mean_true_top.dtype}")
 
     def add_concept_to_unlearn(
         self,
@@ -114,7 +58,7 @@ class RepresentationModifier:
             print(f"Concept '{concept_name}' is already added to unlearn list.")
             return
 
-        # 1. compute feauture selection for the concept (self.data_stats_dict['all'] contains overall stats)
+        # 1. compute feauture selection for the concept (self.data_stats_dict['all'] contains overall stats)  # noqa: E501
         stats_concept = self.stats_dict[concept_name]
         stats_all = self.stats_dict["all"]
 
@@ -176,7 +120,7 @@ class RepresentationModifier:
             )
             scores_per_timestep = prob_true_per_timestep - prob_false_per_timestep
             top_indices = torch.topk(
-                scores_per_timestep, k=features_number, dim=1
+                scores_per_timestep, k=self.max_concepts_number, dim=1
             ).indices  # (timesteps, features_number)
             # Zapisz jako float32!
             mean_true_top = mean_true_per_timestep[
@@ -218,7 +162,7 @@ class RepresentationModifier:
 
             # Select top features once (shape: [features_number])
             top_indices_1d = torch.topk(
-                scores_aggregated, k=features_number, dim=0
+                scores_aggregated, k=self.max_concepts_number, dim=0
             ).indices  # (features_number,)
 
             # Reshape to [1, features_number] for uniform indexing in hook
@@ -231,7 +175,7 @@ class RepresentationModifier:
         # 2. store in the dict
         self.concepts_to_unlearn_dict[concept_name] = {
             "influence_factor": influence_factor,
-            "features_number": features_number,
+            "features_number": self.max_concepts_number,
             "top_indices": top_indices,
             "mean_true_top": mean_true_top,
             "per_timestep": per_timestep,
@@ -335,6 +279,38 @@ class RepresentationModifier:
 
         return scores
 
+    def set_number_of_features_for_concept(
+        self,
+        concept_name: str,
+        features_number: int,
+    ):
+        if concept_name not in self.concepts_to_unlearn_dict:
+            print(f"Concept '{concept_name}' not found in unlearn list.")
+            raise ValueError(f"Concept '{concept_name}' not found in unlearn list.")
+
+        if features_number > self.max_concepts_number:
+            print(
+                f"Requested features_number {features_number} exceeds max_concepts_number {self.max_concepts_number}."  # noqa: E501
+            )
+            raise ValueError(
+                f"Requested features_number {features_number} exceeds max_concepts_number {self.max_concepts_number}."  # noqa: E501
+            )
+
+        self.concepts_to_unlearn_dict[concept_name]["features_number"] = features_number
+        print(f"Number of features for concept '{concept_name}' set to {features_number}.")
+
+    def set_influence_factor_for_concept(
+        self,
+        concept_name: str,
+        influence_factor: float,
+    ):
+        if concept_name not in self.concepts_to_unlearn_dict:
+            print(f"Concept '{concept_name}' not found in unlearn list.")
+            return
+
+        self.concepts_to_unlearn_dict[concept_name]["influence_factor"] = influence_factor
+        print(f"Influence factor for concept '{concept_name}' set to {influence_factor}.")
+
     def remove_concept_to_unlearn(self, concept_name: str):
         if concept_name in self.concepts_to_unlearn_dict:
             del self.concepts_to_unlearn_dict[concept_name]
@@ -385,8 +361,14 @@ class RepresentationModifier:
                     timestep_idx = min(current_timestep, max_timestep_idx)
                 else:
                     timestep_idx = 0
-                top_indices_t = concept_params["top_indices"][timestep_idx]  # (k,)
-                mean_true_top_t = concept_params["mean_true_top"][timestep_idx]  # (k,)
+                # top_indices_t = concept_params["top_indices"][timestep_idx]  # (k,)
+                top_indices_t = concept_params["top_indices"][timestep_idx][
+                    : concept_params["features_number"]
+                ]  # (k,)  # noqa: E501
+                # mean_true_top_t = concept_params["mean_true_top"][timestep_idx]  # (k,)
+                mean_true_top_t = concept_params["mean_true_top"][timestep_idx][
+                    : concept_params["features_number"]
+                ]  # (k,)  # noqa: E501
                 influence_factor = concept_params["influence_factor"]
 
                 # === 5. Modyfikacja tylko wybranych cech ===
