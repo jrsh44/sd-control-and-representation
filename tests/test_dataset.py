@@ -47,6 +47,8 @@ def create_test_dataset(
                 "timestep": i % 5,
                 "prompt": f"a photo of a {'cat' if i % 2 == 0 else 'dog'}",
                 "prompt_nr": i,
+                "start_idx": i,
+                "end_idx": i + 1,
             }
         )
 
