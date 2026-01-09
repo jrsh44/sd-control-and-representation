@@ -32,11 +32,10 @@ import sys
 from pathlib import Path
 
 import torch
+import wandb
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
 from torch.utils.data import DataLoader
-
-import wandb
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
