@@ -126,6 +126,10 @@ class RepresentationDataset(Dataset):
             for entry in self._metadata:
                 if filter_fn(entry):
                     # Add ALL sample indices for this prompt
+                    # Note: If filtering by index range and entries overlap the boundary,
+                    # some indices may be outside the desired range. The caller should
+                    # handle this by using an appropriate filter_fn that checks both
+                    # start_idx and end_idx, or by post-filtering the indices.
                     self.indices.extend(range(entry["start_idx"], entry["end_idx"]))
                     filtered_prompts += 1
             self.use_direct_indexing = False
@@ -203,6 +207,17 @@ class RepresentationDataset(Dataset):
         """
         entry = self._find_entry_for_index(real_idx)
         if entry is None:
+            # This can happen if:
+            # 1. Metadata is incomplete
+            # 2. Index filtering created indices outside entry ranges
+            # 3. Binary search failed (shouldn't happen if metadata is correct)
+            # import warnings
+            # warnings.warn(
+            #     f"Could not find metadata entry for index {real_idx}. "
+            #     f"Returning timestep 0 as fallback. This may indicate a filtering issue.",
+            #     RuntimeWarning,
+            #     stacklevel=2
+            # )
             return 0  # Fallback
 
         position_in_entry = real_idx - entry["start_idx"]

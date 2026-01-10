@@ -23,12 +23,11 @@
 #SBATCH --time 0-1:30:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
-#SBATCH --gres gpu:1
+#SBATCH --gres gpu:0
 #SBATCH --cpus-per-task 16
-#SBATCH --mem 64G
+#SBATCH --mem 128G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
-#SBATCH --nodelist=dgx-2,dgx-3
 
 
 # Optional email notification
@@ -78,7 +77,7 @@ echo ""
 PYTHON_SCRIPT="scripts/sae/feature_selection.py"
 
 # Dataset configuration (same for all tasks)
-DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1"
+DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity_fs/representations/unet_up_1_att_1"
 DATASET_NAME="nudity"
 
 # Concept values array (indexed by SLURM_ARRAY_TASK_ID)
@@ -113,7 +112,7 @@ SAE_DIR_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudi
 CONCEPT_NAME="object"
 
 # Output configuration
-FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums"
+FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums_2"
 
 #==============================================================================
 # VALIDATION
