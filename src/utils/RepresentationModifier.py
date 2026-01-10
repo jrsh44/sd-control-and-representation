@@ -175,7 +175,7 @@ class RepresentationModifier:
         # 2. store in the dict
         self.concepts_to_unlearn_dict[concept_name] = {
             "influence_factor": influence_factor,
-            "features_number": self.max_concepts_number,
+            "features_number": features_number,
             "top_indices": top_indices,
             "mean_true_top": mean_true_top,
             "per_timestep": per_timestep,
