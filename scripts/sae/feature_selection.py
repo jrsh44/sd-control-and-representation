@@ -11,13 +11,13 @@ Example usage:
         --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096/feature_sums
 
         python scripts/sae/feature_selection.py \
-        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/cc3m-wds_fs/representations/unet_up_1_att_1 \
+        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1_test_subset \
         --dataset_name nudity_subset \
         --filter_type id_range \
         --lower_index 0 \
-        --upper_index 100033 \
+        --upper_index 2560000 \
         --batch_size 32768 \
-        --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096 \
+        --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096 \
         --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1_test_subset/exp8_topk16_lr4em4_ep5_bs4096/feature_sums \
         --device cpu
 
@@ -374,16 +374,8 @@ def main() -> int:
             lower_idx = args.lower_index if args.lower_index is not None else 0
             upper_idx = args.upper_index if args.upper_index is not None else float("inf")
 
-            # Filter entries that are FULLY contained within [lower_idx, upper_idx)
-            # This ensures all timesteps have equal counts (no partial entries)
-            def id_range_filter(x):
-                return x["start_idx"] >= lower_idx and x["end_idx"] <= upper_idx
-
-            filter_fn = id_range_filter
+            filter_fn = lambda x: x["start_idx"] >= lower_idx and x["start_idx"] < upper_idx  # noqa: E731
             print(f"Filtering dataset by index range: [{lower_idx}, {upper_idx})")
-            print(
-                "  Note: Only COMPLETE entries within range will be included (no partial entries)"
-            )
 
         dataset = RepresentationDataset(
             cache_dir=cache_dir,
@@ -392,10 +384,6 @@ def main() -> int:
             return_metadata=False,
             return_timestep=True,
         )
-
-        # No post-filtering needed when using complete entries only
-        # (the filter already ensures only complete entries are included)
-
         n_samples = dataset._full_data.shape[0]
         print(f"Loaded dataset: {len(dataset)} samples")
 

@@ -24,8 +24,8 @@
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:0
-#SBATCH --cpus-per-task 16
-#SBATCH --mem 128G
+#SBATCH --cpus-per-task 8
+#SBATCH --mem 80G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
 
@@ -112,7 +112,7 @@ SAE_DIR_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudi
 CONCEPT_NAME="object"
 
 # Output configuration
-FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums_2"
+FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums"
 
 #==============================================================================
 # VALIDATION
