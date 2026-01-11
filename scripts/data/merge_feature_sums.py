@@ -110,7 +110,7 @@ def merge_feature_sums(partial_files: List[Path]) -> Dict:
         )
 
     # Create 'all' entry - sum across all unique data (already deduplicated)
-    print(f"\nCreating 'all' entry (sum across all concept_values)...")
+    print("\nCreating 'all' entry (sum across all concept_values)...")
 
     all_merged = {"sums_per_timestep": {}, "counts_per_timestep": {}}
 
