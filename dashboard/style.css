@@ -1,0 +1,1632 @@
+/*
+ * SD Dashboard CSS Stylesheet
+ * Distinctive design: Scientific precision meets neural network visualization
+ * 
+ ===================================================================
+ * BASE STYLES - Variables, Fonts, Typography, and Core Overrides
+ * =================================================================== */
+
+/* ===== GOOGLE FONTS IMPORT ===== */
+@import url("https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap");
+
+/* ===== CSS VARIABLES ===== */
+:root {
+  /* Base Colors - Refined Dark Theme */
+  --bg-primary: #0a0e17;
+  --bg-secondary: #12171f;
+  --bg-tertiary: #1a2028;
+  --bg-accent: #222831;
+
+  /* Accent Colors - Muted */
+  --accent-primary: #5b9bd5;
+  --accent-secondary: #7e8ba3;
+  --accent-success: #5fb57d;
+  --accent-warning: #d4a574;
+  --accent-error: #d17b7b;
+
+  /* Text Colors */
+  --text-primary: #e4e6eb;
+  --text-secondary: #9ba3b4;
+  --text-tertiary: #5f6876;
+  --text-muted: #434a56;
+
+  /* Borders */
+  --border-subtle: #1e2530;
+  --border-default: #2a3341;
+  --border-accent: #3a4555;
+
+  /* Shadows - Subtle */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.2);
+
+  /* Timing */
+  --timing-fast: 150ms;
+  --timing-medium: 250ms;
+  --timing-slow: 400ms;
+
+  /* Easing */
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --slider_color: #5b9bd5;
+  --color-accent: #5b9bd5;
+}
+
+:root .dark {
+  --slider_color: #5b9bd5;
+  --color-accent: #5b9bd5;
+}
+
+/* ===== ICON UTILITIES ===== */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  vertical-align: -0.125em;
+}
+
+.icon-sm {
+  width: 0.875em;
+  height: 0.875em;
+}
+
+.icon-lg {
+  width: 1.25em;
+  height: 1.25em;
+}
+
+/* ===== BASE OVERRIDES ===== */
+html {
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-accent) var(--bg-secondary);
+}
+
+body {
+  font-family: "Inter", sans-serif !important;
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Gradio app - transparent, always max width */
+gradio-app {
+  background: transparent !important;
+  width: 100% !important;
+  min-width: 100% !important;
+}
+
+/* Gradio container - no background/border, sections define their own */
+.gradio-container {
+  font-family: "Inter", sans-serif !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--text-primary) !important;
+}
+
+/* Neural grid background */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-subtle) 1px, transparent 1px);
+  background-size: 60px 60px;
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Remove scan line effect for professional look */
+body::after {
+  display: none;
+}
+
+/* ===== CONTAINER ===== */
+.gradio-container {
+  max-width: 1920px !important;
+  width: 100% !important;
+  margin: 0 auto !important;
+  padding: 24px !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* ===== TYPOGRAPHY ===== */
+h1,
+h2,
+h3,
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  font-family: "Inter", sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+  color: var(--text-primary) !important;
+  margin: 0;
+  padding: 0;
+}
+
+h1,
+.markdown h1 {
+  font-size: 1.75rem !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 0.5rem !important;
+}
+
+h2,
+.markdown h2 {
+  font-size: 1.125rem !important;
+  color: var(--text-secondary) !important;
+  border-bottom: 1px solid var(--border-default);
+  padding-bottom: 8px;
+  margin-bottom: 16px !important;
+  font-weight: 500 !important;
+}
+
+/* Code and technical text */
+code,
+pre,
+.code {
+  font-family: "JetBrains Mono", monospace !important;
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text-secondary) !important;
+  font-size: 0.9em !important;
+}
+
+/* ===== MARKDOWN CONTENT ===== */
+.markdown {
+  color: var(--text-primary) !important;
+  line-height: 1.6 !important;
+}
+
+.markdown p {
+  margin-bottom: 12px !important;
+}
+
+.markdown strong {
+  color: var(--accent-primary) !important;
+  font-weight: 600 !important;
+}
+
+.markdown em {
+  color: var(--text-secondary) !important;
+}
+
+.markdown code {
+  background: var(--bg-tertiary) !important;
+  padding: 2px 6px !important;
+  border-radius: 3px !important;
+  font-family: "JetBrains Mono", monospace !important;
+  color: var(--text-secondary) !important;
+  font-size: 0.9em !important;
+}
+
+/* ===== HIDE FOOTER ===== */
+footer {
+  display: none !important;
+}
+
+form {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background-color: none !important;
+}
+
+/* ===================================================================
+ * COMPONENT STYLES - Buttons, Inputs, Dropdowns, Sliders, etc.
+ * =================================================================== */
+
+/* ===== BLOCK LABEL CONTAINERS ===== */
+/* Consistent bordered containers for all labeled form elements */
+.block:has(.block-label),
+[class*="block"]:has(label.block-label),
+.form > div:has(.block-label) {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 6px !important;
+  padding: 12px !important;
+  margin-bottom: 8px !important;
+}
+
+.block:has(.block-label):hover,
+[class*="block"]:has(label.block-label):hover {
+  border-color: var(--border-accent) !important;
+}
+
+/* Block label styling */
+.block-label,
+label.block-label {
+  color: var(--text-secondary) !important;
+  font-size: 1.5rem !important;
+  font-weight: 500 !important;
+  margin-bottom: 8px !important;
+  display: block !important;
+}
+
+/* ===== PANELS & CONTAINERS ===== */
+/* Reset defaults - sections define their own styling */
+.panel,
+.block {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Elevated panels (accordions, cards) - reset default styles */
+.accordion,
+details {
+  background: transparent !important;
+  border: none !important;
+  border-left: none !important;
+  border-radius: 0 !important;
+  margin-bottom: 12px !important;
+  transition: all var(--timing-medium) var(--ease-out);
+}
+
+.accordion:hover,
+details:hover {
+  background: transparent !important;
+}
+
+/* ===== INPUTS ===== */
+input[type="text"],
+input[type="number"],
+textarea,
+.input-text,
+.textbox {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  font-family: "Inter", sans-serif !important;
+  padding: 10px !important;
+  transition: all var(--timing-fast) var(--ease-out);
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-accent) var(--bg-secondary);
+}
+
+input:focus,
+textarea:focus,
+.input-text:focus,
+.textbox:focus {
+  outline: none !important;
+  border-color: var(--accent-primary) !important;
+  background: var(--bg-secondary) !important;
+}
+
+/* Number inputs - monospace */
+input[type="number"] {
+  font-family: "JetBrains Mono", monospace !important;
+  font-variant-numeric: tabular-nums;
+}
+/* 
+
+
+/* ===== BUTTONS ===== */
+button,
+.button,
+.btn {
+  font-family: "Inter", sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  border-radius: 4px;
+  border: none;
+  padding: 10px 20px;
+  transition: all var(--timing-fast) var(--ease-out);
+  cursor: pointer;
+}
+
+/* Primary button - Generate */
+.primary,
+button.primary,
+[variant="primary"] {
+  background: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+  font-size: 0.95rem !important;
+  font-weight: 500 !important;
+}
+
+.primary:hover,
+button.primary:hover,
+[variant="primary"]:hover {
+  background: var(--accent-secondary) !important;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.primary:active,
+button.primary:active,
+[variant="primary"]:active {
+  transform: translateY(0);
+}
+
+/* Secondary buttons */
+.secondary,
+button.secondary {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-accent) !important;
+  color: var(--text-secondary) !important;
+}
+
+.secondary:hover,
+button.secondary:hover {
+  background: var(--bg-accent) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+/* Icon buttons */
+button[aria-label],
+.tool {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--bg-accent) !important;
+  color: var(--text-secondary) !important;
+  padding: 8px !important;
+  min-width: 44px !important;
+}
+
+button[aria-label]:hover,
+.tool:hover {
+  background: var(--bg-accent) !important;
+  color: var(--neural-cyan) !important;
+  border-color: var(--neural-cyan) !important;
+}
+
+/* ===== DISABLED STATE STYLES ===== */
+.btn-disabled,
+button:disabled,
+button[disabled] {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
+/* Loading indicator on buttons */
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+}
+
+button.label-wrap {
+  padding: 0;
+  font-size: 1.5rem;
+}
+
+.btn-loading::after {
+  content: "⏳ Loading...";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--text-primary);
+  font-size: 0.9em;
+}
+
+/* ===== CHECKBOXES & RADIO ===== */
+input[type="checkbox"],
+input[type="radio"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  background: var(--bg-tertiary) !important;
+  border: 2px solid var(--border-accent) !important;
+  border-radius: 3px !important;
+  cursor: pointer !important;
+  position: relative !important;
+  transition: all var(--timing-fast) var(--ease-out) !important;
+}
+
+input[type="radio"] {
+  border-radius: 50% !important;
+}
+
+input[type="checkbox"]:hover,
+input[type="radio"]:hover {
+  border-color: var(--accent-primary) !important;
+  background: var(--bg-accent) !important;
+}
+
+input[type="checkbox"]:checked,
+input[type="radio"]:checked {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+/* Checkmark indicator */
+input[type="checkbox"]:checked::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 5px !important;
+  top: 1px !important;
+  width: 5px !important;
+  height: 10px !important;
+  border: solid var(--bg-primary) !important;
+  border-width: 0 2px 2px 0 !important;
+  transform: rotate(45deg) !important;
+}
+
+/* Radio dot indicator */
+input[type="radio"]:checked::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 8px !important;
+  height: 8px !important;
+  background: var(--bg-primary) !important;
+  border-radius: 50% !important;
+}
+
+.checkbox-group label,
+.radio-group label {
+  color: var(--text-primary) !important;
+  font-size: 0.9rem !important;
+  cursor: pointer;
+  transition: color var(--timing-fast) var(--ease-out);
+}
+
+/* Gradio CheckboxGroup - individual checkbox items */
+.checkbox-group .wrap,
+[data-testid="checkbox-group"] {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+/* Individual checkbox item container */
+.checkbox-group label,
+[data-testid="checkbox-group"] label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 12px !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  transition: all var(--timing-fast) var(--ease-out) !important;
+}
+
+.checkbox-group label:hover,
+[data-testid="checkbox-group"] label:hover {
+  border-color: var(--accent-primary) !important;
+  background: var(--bg-accent) !important;
+}
+
+/* Checked/Selected checkbox item - bright highlight */
+.checkbox-group label:has(input:checked),
+[data-testid="checkbox-group"] label:has(input:checked) {
+  background: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+}
+
+.checkbox-group label:has(input:checked) span,
+[data-testid="checkbox-group"] label:has(input:checked) span {
+  color: var(--bg-primary) !important;
+}
+
+.checkbox-group label:hover,
+.radio-group label:hover {
+  color: var(--accent-primary) !important;
+}
+
+/* ===== CONCEPT ROWS ===== */
+/* Individual concept row styling */
+.concept-row {
+  padding: 8px 12px !important;
+  margin-bottom: 4px !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 6px !important;
+  transition: all var(--timing-fast) var(--ease-out) !important;
+}
+
+.concept-row > [data-testid="status-tracker"] {
+  display: none !important;
+}
+
+.concept-checkbox > [data-testid="status-tracker"] {
+  display: none !important;
+}
+
+.concept-slider > [data-testid="status-tracker"] {
+  display: none !important;
+}
+
+.concept-row:hover {
+  background: var(--bg-accent) !important;
+  border-color: var(--border-accent) !important;
+}
+
+/* Selected concept row - highlighted when checkbox is checked */
+.concept-row:has(input[type="checkbox"]:checked) {
+  background: rgba(91, 155, 213, 0.15) !important;
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 8px rgba(91, 155, 213, 0.2) !important;
+}
+
+.concept-row:has(input[type="checkbox"]:checked):hover {
+  background: rgba(91, 155, 213, 0.22) !important;
+}
+
+/* Concept row checkbox label */
+.concept-row label {
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 0.85rem !important;
+  color: var(--text-primary) !important;
+}
+
+.concept-row > .form {
+  align-items: center !important;
+  gap: 16px !important;
+}
+
+/* Concept row sliders - make them more compact */
+.concept-row .slider,
+.concept-row [data-testid="slider"] {
+  min-width: 100px !important;
+}
+
+.concept-row .slider label,
+.concept-row [data-testid="slider"] label {
+  font-size: 0.75rem !important;
+  color: var(--text-secondary) !important;
+  margin-bottom: 2px !important;
+}
+
+/* Disabled slider styling - grayed out when concept not selected */
+.concept-row input[type="range"]:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+.concept-row input[type="range"]:disabled::-webkit-slider-thumb {
+  cursor: not-allowed !important;
+}
+
+/* Active/enabled slider styling */
+.concept-row input[type="range"]:not(:disabled) {
+  opacity: 1 !important;
+}
+
+/* ===== DROPDOWNS ===== */
+select,
+.dropdown select {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text-primary) !important;
+  font-family: "Inter", sans-serif !important;
+  padding: 10px !important;
+  border-radius: 4px !important;
+  cursor: pointer;
+  transition: all var(--timing-fast) var(--ease-out);
+}
+
+select:hover,
+.dropdown select:hover {
+  border-color: var(--border-accent) !important;
+  background: var(--bg-secondary) !important;
+}
+
+select:focus,
+.dropdown select:focus {
+  outline: none !important;
+  border-color: var(--accent-primary) !important;
+}
+
+/* Gradio dropdown wrapper - fix width and layering */
+.wrap.svelte-1p9xokt,
+.wrap-inner.svelte-1p9xokt,
+.svelte-1xfsv4t,
+[data-testid="dropdown"],
+[data-testid="dropdown"] > .wrap,
+[data-testid="dropdown"] > .wrap > .wrap-inner {
+  width: 100% !important;
+  flex: 1 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Remove margin from wrap-inner and listbox containers */
+.wrap-inner,
+[data-testid="dropdown"] .wrap-inner,
+.svelte-1xfsv4t .wrap-inner {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Dropdown button - take full available space */
+[data-testid="dropdown"] > div,
+.dropdown > div,
+.svelte-1p9xokt > div,
+.svelte-1xfsv4t > div {
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+input.svelte-1xfsv4t {
+  padding: 8px 16px !important;
+}
+
+/* Dropdown trigger button */
+[data-testid="dropdown"] button,
+.dropdown button:not(.svelte-1lrphxw),
+.svelte-1xfsv4t button {
+  width: 100% !important;
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text-primary) !important;
+  padding: 10px 12px !important;
+  border-radius: 4px !important;
+  justify-content: space-between !important;
+  text-align: left !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+/* ===== DROPDOWN ICON STYLING ===== */
+/* Fix the dropdown arrow icon - constrain size and position */
+.icon-wrap,
+[data-testid="dropdown"] .icon-wrap,
+.dropdown .icon-wrap,
+.svelte-1xfsv4t .icon-wrap {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  flex-shrink: 0 !important;
+  margin-left: auto !important;
+  overflow: hidden !important;
+}
+
+/* Style the SVG icon inside dropdown */
+.icon-wrap svg,
+[data-testid="dropdown"] .icon-wrap svg,
+.dropdown .icon-wrap svg,
+.svelte-1xfsv4t .icon-wrap svg {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  fill: var(--text-secondary) !important;
+  stroke: none !important;
+}
+
+/* Handle polygon elements in dropdown icons */
+.icon-wrap svg polygon,
+.icon-wrap svg path,
+[data-testid="dropdown"] svg polygon,
+[data-testid="dropdown"] svg path,
+.dropdown svg polygon,
+.dropdown svg path {
+  fill: var(--text-secondary) !important;
+  stroke: none !important;
+}
+
+/* Additional icon-button styling for Gradio dropdowns */
+.icon-button,
+[data-testid="dropdown"] .icon-button,
+.dropdown .icon-button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 4px !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+.icon-button svg {
+  width: 16px !important;
+  height: 16px !important;
+  fill: var(--text-secondary) !important;
+}
+
+/* Ensure dropdown container doesn't let icon overflow */
+[data-testid="dropdown"] > div,
+.dropdown > .wrap,
+.svelte-1xfsv4t > .wrap {
+  /* position: relative !important; */
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.form-group-consistent > .form {
+  gap: 16px !important;
+}
+
+.secondary-wrap {
+  position: relative !important;
+}
+
+[data-testid="dropdown"] button:hover,
+.dropdown button:not(.svelte-1lrphxw):hover,
+.svelte-1xfsv4t button:hover {
+  border-color: var(--border-accent) !important;
+  background: var(--bg-secondary) !important;
+}
+
+/* Dropdown listbox/options */
+[data-testid="dropdown"] ul,
+.dropdown ul,
+ul[role="listbox"],
+.options,
+div[role="listbox"],
+.svelte-1xfsv4t ul,
+.svelte-1xfsv4t .options {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-accent) !important;
+  border-radius: 4px !important;
+  box-shadow: var(--shadow-lg) !important;
+  z-index: 1000 !important;
+  max-height: 300px !important;
+  overflow-y: auto !important;
+  margin: 0 !important;
+  padding: 4px !important;
+}
+
+/* Dropdown options */
+[data-testid="dropdown"] li,
+.dropdown li,
+ul[role="listbox"] li,
+.options li,
+div[role="listbox"] > div,
+.svelte-1xfsv4t li {
+  padding: 8px 12px !important;
+  color: var(--text-primary) !important;
+  cursor: pointer !important;
+  transition: background var(--timing-fast) var(--ease-out) !important;
+  background: var(--bg-secondary) !important;
+  border-radius: 4px !important;
+  margin: 2px 0 !important;
+}
+
+[data-testid="dropdown"] li:hover,
+.dropdown li:hover,
+ul[role="listbox"] li:hover,
+.options li:hover,
+div[role="listbox"] > div:hover,
+.svelte-1xfsv4t li:hover {
+  background: var(--bg-tertiary) !important;
+}
+
+[data-testid="dropdown"] li[aria-selected="true"],
+.dropdown li[aria-selected="true"],
+ul[role="listbox"] li[aria-selected="true"],
+.options li[aria-selected="true"],
+.svelte-1xfsv4t li[aria-selected="true"] {
+  background: var(--accent-primary) !important;
+  color: var(--bg-primary) !important;
+}
+
+/* ===== STATUS DISPLAYS ===== */
+.status-box,
+.textbox.output {
+  background: var(--bg-secondary) !important;
+  border-left: 3px solid var(--accent-success) !important;
+  font-family: "Inter", sans-serif !important;
+  color: var(--text-primary) !important;
+  padding: 10px 14px !important;
+}
+
+/* Remove pulsing animation for professional look */
+.status-box::before {
+  display: none;
+}
+
+/* ===== IMAGES ===== */
+.image-container,
+.image-frame {
+  background: var(--bg-secondary) !important;
+  padding: 8px !important;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--timing-medium) var(--ease-out);
+}
+
+/* Image labels */
+.image-container .label,
+.image-frame .label {
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 0.75rem !important;
+  color: var(--text-secondary) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 8px;
+}
+
+/* ===== ACTIVITY LOG ===== */
+.code-container,
+pre.code {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+  border-radius: 6px !important;
+  padding: 16px !important;
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 0.875rem !important;
+  line-height: 1.6 !important;
+  color: var(--text-secondary) !important;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Scrollbar styling */
+.code-container::-webkit-scrollbar,
+pre.code::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.code-container::-webkit-scrollbar-track,
+pre.code::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.code-container::-webkit-scrollbar-thumb,
+pre.code::-webkit-scrollbar-thumb {
+  background: var(--bg-accent);
+  border-radius: 4px;
+}
+
+.code-container::-webkit-scrollbar-thumb:hover,
+pre.code::-webkit-scrollbar-thumb:hover {
+  background: var(--neural-cyan);
+}
+
+/* Log entries with timestamps */
+.code-container code,
+pre.code code {
+  color: var(--text-secondary) !important;
+}
+
+/* Timestamp highlighting */
+.code-container [class*="timestamp"],
+pre.code [class*="timestamp"] {
+  color: var(--neural-cyan) !important;
+}
+
+/* ===== JSON DISPLAY ===== */
+.json-container {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--bg-tertiary) !important;
+  border-radius: 6px !important;
+  padding: 16px !important;
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 0.85rem !important;
+}
+
+/* ===== PROGRESS BAR ===== */
+.progress-bar {
+  background: var(--bg-tertiary) !important;
+  border-radius: 20px !important;
+  overflow: hidden;
+  height: 8px !important;
+}
+
+.progress-bar-fill {
+  background: linear-gradient(
+    90deg,
+    var(--neural-cyan),
+    var(--neural-purple)
+  ) !important;
+  height: 100%;
+  border-radius: 20px !important;
+  box-shadow: var(--glow-purple);
+  transition: width var(--timing-medium) var(--ease-out);
+}
+
+/* ===== TOOLTIPS ===== */
+.tooltip {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-primary) !important;
+  font-family: "Inter", sans-serif !important;
+  font-size: 0.875rem !important;
+  padding: 8px 12px !important;
+  border-radius: 4px !important;
+  box-shadow: var(--shadow-md);
+}
+.tab-like-container {
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+/* ===== TABS (if used) ===== */
+.tab-nav button {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  color: var(--text-secondary) !important;
+  padding: 12px 24px !important;
+  font-family: "Inter", sans-serif !important;
+  font-weight: 500;
+  transition: all var(--timing-fast) var(--ease-out);
+}
+
+.tab-nav button:hover {
+  color: var(--accent-primary) !important;
+}
+
+.tab-nav button.selected {
+  color: var(--accent-primary) !important;
+  border-bottom-color: var(--accent-primary) !important;
+}
+
+/* ===================================================================
+ * SECTION STYLES - Main Sections, Loading States, Subsections
+ * =================================================================== */
+
+/* ===== MAIN SECTIONS ===== */
+/* Main sections have visible borders - use for top-level workflow sections */
+.main-section {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-accent) !important;
+  border-radius: 8px !important;
+  padding: 0 !important;
+  margin-bottom: 16px !important;
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--timing-medium) var(--ease-out),
+    box-shadow var(--timing-medium) var(--ease-out);
+  position: relative;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+[id="section-base-generation"] > [data-testid="status-tracker"] {
+  display: none !important;
+}
+
+[id="section-intervention"] > [data-testid="status-tracker"] {
+  display: none !important;
+}
+
+.main-section > input {
+  border: none !important;
+}
+
+/* Accordion button - full width clickable area */
+.main-section > .label-wrap {
+  width: 100% !important;
+  padding: 16px 20px !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px 8px 0 0 !important;
+  border-bottom: 1px solid var(--border-default) !important;
+}
+
+.main-section > .label-wrap:hover {
+  background: var(--bg-tertiary) !important;
+}
+
+/* Separator line when accordion is open */
+.main-section[open] > .label-wrap {
+  border-bottom: 1px solid var(--border-default) !important;
+  border-radius: 8px 8px 0 0 !important;
+}
+
+/* Content inside accordion has padding */
+.main-section .section-content {
+  padding: 20px !important;
+}
+
+.main-section > .wrap {
+  gap: 16px !important;
+  padding: 0 !important;
+}
+
+/* ===== MODEL LOADING STATE STYLES ===== */
+
+/* State: Not Loaded - Subtle warning indicator (no pulsing) */
+.section-not-loaded {
+  border-color: var(--accent-warning) !important;
+  box-shadow: 0 0 8px rgba(212, 165, 116, 0.4) !important;
+
+  /* No box-shadow pulsing - keep it subtle */
+}
+
+/* State: Loading - Blue with pulsing animation */
+.section-loading {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 12px rgba(91, 155, 213, 0.4) !important;
+}
+
+/* State: Loaded - Green success indicator */
+.section-loaded {
+  border-color: var(--accent-success) !important;
+  box-shadow: 0 0 8px rgba(95, 181, 125, 0.3) !important;
+}
+
+/* ===== SUBSECTIONS ===== */
+/* Subsections have NO borders - nested within main sections */
+.subsection,
+.main-section .panel,
+.main-section .form,
+.main-section [class*="container"]:not(.gradio-container) {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Subsection headers - styled differently from main section headers */
+.subsection-header {
+  font-family: "Inter", sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  color: var(--text-secondary) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}
+
+/* Remove borders from columns within main sections */
+.main-section .gr-column,
+.main-section .column {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Keep input styling within main sections */
+.main-section input,
+.main-section textarea,
+.main-section select {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 4px !important;
+}
+
+.main-section input:focus,
+.main-section textarea:focus,
+.main-section select:focus {
+  border-color: var(--accent-primary) !important;
+}
+
+/* ===================================================================
+ * UTILITY STYLES - Animations, Accessibility, Responsive, Status Classes
+ * =================================================================== */
+
+/* ===== SPECIAL EFFECTS ===== */
+
+/* Subtle pulse for loading states */
+@keyframes subtle-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.loading,
+[data-loading="true"] {
+  animation: subtle-pulse 2s ease-in-out infinite;
+}
+
+/* Fade in animation for results */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.result-panel:nth-child(1) {
+  animation: fadeIn var(--timing-normal) var(--ease-out) 0ms;
+}
+
+.result-panel:nth-child(2) {
+  animation: fadeIn var(--timing-normal) var(--ease-out) 100ms;
+}
+
+.result-panel:nth-child(3) {
+  animation: fadeIn var(--timing-normal) var(--ease-out) 200ms;
+}
+
+/* ===== ACCESSIBILITY ===== */
+
+/* Focus indicators */
+*:focus-visible {
+  outline: 2px solid var(--accent-primary) !important;
+  outline-offset: 2px !important;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  body::after {
+    display: none;
+  }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+  .gradio-container {
+    padding: 16px !important;
+  }
+
+  h1,
+  .markdown h1 {
+    font-size: 1.5rem !important;
+  }
+}
+
+/* ===== STATUS INDICATOR CLASSES ===== */
+
+/* Status indicators */
+.status-idle {
+  border-left-color: var(--status-success) !important;
+}
+
+.status-loading {
+  border-left-color: var(--accent-primary) !important;
+}
+
+.status-error {
+  border-left-color: var(--status-error) !important;
+}
+
+.status-warning {
+  border-left-color: var(--status-warning) !important;
+}
+
+/* ===== LOG STYLING ===== */
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.log-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.log-timestamp {
+  color: var(--text-tertiary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+}
+
+.log-message {
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+/* ===================================================================
+ * CUSTOM LAYOUT CLASSES - Section-specific styles
+ * =================================================================== */
+
+/* ===== COLUMNS GAP ===== */
+/* Large gap between main columns (Base Model & Generation Parameters) */
+.columns-gap-large {
+  gap: 40px !important;
+}
+
+/* ===== CONSISTENT FORM SPACING ===== */
+/* Consistent gap for form elements in a column */
+.form-group-consistent {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 16px !important;
+}
+
+.form-group-consistent > * {
+  margin: 0 !important;
+}
+
+/* ===== GENERATION PARAMETERS ROW ===== */
+/* Three parameters with equal space */
+.params-row-equal {
+  display: flex !important;
+  gap: 16px !important;
+}
+
+.params-row-equal > * {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+/* ===== INTERVENTION SECTION ===== */
+/* Single column layout for intervention */
+.intervention-single-column {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+}
+
+.sae-config-row {
+  display: flex !important;
+  gap: 16px !important;
+  align-items: flex-end !important;
+}
+
+.sae-config-row > * {
+  flex: 1 !important;
+}
+
+.sae-config-row > button {
+  flex: 0 0 auto !important;
+  min-width: 120px !important;
+}
+
+.reset-button {
+  display: none !important;
+}
+
+.icon-button-wrapper {
+  display: none !important;
+}
+
+.concept-selection-section {
+  border-top: 1px solid var(--border-default) !important;
+  padding-top: 20px !important;
+  margin-top: 8px !important;
+  /* Reset any inherited animation/box-shadow */
+  animation: none !important;
+  box-shadow: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+}
+
+/* ===== RESULTS SECTION ===== */
+/* Prompt and Generate button row */
+.prompt-generate-row {
+  display: flex !important;
+  margin-bottom: 16px !important;
+}
+
+.prompt-generate-row > .form {
+  display: flex !important;
+  flex: 1 !important;
+  align-items: center !important;
+  gap: 16px !important;
+}
+
+.prompt-generate-row > .block:first-child {
+  flex: 4 !important;
+}
+
+[data-testid="block-label"] {
+  background-color: var(--bg-secondary) !important;
+  border: 1px solid var(--border-accent) !important;
+  border-radius: 8px 0 !important;
+}
+
+/* Progress indicator row */
+.progress-row {
+  margin-bottom: 12px !important;
+}
+
+.generation-progress {
+  padding: 8px 16px !important;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary),
+    var(--bg-secondary)
+  ) !important;
+  border-radius: 6px !important;
+  border-left: 3px solid var(--accent-primary) !important;
+  font-family: "JetBrains Mono", monospace !important;
+  font-size: 0.9rem !important;
+  color: var(--text-secondary) !important;
+  min-height: 36px !important;
+}
+
+.generation-progress strong {
+  color: var(--accent-primary) !important;
+}
+
+/* Results images row */
+.results-images-row {
+  display: flex !important;
+  gap: 20px !important;
+}
+
+.results-images-row > * {
+  flex: 1 !important;
+}
+
+/* Result image containers with border */
+.result-image-container {
+  border: 1px solid var(--border-accent) !important;
+  border-radius: 8px !important;
+  background-color: var(--bg-secondary) !important;
+}
+
+.result-image-container > div {
+  border: 1px solid var(--border-accent) !important;
+  border-radius: 8px !important;
+}
+
+.image-container {
+  border: 1px solid var(--border-accent) !important;
+}
+
+.result-image-bordered:hover {
+  border-color: var(--accent-primary) !important;
+}
+
+.result-image-bordered img {
+  border-radius: 6px !important;
+}
+
+/* ===== STATUS TRACKER - LOADING OVERLAY ===== */
+/* Make status-tracker cover the entire component with loading overlay */
+/* .wrap.svelte-j1gjts {
+  display: none !important;
+}
+
+/* Ensure parent has relative positioning for absolute overlay */
+.block:has(.wrap.svelte-j1gjts) {
+  position: relative !important;
+}
+
+/* Hide the eta-bar and progress text - only show spinner */
+.wrap.svelte-j1gjts .eta-bar,
+.wrap.svelte-j1gjts .progress-bar,
+.wrap.svelte-j1gjts .progress-text,
+.wrap.svelte-j1gjts .progress-level {
+  display: none !important;
+}
+
+/* Style the loading spinner circle */
+.wrap.svelte-j1gjts svg {
+  display: none !important;
+}
+
+@keyframes spin-loading {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+*/
+
+/* ===== GRADIO DEFAULT LOADING OVERRIDES ===== */
+/* Hide Gradio's default eta-bar completely */
+.eta-bar {
+  display: none !important;
+}
+
+/* Hide all Gradio progress/loading indicators */
+.progress-level,
+.progress-level span {
+  display: none !important;
+}
+
+/* Style generating state - no orange border animation */
+.generating {
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+/* Override Gradio's pending/loading border colors */
+.pending,
+.translucent {
+  border-color: transparent !important;
+}
+
+/* Hide any orange animations from Gradio */
+.generating::before,
+.pending::before {
+  display: none !important;
+}
+
+/* ===== NUDENET SCORES COMPARISON TABLE ===== */
+.nudenet-scores-comparison {
+  width: 100% !important;
+  margin-top: 1rem;
+}
+
+.nudenet-scores-comparison table {
+  width: 100% !important;
+  border-collapse: collapse;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.9rem;
+}
+
+.nudenet-scores-comparison th,
+.nudenet-scores-comparison td {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-default);
+}
+
+.nudenet-scores-comparison th {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.nudenet-scores-comparison td {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.nudenet-scores-comparison tr:hover td {
+  background: var(--bg-tertiary);
+}
+
+/* ===== TOAST NOTIFICATIONS ===== */
+/* Container for all toasts - positioned at top center */
+.toast-wrap {
+  position: fixed !important;
+  top: 20px !important;
+  right: 20px !important;
+  z-index: 10000 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  max-width: 500px !important;
+  width: 90% !important;
+}
+
+/* Individual toast item */
+.toast-item {
+  background: var(--bg-secondary) !important;
+  box-shadow: var(--shadow-lg), 0 0 20px rgba(0, 0, 0, 0.4) !important;
+  overflow: hidden !important;
+  animation: toast-slide-in 0.3s var(--ease-out) !important;
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Toast body - main content area */
+.toast-body {
+  width: 100% !important;
+  background: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+  font-family: "Inter", sans-serif !important;
+  font-size: 0.95rem !important;
+  line-height: 1.5 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+/* Toast header - for title/close button area */
+.toast-header {
+  width: 100% !important;
+  background: var(--bg-tertiary) !important;
+  border-bottom: 1px solid var(--border-default) !important;
+  padding: 10px 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  font-family: "Inter", sans-serif !important;
+  font-weight: 600 !important;
+  font-size: 0.85rem !important;
+  color: var(--text-secondary) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+/* Toast messages container */
+.toast-messages {
+  width: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  padding-bottom: 16px !important;
+}
+
+/* Toast close button */
+.toast-close,
+.toast-item button {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text-tertiary) !important;
+  cursor: pointer !important;
+  padding: 4px !important;
+  border-radius: 4px !important;
+  transition: all var(--timing-fast) var(--ease-out) !important;
+}
+
+.toast-close:hover,
+.toast-item button:hover {
+  background: var(--bg-accent) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Info toast - blue accent */
+.toast-item.info,
+.toast-item[data-type="info"] {
+  border-left: 4px solid var(--accent-primary) !important;
+}
+
+.toast-item.info .toast-body::before,
+.toast-item[data-type="info"] .toast-body::before {
+  content: "ℹ" !important;
+  font-size: 1.2rem !important;
+  color: var(--accent-primary) !important;
+}
+
+/* Warning toast - yellow/orange accent */
+.toast-item.warning,
+.toast-item[data-type="warning"] {
+  border-left: 4px solid var(--accent-warning) !important;
+}
+
+.toast-item.warning .toast-body::before,
+.toast-item[data-type="warning"] .toast-body::before {
+  content: "⚠" !important;
+  font-size: 1.2rem !important;
+  color: var(--accent-warning) !important;
+}
+
+/* Error toast - red accent */
+.toast-item.error,
+.toast-item[data-type="error"] {
+  border-left: 4px solid var(--accent-error) !important;
+}
+
+.toast-item.error .toast-body::before,
+.toast-item[data-type="error"] .toast-body::before {
+  content: "✕" !important;
+  font-size: 1.2rem !important;
+  color: var(--accent-error) !important;
+}
+
+/* Success toast - green accent */
+.toast-item.success,
+.toast-item[data-type="success"] {
+  border-left: 4px solid var(--accent-success) !important;
+}
+
+.toast-item.success .toast-body::before,
+.toast-item[data-type="success"] .toast-body::before {
+  content: "✓" !important;
+  font-size: 1.2rem !important;
+  color: var(--accent-success) !important;
+}

@@ -1,0 +1,86 @@
+# =============================================================================
+# SAE Models Configuration
+# =============================================================================
+#
+# Structure:
+#   sae_models (list) → layers (list) → concepts (list)
+#
+# =============================================================================
+
+config:
+  version: "2.1.0"
+  
+  base_model:
+    id: "sd-v1.5"
+    model_id: "sd-legacy/stable-diffusion-v1-5"
+  
+  paths:
+    local:
+      models_dir: "./models/sae"
+      feature_sums_dir: "data/feature_sums"
+    cluster:
+      base: "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae"
+  
+  # Default intervention parameters (can be adjusted in UI)
+  defaults:
+    influence_factor: 100.0
+    features_number: 25
+
+# =============================================================================
+# SAE Models
+# =============================================================================
+
+sae_models:
+  - id: "nudity_topk32"
+    name: "Nudity SAE (Top-K 32)"
+    
+    hyperparameters:
+      topk: 32
+      learning_rate: 1.0e-3
+      warmup_steps: 100000
+      auxiliary_loss: 0.0625
+      epochs: 2
+      batch_size: 4096
+      nb_concepts: 46080
+    
+    files:
+      model_dir: "cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096"
+      model_file: "model.pt"
+      feature_sums_file: "exp36_topk32/merged_feature_sums.pt"
+    
+    layers:
+      - id: "UNET_UP_1_ATT_1"
+        path: "unet.up_blocks.1.attentions.1.transformer_blocks.0"
+        concepts:
+          - id: "exposed_anus"
+            name: "exposed anus"
+          - id: "exposed_armpits"
+            name: "exposed armpits"
+          - id: "exposed_belly"
+            name: "exposed belly"
+          - id: "exposed_buttocks"
+            name: "exposed buttocks"
+          - id: "exposed_feet"
+            name: "exposed feet"
+          - id: "exposed_breast"
+            name: "exposed breast"
+          - id: "exposed_vagina"
+            name: "exposed vagina"
+          - id: "exposed_penis"
+            name: "exposed penis"
+          - id: "belly"
+            name: "belly"
+          - id: "buttocks"
+            name: "buttocks"
+          - id: "feet"
+            name: "feet"
+          - id: "breast"
+            name: "breast"
+          - id: "male_breast"
+            name: "male breast"
+          - id: "vagina"
+            name: "vagina"
+          - id: "female_face"
+            name: "female face"
+          - id: "male_face"
+            name: "male face"
