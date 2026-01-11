@@ -1,17 +1,17 @@
 #!/bin/bash
 ################################################################################
-# SLURM Job Script - SAE Feature Selection
+# SLURM Array Job Script - SAE Feature Selection (Nudity)
 #
 # Purpose:
-#   Compute per-neuron activation differences for concept detection
-#   Compares activations when concept is present vs. absent
+#   Compute per-neuron activation sums for nudity concept detection
+#   Each array task processes one concept value from the nudity dataset
 #
 # Usage:
-#   sbatch scripts/sae/feature_selection.sh
+#   sbatch scripts/sae/feature_selection_nudity.sh
 #
 # Output:
-#   - Scores: {RESULTS_DIR}/{model_name}/sae_scores/{layer}_concept_{name}_{value}.npy
-#   - Logs: ../logs/sae_select_{JOB_ID}.log
+#   - Feature sums: {FEATURES_DIR}/
+#   - Logs: ../logs/sae_select_{JOB_ID}_{TASK_ID}.log
 ################################################################################
 
 #==============================================================================
@@ -19,14 +19,19 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
-#SBATCH --time 0-3:00:00
+#SBATCH --time 0-5:00:00
+#SBATCH --array=0-15         # 16 tasks: 16 nudity concepts
+#SBATCH --time 0-1:30:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:1
 #SBATCH --cpus-per-task 16
+#SBATCH --mem 32G
 #SBATCH --mem 64G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=task ID
+#SBATCH --nodelist=dgx-2,dgx-3
+
 
 # Optional email notification
 # #SBATCH --mail-user=01180694@pw.edu.pl
@@ -42,14 +47,16 @@ set -eu
 #==============================================================================
 
 echo "=========================================="
-echo "SAE Feature Selection Job"
-echo "Job ID: ${SLURM_JOB_ID}"
+echo "SAE Feature Selection Array Job"
+echo "Job ID: ${SLURM_ARRAY_JOB_ID}"
+echo "Task ID: ${SLURM_ARRAY_TASK_ID}"
 echo "Running on: $(hostname)"
 echo "Start: $(date)"
 echo "=========================================="
 
 # Navigate to project directory
 cd /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation
+source .venv/bin/activate
 source ./.venv/bin/activate
 
 # Create directories
@@ -73,27 +80,43 @@ echo ""
 # Python script
 PYTHON_SCRIPT="scripts/sae/feature_selection.py"
 
-# Dataset configuration
-DATASET_NAME="unlearn_canvas"
-DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/${DATASET_NAME}/representations/train/unet_up_1_att_1"
+# Dataset configuration (same for all tasks)
+DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1"
+DATASET_NAME="nudity"
+
+# Concept values array (indexed by SLURM_ARRAY_TASK_ID)
+# Each task processes one concept value from the nudity dataset
+CONCEPT_VALUES=(
+  'exposed anus'
+  'exposed armpits'
+  'belly'
+  'exposed belly'
+  'buttocks'
+  'exposed buttocks'
+  'female face'
+  'male face'
+  'feet'
+  'exposed feet'
+  'breast'
+  'exposed breast'
+  'vagina'
+  'exposed vagina'
+  'male breast'
+  'exposed penis'
+)
+
+# Select concept for this task
+CONCEPT_VALUE="${CONCEPT_VALUES[$SLURM_ARRAY_TASK_ID]}"
 
 # Model configuration
-MODEL_NAME="finetuned_sd_saeuron"
 LAYER_NAME="unet_up_1_att_1"
-SAE_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results_npy/finetuned_sd_saeuron/sae/unet_up_1_att_1_sae.pt"
+SAE_DIR_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096"
 
-# Concept configuration
-CONCEPT_NAME="object"        # e.g., object, style, timestep
-CONCEPT_VALUE="cats"          # e.g., cat, dog, Impressionism
+# Concept name (same for all tasks with concepts)
+CONCEPT_NAME="object"
 
 # Output configuration
-SCORES_DIR="${RESULTS_DIR:-results}/finetuned_sd_saeuron/sae_scores"
-SCORES_PATH="${SCORES_DIR}/${LAYER_NAME}_concept_${CONCEPT_NAME}_${CONCEPT_VALUE}.npy"
-
-# Generation parameters
-TOP_K=32
-BATCH_SIZE=4096
-EPSILON=1e-8
+FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums"
 
 #==============================================================================
 # VALIDATION
@@ -103,40 +126,41 @@ if [ ! -d "$DATASET_PATH" ]; then
   exit 1
 fi
 
-if [ ! -f "$SAE_PATH" ]; then
-  echo "ERROR: SAE model not found: $SAE_PATH"
+if [ ! -d "$SAE_DIR_PATH" ]; then
+  echo "ERROR: SAE directory not found: $SAE_DIR_PATH"
   exit 1
 fi
-
-mkdir -p "$SCORES_DIR"
 
 #==============================================================================
 # RUN FEATURE SELECTION
 #==============================================================================
 
+echo ""
 echo "Starting feature selection..."
 echo ""
 
 echo "Configuration:"
 echo "  Dataset: ${DATASET_PATH}"
-echo "  SAE: ${SAE_PATH}"
-echo "  Concept: '${CONCEPT_NAME}' == '${CONCEPT_VALUE}'"
-echo "  Output: ${SCORES_PATH}"
-echo "  Batch size: ${BATCH_SIZE}"
-echo "  Epsilon: ${EPSILON}"
-echo "  Top-k: ${TOP_K}"
-echo "=========================================="
+echo "  Dataset Name: ${DATASET_NAME}"
+echo "  SAE: ${SAE_DIR_PATH}"
 
+# Build command - add concept arguments only if concept_value is not empty
 CMD="uv run ${PYTHON_SCRIPT} \
     --dataset_path \"${DATASET_PATH}\" \
     --dataset_name \"${DATASET_NAME}\" \
-    --concept \"${CONCEPT_NAME}\" \
-    --concept_value \"${CONCEPT_VALUE}\" \
-    --sae_path \"${SAE_PATH}\" \
-    --feature_sums_path \"${SCORES_PATH}\" \
-    --batch_size ${BATCH_SIZE} \
-    --epsilon ${EPSILON} \
-    --top_k ${TOP_K}"
+    --sae_dir_path \"${SAE_DIR_PATH}\" \
+    --features_dir_path \"${FEATURES_DIR}\""
+
+if [ -n "$CONCEPT_VALUE" ]; then
+    echo "  Concept: '${CONCEPT_NAME}' == '${CONCEPT_VALUE}'"
+    CMD="${CMD} --filter_type concept --concept \"${CONCEPT_NAME}\" --concept_value \"${CONCEPT_VALUE}\""
+else
+    echo "  Filtering: None (processing all samples)"
+fi
+
+echo "  Features dir: ${FEATURES_DIR}"
+echo "=========================================="
+
 
 # Optional: skip wandb
 # CMD="${CMD} --skip-wandb"
@@ -147,6 +171,7 @@ echo "${CMD}"
 echo ""
 
 eval ${CMD}
+
 EXIT_CODE=$?
 
 #==============================================================================
@@ -155,10 +180,16 @@ EXIT_CODE=$?
 echo ""
 echo "=========================================="
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "Feature selection completed"
-    echo "Scores: ${SCORES_PATH}"
+    echo "Feature selection completed successfully for task ${SLURM_ARRAY_TASK_ID}"
+    echo "  Dataset: ${DATASET_NAME}"
+    if [ -n "$CONCEPT_VALUE" ]; then
+        echo "  Concept: ${CONCEPT_VALUE}"
+    fi
+    echo "  Output directory: ${FEATURES_DIR}"
 else
     echo "Feature selection FAILED (code: ${EXIT_CODE})"
+    echo "  Task: ${SLURM_ARRAY_TASK_ID}"
+    echo "  Dataset: ${DATASET_NAME}"
 fi
 echo "End: $(date)"
 echo "=========================================="

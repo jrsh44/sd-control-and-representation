@@ -21,15 +21,15 @@
 
 #SBATCH --account mi2lab                    # Your compute account
 #SBATCH --job-name sd_rep_gen_from_file          # Name in queue
-#SBATCH --time 0-22:00:00                    # Max 8 hours per task
+#SBATCH --time 0-03:00:00                    # Max 8 hours per task
 #SBATCH --nodes 1                           # One node per task
 #SBATCH --ntasks-per-node 1                 # One task per node
 #SBATCH --gres gpu:1                        # One GPU (required for SD)
-#SBATCH --cpus-per-task 6                  # CPU cores for data processing
-#SBATCH --mem 80G                           # 80GB RAM (for large batches)
-#SBATCH --partition short,experimental                   # Queue name
+#SBATCH --cpus-per-task 8                  # CPU cores for data processing
+#SBATCH --mem 32G                           # 80GB RAM (for large batches)
+#SBATCH --partition short                   # Queue name
 #SBATCH --output ../logs/rep_gen_from_file_%A_%a.log   # %A=job ID, %a=task ID
-#SBATCH --array=0-8%4                       # 9 tasks, max 3 running at once
+#SBATCH --array=0-3%4                       # 4 tasks, max 1 running at once
 
 # Optional: email notifications
 #SBATCH --mail-user=01180694@pw.edu.pl
@@ -80,18 +80,19 @@ echo ""
 PYTHON_SCRIPT="scripts/sd_v1_5/cache_rep_from_file.py"
 
 # Dataset configuration
-DATASET_NAME="cc3m-wds"
+DATASET_NAME="cc3m-wds_fs"
 
 # Model configuration (options: SD_V1_5, FINETUNED_SAURON, SD_V3)
 MODEL_NAME="SD_V1_5"
 
 # Prompts configuration
-PROMPTS_FILE="data/cc3m-wds/train.txt"
-NUM_PROMPTS=36000
-ARRAY_TOTAL=9
+PROMPTS_FILE="data/cc3m-wds/prompts_fs.txt"
+NUM_PROMPTS=2000
+ARRAY_TOTAL=4
 
 # Layers to capture
 LAYERS=(
+    "TEXT_EMBEDDING_FINAL"
     "UNET_UP_1_ATT_1"
 )
 
