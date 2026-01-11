@@ -24,7 +24,8 @@ uv run scripts/sae/generate_feature_heatmaps.py \
 Or:
 uv run scripts/sae/generate_feature_heatmaps.py \
     --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/model.pt \
-    --feature_selection_results "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_sums/unet_up_1_att_1_concept_object_exposed armpits_job1_851850c4.pt" \
+    --feature_selection_results "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt" \
+    --concept_name "exposed armpits" \
     --top_k_features 5 \
     --prompt "naked woman with exposed armpits" \
     --layer UNET_UP_1_ATT_1 \
@@ -60,6 +61,8 @@ import torch
 from overcomplete.sae import TopKSAE
 from PIL import Image
 
+from src.utils.RepresentationModifier import RepresentationModifier
+
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
@@ -75,7 +78,7 @@ from src.utils.visualization import create_heatmaps_and_overlay  # noqa: E402
 def generate_and_collect_activations(
     timesteps: List[int],
     feature_indices: Dict[int, List[int]] | List[int] | None,
-    sae_path: Path,
+    sae: TopKSAE,
     prompt: str,
     layer: LayerPath,
     pipe,
@@ -92,7 +95,7 @@ def generate_and_collect_activations(
     Args:
         timesteps: List of timestep indices to capture (e.g., [0, 10, 20, 30,,
                         or None if select_active_features=True
-        sae_path: Path to saved SAE model.pt
+        sae: TopKSAE model object
         prompt: Text prompt for image generation
         layer: LayerPath enum specifying which layer to capture
         pipe: Stable Diffusion pipeline (from model_loader)
@@ -124,32 +127,6 @@ def generate_and_collect_activations(
     else:
         print(f"Features to extract: {feature_indices}")
         print(f"Features to extract: {feature_indices}")
-
-    # Load SAE model
-    print(f"\nLoading SAE from {sae_path}...")
-    state_dict = torch.load(sae_path, map_location="cpu")
-
-    # Remove torch.compile() prefix if present
-    if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
-        state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
-
-    # Infer SAE dimensions
-    enc_weight = state_dict["encoder.final_block.0.weight"]
-    input_shape = enc_weight.shape[1]
-    nb_concepts = enc_weight.shape[0]
-    top_k = state_dict.get("top_k", 32)  # Try to infer from state_dict
-
-    # Create SAE
-    sae = TopKSAE(
-        input_shape=input_shape,
-        nb_concepts=nb_concepts,
-        top_k=top_k,
-        device=device,
-    )
-    sae.load_state_dict(state_dict)
-    sae = sae.to(device)
-    sae.eval()
-    print(f"✓ SAE loaded: {nb_concepts} concepts, input_dim={input_shape}")
 
     # Generate image and capture representations using existing function
     print(f"\nGenerating image with {num_inference_steps} steps...")
@@ -266,6 +243,17 @@ def parse_args() -> argparse.Namespace:
         help="Path to feature_selection results (.pt file with feature scores)",
     )
     parser.add_argument(
+        "--feature_selection_per_timestep",
+        action="store_true",
+        help="Whether feature_selection_results contains per-timestep feature scores",
+    )
+    parser.add_argument(
+        "--concept_name",
+        type=str,
+        default=None,
+        help="Concept name to select features for (if using feature_selection_results)",
+    )
+    parser.add_argument(
         "--feature_list",
         type=int,
         nargs="+",
@@ -369,10 +357,36 @@ def main():
     pipe = model_loader.load_model(device=device)
     print("✓ Model loaded")
 
+    # Load SAE model
+    print(f"\nLoading SAE from {args.sae_path}...")
+    state_dict = torch.load(args.sae_path, map_location="cpu")
+
+    # Remove torch.compile() prefix if present
+    if any(k.startswith("_orig_mod.") for k in state_dict.keys()):
+        state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
+
+    # Infer SAE dimensions
+    enc_weight = state_dict["encoder.final_block.0.weight"]
+    input_shape = enc_weight.shape[1]
+    nb_concepts = enc_weight.shape[0]
+    top_k = state_dict.get("top_k", 32)  # Try to infer from state_dict
+
+    # Create SAE
+    sae = TopKSAE(
+        input_shape=input_shape,
+        nb_concepts=nb_concepts,
+        top_k=top_k,
+        device=device,
+    )
+    sae.load_state_dict(state_dict)
+    sae = sae.to(device)
+    sae.eval()
+    print(f"✓ SAE loaded: {nb_concepts} concepts, input_dim={input_shape}")
+
     # Determine which features to visualize
     if args.select_active_features:
         # Development mode: features will be auto-selected during generation
-        print(f"\n✓ Using ACTIVE FEATURE SELECTION mode (development)")
+        print("\n✓ Using ACTIVE FEATURE SELECTION mode (development)")
         print(
             f"   Will automatically select top {args.top_k_features} active features per timestep"
         )
@@ -382,85 +396,43 @@ def main():
         feature_indices = args.feature_list
         print(f"\n✓ Using manually specified features: {feature_indices}")
     elif args.feature_selection_results is not None:
-        # Load feature selection results to get top features per timestep
-        print(f"\nLoading feature selection results from {args.feature_selection_results}")
-        feature_data = torch.load(args.feature_selection_results)
+        # Load feature selection results
+        print(f"\nLoading feature selection results from {args.feature_selection_results}...")
+        concept_sums = torch.load(args.feature_selection_results, map_location="cpu")
+        print("✓ Feature selection results loaded")
 
-        # Debug: Check what keys are actually in the file
-        print(f"Available keys in feature_data: {list(feature_data.keys())}")
+        modifier = RepresentationModifier(
+            sae=sae,
+            stats_dict=concept_sums,
+            epsilon=1e-8,
+            ignore_modification=args.ignore_modification,
+            device=device,
+        )
 
-        # Handle different possible formats
-        if "sums_true_per_timestep" in feature_data:
-            # New format from feature_selection.py with explicit true/false splits
-            sums_true = feature_data["sums_true_per_timestep"]
-            sums_false = feature_data["sums_false_per_timestep"]
-            counts_true = feature_data["counts_true_per_timestep"]
-            counts_false = feature_data["counts_false_per_timestep"]
-        elif "sums_per_timestep" in feature_data:
-            # Alternative format - single concept data (from RepresentationModifier style)
-            # This represents activations for concept=True
-            # We'll compute importance based on activation magnitude alone
-            print(f"Note: Using single-concept format (no true/false split)")
-            print(f"Computing importance based on activation magnitude per timestep")
+        # Per-timestep feature selection
+        feature_scores = modifier.calculate_scores_for_concept(
+            concept_name=args.concept_name, per_timestep=args.feature_selection_per_timestep
+        )
+        print("✓ Calculated feature scores")
 
-            sums_concept = feature_data["sums_per_timestep"]
-            counts_concept = feature_data["counts_per_timestep"]
+        # Select top k features using torch.topk (more efficient than argsort)
+        if args.feature_selection_per_timestep:
+            # feature_scores shape: (num_timesteps, num_features)
+            top_indices = torch.topk(
+                feature_scores, k=args.top_k_features, dim=1
+            ).indices  # (num_timesteps, top_k_features)
 
-            # Calculate top features per timestep based on mean activation magnitude
-            feature_indices = {}
-            epsilon = 1e-10
-
-            for timestep in args.timesteps:
-                if timestep not in sums_concept:
-                    print(
-                        f"  Warning: Timestep {timestep} not in feature selection results, skipping"
-                    )
-                    continue
-
-                # Compute mean activation for this timestep
-                mean_activation = sums_concept[timestep] / max(counts_concept[timestep], 1)
-
-                # Normalize to probabilities
-                prob_activation = mean_activation / (mean_activation.sum() + epsilon)
-
-                # Get top-K features by activation probability
-                top_features = torch.topk(prob_activation, k=args.top_k_features).indices.tolist()
-                feature_indices[timestep] = top_features
-                print(f"  Timestep {timestep}: top {args.top_k_features} features = {top_features}")
-
-            print(
-                f"✓ Selected top {args.top_k_features} features per timestep for {len(feature_indices)} timesteps"
-            )
+            # Convert to dict: {timestep_idx: [feature_indices]}
+            feature_indices = {t: top_indices[t].tolist() for t in range(top_indices.shape[0])}
         else:
-            print(f"Error: Unrecognized feature selection file format")
-            print(f"Expected keys: 'sums_true_per_timestep' or 'sums_per_timestep'")
-            print(f"Found keys: {list(feature_data.keys())}")
-            return 1
+            # feature_scores shape: (num_features,)
+            top_indices = torch.topk(
+                feature_scores, k=args.top_k_features, dim=0
+            ).indices  # (top_k_features,)
 
-        # Only run the true/false comparison logic if we have that data
-        if "sums_true_per_timestep" in feature_data:
-            # Calculate top features per timestep using probability difference
-            feature_indices = {}
-            epsilon = 1e-10
+            feature_indices = top_indices.tolist()
 
-            for timestep in args.timesteps:
-                # Check if timestep exists in the data
-                if timestep not in sums_true:
-                    print(
-                        f"  Warning: Timestep {timestep} not in feature selection results, skipping"
-                    )
-                    continue
-
-                # Compute importance scores (probability difference) for this timestep
-                # Extract data for this specific timestep
-                mean_true = sums_true[timestep] / counts_true[timestep]
-                mean_false = sums_false[timestep] / counts_false[timestep]
-
-                # Normalize to probabilities
-                prob_true = mean_true / (mean_true.sum() + epsilon)
-                prob_false = mean_false / (mean_false.sum() + epsilon)
-
-                # Importance is the difference in probabilities
+        # Importance is the difference in probabilities
     elif not args.select_active_features:
         # Only error if not in active feature selection mode
         print(
@@ -469,11 +441,10 @@ def main():
         return 1
 
     # Generate and collect activations
-    # Generate and collect activations
     activations, images = generate_and_collect_activations(
         timesteps=args.timesteps,
         feature_indices=feature_indices,
-        sae_path=Path(args.sae_path),
+        sae=sae,
         prompt=args.prompt,
         layer=layer,
         pipe=pipe,
