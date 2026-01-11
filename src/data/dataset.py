@@ -2,6 +2,8 @@
 Fast memmap-based dataset for representations.
 """
 
+import bisect
+import functools
 import json
 import os
 import random
@@ -13,6 +15,33 @@ from typing import Callable, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+
+# Platform-specific imports
+try:
+    import fcntl
+
+    HAS_FCNTL = True
+except ImportError:
+    # fcntl not available on Windows
+    HAS_FCNTL = False
+    fcntl = None  # type: ignore
+
+
+def _lock_file(fd, nonblocking=False):
+    """Cross-platform file locking."""
+    if HAS_FCNTL:
+        flags = fcntl.LOCK_EX
+        if nonblocking:
+            flags |= fcntl.LOCK_NB
+        fcntl.flock(fd, flags)
+    # On Windows, file locking happens automatically
+
+
+def _unlock_file(fd):
+    """Cross-platform file unlocking."""
+    if HAS_FCNTL:
+        _unlock_file(fd)
+    # On Windows, unlocking happens automatically
 
 
 class RepresentationDataset(Dataset):
@@ -100,7 +129,7 @@ class RepresentationDataset(Dataset):
         # Load metadata from metadata.json if needed (for filtering or metadata)
         self._metadata = None
         self.return_timestep = return_timestep  # NEW
-        if filter_fn is not None or return_metadata or indices is not None:
+        if filter_fn is not None or return_metadata or return_timestep or indices is not None:
             # Load entries from metadata.json (can be "entries" or "metadata" key)
             self._metadata = info.get("entries", info.get("metadata", []))
             if not self._metadata:
@@ -115,13 +144,21 @@ class RepresentationDataset(Dataset):
             self.use_direct_indexing = False
             print(f"  Using {len(indices)} pre-filtered indices")
         elif filter_fn is not None:
-            # Apply filter on metadata
+            # Apply filter on metadata (each entry is a prompt with multiple samples)
             if self._metadata is None:
                 raise ValueError("Metadata not loaded but filter_fn provided")
             print("  Applying filter function on metadata...")
-            self.indices = [i for i, entry in enumerate(self._metadata) if filter_fn(entry)]
+            self.indices = []
+            filtered_prompts = 0
+            for entry in self._metadata:
+                if filter_fn(entry):
+                    # Add ALL sample indices for this prompt
+                    self.indices.extend(range(entry["start_idx"], entry["end_idx"]))
+                    filtered_prompts += 1
             self.use_direct_indexing = False
-            print(f"  Filtered: {len(self.indices)}/{len(self._metadata)} samples")
+            print(
+                f"  Filtered: {len(self.indices)} samples from {filtered_prompts}/{len(self._metadata)} prompts"
+            )
         else:
             # No filtering - use direct indexing
             self.indices = None
@@ -139,10 +176,88 @@ class RepresentationDataset(Dataset):
         # Store feature_dim as instance variable for external access
         self._feature_dim = feature_dim
 
+        # Build sorted start_idx list for binary search (if metadata loaded)
+        self._entry_start_indices = None
+        if self._metadata:
+            self._entry_start_indices = [entry["start_idx"] for entry in self._metadata]
+            print(
+                f"  Built binary search index for {len(self._entry_start_indices)} metadata entries"
+            )
+
+    def close(self):
+        """Explicitly close memmap to release file handle."""
+        if hasattr(self, "_full_data"):
+            try:
+                del self._full_data
+            except Exception:
+                pass
+
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit - ensure cleanup."""
+        self.close()
+        return False
+
+    def __del__(self):
+        """Cleanup: explicitly delete memmap to release file handle on Windows."""
+        self.close()
+
     @property
     def feature_dim(self) -> int:
         """Return the feature dimension of the representations."""
         return self._feature_dim
+
+    @functools.lru_cache(maxsize=8192)  # Cache lookups for consecutive indices  # noqa: B019
+    def _find_entry_for_index(self, real_idx: int) -> Optional[Dict]:
+        """Find metadata entry that contains the given sample index using binary search."""
+        if self._metadata is None or self._entry_start_indices is None:
+            return None
+
+        # Binary search O(log n) to find the entry containing real_idx
+        # Find rightmost entry whose start_idx <= real_idx
+        pos = bisect.bisect_right(self._entry_start_indices, real_idx) - 1
+
+        if pos < 0 or pos >= len(self._metadata):
+            return None
+
+        entry = self._metadata[pos]
+
+        # Verify the index is actually within this entry's range
+        if entry["start_idx"] <= real_idx < entry["end_idx"]:
+            # Convert to hashable dict for caching
+            return entry
+
+        return None
+
+    def _get_metadata_for_index(self, real_idx: int) -> Dict:
+        """Get metadata for a given sample index."""
+        entry = self._find_entry_for_index(real_idx)
+        if entry is None:
+            return {}
+        return entry
+
+    def _calculate_timestep(self, real_idx: int) -> int:
+        """
+        Calculate timestep for a given sample index.
+
+        Each prompt's data is stored as [n_timesteps, n_spatial, features]
+        flattened to (n_timesteps * n_spatial, features).
+
+        So for a sample at position i within the prompt's range:
+        timestep = (i - start_idx) // n_spatial
+        """
+        entry = self._find_entry_for_index(real_idx)
+        if entry is None:
+            return 0  # Fallback
+
+        position_in_entry = real_idx - entry["start_idx"]
+        n_spatial = entry["n_spatial"]
+        timestep = position_in_entry // n_spatial
+
+        return timestep
 
     def __len__(self):
         if self.use_direct_indexing:
@@ -155,25 +270,33 @@ class RepresentationDataset(Dataset):
         else:
             real_idx = self.indices[idx]
 
-        rep_fp16 = self._full_data[real_idx].copy()
-        rep = torch.from_numpy(rep_fp16).float()
+        # Read from memmap and convert to torch (no intermediate copy needed)
+        # torch.from_numpy() creates a view without copying, then .float() converts dtype
+        rep_fp16 = self._full_data[real_idx]
+        rep = torch.from_numpy(rep_fp16.copy()).float()  # Copy only once during torch conversion
 
         if self.transform is not None:
             rep = self.transform(rep)
 
         # NEW: Return timestep if requested
         if self.return_timestep:
-            timestep = self._index[real_idx]["timestep"]
+            # Find which entry this sample belongs to and calculate timestep
+            # Each entry has samples from [start_idx, end_idx)
+            # Structure: [n_timesteps, n_spatial] flattened to (n_timesteps * n_spatial)
+            # So: timestep = (position_within_entry) // n_spatial
+            timestep = self._calculate_timestep(real_idx)
             if self.return_metadata:
                 return (
                     rep,
                     timestep,
-                    self._full_metadata[real_idx] if self._full_metadata else self._index[real_idx],
+                    self._get_metadata_for_index(real_idx),
                 )
             return rep, timestep
 
         if not self.return_metadata:
             return rep
+
+        return rep, self._get_metadata_for_index(real_idx)
 
     def _is_network_fs(self, path: Path) -> bool:
         """Check if path is on network filesystem (Lustre, NFS, etc.)"""
@@ -197,7 +320,6 @@ class RepresentationDataset(Dataset):
         Uses reference counting to track how many processes are using the
         shared copy, so cleanup only happens when the last process exits.
         """
-        import fcntl
         import hashlib
         import time
 
@@ -220,11 +342,11 @@ class RepresentationDataset(Dataset):
             try:
                 # Try to acquire exclusive lock (non-blocking first)
                 try:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError:
+                    _lock_file(lock_file.fileno(), nonblocking=True)
+                except (BlockingIOError, OSError):
                     # Another process is copying, wait for it
                     print("  ⏳ Another process is copying data, waiting...")
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # Blocking wait
+                    _lock_file(lock_file.fileno())  # Blocking wait
 
                 # After acquiring lock, check if copy was completed by another process
                 if done_path.exists() and tmp_path.exists():
@@ -285,7 +407,7 @@ class RepresentationDataset(Dataset):
 
             finally:
                 # Release lock
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                _unlock_file(lock_file.fileno())
 
     def _register_cleanup(self):
         """Register cleanup handlers for signals"""
@@ -308,8 +430,6 @@ class RepresentationDataset(Dataset):
             return
 
         try:
-            import fcntl
-
             tmp_dir = self._local_copy_path.parent
             lock_path = tmp_dir / ".copy.lock"
             refcount_path = tmp_dir / ".refcount"
@@ -318,7 +438,7 @@ class RepresentationDataset(Dataset):
                 return
 
             with open(lock_path, "w") as lock_file:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                _lock_file(lock_file.fileno())
                 try:
                     # Read and decrement refcount
                     count = 1
@@ -332,16 +452,16 @@ class RepresentationDataset(Dataset):
                     if count <= 0:
                         # Last user - safe to delete
                         # Release lock before deleting (lock file is inside tmp_dir)
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                        _unlock_file(lock_file.fileno())
                         shutil.rmtree(tmp_dir, ignore_errors=True)
                         print(f"\n  🧹 Cleaned up local copy (last user): {tmp_dir}")
                     else:
                         # Other tasks still using it
                         refcount_path.write_text(str(count))
                         print(f"\n  ℹ️  Local copy still in use by {count} task(s)")
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                        _unlock_file(lock_file.fileno())
                 except Exception:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    _unlock_file(lock_file.fileno())
                     raise
 
             self._local_copy_path = None
