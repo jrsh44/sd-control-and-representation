@@ -102,6 +102,8 @@ except Exception as e:
     SAE_CONFIG_LOADED = False
     print(f"Warning: Failed to load SAE config: {e}")
 
+MAX_CONCEPTS = 20
+
 
 # Image Generation
 def generate_image(prompt: str, steps: int, guidance: float, seed: int, progress=None):
@@ -784,7 +786,6 @@ def create_dashboard():
                     )
 
                     # Create individual concept rows (max 20 concepts)
-                    MAX_CONCEPTS = 20
                     concept_components = {
                         "checkboxes": [],
                         "strengths": [],
@@ -984,7 +985,6 @@ def create_dashboard():
 
         def handle_load_sae(sae_model_id):
             """Load SAE model and show concepts on success"""
-            MAX_CONCEPTS = 20
 
             # Build empty result for all concept components
             # Order: rows (20), checkboxes (20), strengths (20), neurons (20)
@@ -1171,7 +1171,6 @@ def create_dashboard():
             print(f"[DEBUG] concept_values count: {len(concept_values)}")
 
             # Parse concept values - they come in groups of 3 (checkbox, strength, neurons)
-            MAX_CONCEPTS = 20
             concept_configs = []
             if concept_meta:
                 for i in range(min(len(concept_meta), MAX_CONCEPTS)):
