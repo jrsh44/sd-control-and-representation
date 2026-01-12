@@ -56,6 +56,7 @@ from src.utils.RepresentationModifier import RepresentationModifier  # noqa: E40
 
 SAE_CONFIG = load_sae_config()
 MAX_CONCEPTS = 20
+DENOISING_STEPS = 50
 
 state = DashboardState()
 
@@ -108,9 +109,6 @@ def create_dashboard():
                 with gr.Column(scale=1, elem_classes=["column-gen-params"]):
                     gr.Markdown("### Generation Parameters")
                     with gr.Column(elem_classes=["form-group-consistent"]):
-                        steps_input = gr.Slider(
-                            minimum=10, maximum=100, value=50, step=1, label="Denoising Steps"
-                        )
                         guidance_input = gr.Slider(
                             minimum=1.0,
                             maximum=20.0,
@@ -503,7 +501,6 @@ def create_dashboard():
         # Generate button - handles both normal and intervention generation
         def handle_generate(
             prompt,
-            steps,
             guidance,
             seed,
             intervention_enabled,
@@ -520,7 +517,7 @@ def create_dashboard():
             print("[DEBUG] handle_generate() CALLED")
             print("*" * 80)
             print(f"[DEBUG] prompt: {prompt[:50] if prompt else 'None'}...")
-            print(f"[DEBUG] steps: {steps}, guidance: {guidance}, seed: {seed}")
+            print(f"[DEBUG] steps: {DENOISING_STEPS}, guidance: {guidance}, seed: {seed}")
             print(f"[DEBUG] intervention_enabled: {intervention_enabled}")
             print(f"[DEBUG] sae_model_id: {sae_model_id}")
             print(f"[DEBUG] nudenet_enabled: {nudenet_enabled}")
@@ -563,7 +560,6 @@ def create_dashboard():
                 seed = random.randint(0, 2**32 - 1)  # noqa: S311
                 print(f"[DEBUG] Resolved random seed to: {seed}")
 
-            total_steps = int(steps)
             display_original = None
             display_intervened = None
 
@@ -584,7 +580,7 @@ def create_dashboard():
                 print(f"[DEBUG] Using layer: {layer}")
 
                 # Total steps for both images combined
-                combined_total = total_steps * 2
+                combined_total = DENOISING_STEPS * 2
 
                 # Progress callback for original image (steps 1 to total_steps)
                 def original_callback(pipe, step, timestep, callback_kwargs):
@@ -598,7 +594,7 @@ def create_dashboard():
 
                 state.log(f"Generating original image (seed={seed})...", "info")
                 state.system_state = SystemState.GENERATING
-                state.start_generation(total_steps=total_steps, phase="original")
+                state.start_generation(total_steps=DENOISING_STEPS, phase="original")
 
                 generator = torch.Generator(device=state.sd_pipe.device).manual_seed(seed)
                 start_time = time.time()
@@ -606,7 +602,7 @@ def create_dashboard():
                 # Generate original image with callback
                 output = state.sd_pipe(
                     prompt=prompt,
-                    num_inference_steps=total_steps,
+                    num_inference_steps=DENOISING_STEPS,
                     guidance_scale=guidance,
                     generator=generator,
                     callback_on_step_end=original_callback,
@@ -618,7 +614,7 @@ def create_dashboard():
 
                 # Progress callback for intervention image (steps total_steps+1 to combined_total)
                 def intervention_callback(pipe, step, timestep, callback_kwargs):
-                    current = min(total_steps + step + 1, combined_total)
+                    current = min(DENOISING_STEPS + step + 1, combined_total)
                     if progress is not None:
                         progress(
                             (current, combined_total),
@@ -674,7 +670,7 @@ def create_dashboard():
                         with modifier:
                             output2 = state.sd_pipe(
                                 prompt=prompt,
-                                num_inference_steps=total_steps,
+                                num_inference_steps=DENOISING_STEPS,
                                 guidance_scale=guidance,
                                 generator=generator2,
                                 callback_on_step_end=intervention_callback,
@@ -752,16 +748,16 @@ def create_dashboard():
 
                 # Progress callback for solo generation
                 def solo_callback(pipe, step, timestep, callback_kwargs):
-                    current = min(step + 1, total_steps)
+                    current = min(step + 1, DENOISING_STEPS)
                     if progress is not None:
                         progress(
-                            (current, total_steps),
+                            (current, DENOISING_STEPS),
                             desc="🖼️ Generating",
                         )
                     return callback_kwargs
 
                 state.system_state = SystemState.GENERATING
-                state.start_generation(total_steps=total_steps, phase="original")
+                state.start_generation(total_steps=DENOISING_STEPS, phase="original")
 
                 generator = torch.Generator(device=state.sd_pipe.device).manual_seed(seed)
                 start_time = time.time()
@@ -769,7 +765,7 @@ def create_dashboard():
                 # Generate with callback
                 output = state.sd_pipe(
                     prompt=prompt,
-                    num_inference_steps=total_steps,
+                    num_inference_steps=DENOISING_STEPS,
                     guidance_scale=guidance,
                     generator=generator,
                     callback_on_step_end=solo_callback,
@@ -782,7 +778,8 @@ def create_dashboard():
                 # Show completion
                 if progress is not None:
                     progress(
-                        (total_steps, total_steps), desc=f"✅ Complete ({generation_time:.1f}s)"
+                        (DENOISING_STEPS, DENOISING_STEPS),
+                        desc=f"✅ Complete ({generation_time:.1f}s)",
                     )
 
                 display_original = original_image
@@ -813,7 +810,6 @@ def create_dashboard():
         # Build inputs list for generate button
         generate_inputs = [
             prompt_input,
-            steps_input,
             guidance_input,
             seed_input,
             enable_intervention,
