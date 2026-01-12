@@ -1402,19 +1402,6 @@ pre.code [class*="timestamp"] {
   position: relative !important;
 }
 
-/* Hide the eta-bar and progress text - only show spinner */
-.wrap.svelte-j1gjts .eta-bar,
-.wrap.svelte-j1gjts .progress-bar,
-.wrap.svelte-j1gjts .progress-text,
-.wrap.svelte-j1gjts .progress-level {
-  display: none !important;
-}
-
-/* Style the loading spinner circle */
-.wrap.svelte-j1gjts svg {
-  display: none !important;
-}
-
 @keyframes spin-loading {
   from {
     transform: rotate(0deg);
@@ -1426,17 +1413,6 @@ pre.code [class*="timestamp"] {
 */
 
 /* ===== GRADIO DEFAULT LOADING OVERRIDES ===== */
-/* Hide Gradio's default eta-bar completely */
-.eta-bar {
-  display: none !important;
-}
-
-/* Hide all Gradio progress/loading indicators */
-.progress-level,
-.progress-level span {
-  display: none !important;
-}
-
 /* Style generating state - no orange border animation */
 .generating {
   border-color: transparent !important;
@@ -1459,6 +1435,10 @@ pre.code [class*="timestamp"] {
 .nudenet-scores-comparison {
   width: 100% !important;
   margin-top: 1rem;
+}
+
+.nudenet-scores-comparison > [data-testid="status-tracker"] {
+  display: none !important;
 }
 
 .nudenet-scores-comparison table {
@@ -1629,4 +1609,8 @@ pre.code [class*="timestamp"] {
   content: "✓" !important;
   font-size: 1.2rem !important;
   color: var(--accent-success) !important;
+}
+
+.progress-text {
+  display: none !important;
 }
