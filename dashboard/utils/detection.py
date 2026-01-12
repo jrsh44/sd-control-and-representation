@@ -216,4 +216,4 @@ def get_score_cell_text(score: float) -> str:
     elif score >= 0.0:
         emoji = "🟢"
 
-    return f"{emoji} {score:.2%}" if score > 0 else "-"
+    return f"{emoji} {score:.2%}"
