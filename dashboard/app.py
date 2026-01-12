@@ -28,19 +28,13 @@ if str(_project_root) not in sys.path:
 
 # Import CUDA utilities (provides GPU detection and compatibility checks)
 from config.sae_config_loader import (  # noqa: E402
-    get_concept_choices as get_concept_choices_for_layer,
-)
-
-# SAE Configuration
-from config.sae_config_loader import (  # noqa: E402
+    get_concept_choices,
     get_feature_sums_path,
+    get_layer_id,
     get_model_path,
     get_sae_hyperparameters,
     get_sae_model_choices,
     load_sae_config,
-)
-from config.sae_config_loader import (  # noqa: E402
-    get_layer_choices as get_layer_choices_for_sae,
 )
 from core.model_loader import (  # noqa: E402
     load_nudenet_model as _load_nudenet_model,
@@ -770,19 +764,7 @@ def create_dashboard():
                     interactive=True,
                     info="Choose a trained SAE model for concept intervention",
                 )
-
-                # Row 2: Layer Selection (visible after SAE model selected)
-                with gr.Column(visible=False) as layer_section:
-                    gr.Markdown("### Target Layer")
-                    layer_dropdown = gr.Dropdown(
-                        choices=[],
-                        value=None,
-                        label="Select Layer",
-                        interactive=True,
-                        info="Choose which layer this SAE was trained on",
-                    )
-                    layer_info = gr.Markdown(value="")
-                    load_sae_btn = gr.Button("Load SAE", size="sm", variant="primary")
+                load_sae_btn = gr.Button("Load SAE", size="sm", variant="primary")
 
                 # Hidden checkbox to maintain state compatibility
                 enable_intervention = gr.Checkbox(
@@ -924,13 +906,10 @@ def create_dashboard():
         # Event handlers
 
         def handle_sae_model_change(sae_model_id):
-            """Handle SAE model selection - update layers dropdown with layers for this SAE."""
+            """Handle SAE model selection - SAE needs to be loaded."""
             # When SAE selection changes, SAE needs to be loaded again - disable generate
             if sae_model_id == "none" or not SAE_CONFIG_LOADED or not SAE_CONFIG:
                 return {
-                    layer_section: gr.update(visible=False),
-                    layer_dropdown: gr.update(choices=[], value=None),
-                    layer_info: gr.update(value=""),
                     concept_section: gr.update(visible=False),
                     enable_intervention: gr.update(value=False),
                     section_intervention: gr.update(
@@ -939,30 +918,8 @@ def create_dashboard():
                     generate_btn: gr.update(interactive=False),
                 }
 
-            # Get layers for this SAE model from config
-            layer_choices = get_layer_choices_for_sae(SAE_CONFIG, sae_model_id)
-
-            if not layer_choices:
-                return {
-                    layer_section: gr.update(visible=False),
-                    layer_dropdown: gr.update(choices=[], value=None),
-                    layer_info: gr.update(value="⚠️ No layers configured for this SAE model"),
-                    concept_section: gr.update(visible=False),
-                    enable_intervention: gr.update(value=False),
-                    section_intervention: gr.update(
-                        elem_classes=["main-section", "section-not-loaded"]
-                    ),
-                    generate_btn: gr.update(interactive=False),
-                }
-
-            # Default to first layer
-            default_layer = layer_choices[0][1] if layer_choices else None
-
-            # SAE model selected but not loaded yet - disable generate
+            # SAE selected but not loaded yet
             return {
-                layer_section: gr.update(visible=True),
-                layer_dropdown: gr.update(choices=layer_choices, value=default_layer),
-                layer_info: gr.update(value=""),
                 concept_section: gr.update(visible=False),
                 enable_intervention: gr.update(value=False),
                 section_intervention: gr.update(
@@ -971,27 +928,10 @@ def create_dashboard():
                 generate_btn: gr.update(interactive=False),
             }
 
-        def handle_layer_change(sae_model_id, layer_id):
-            """Handle layer selection - prepare for SAE loading (concepts shown after load)."""
-            if not layer_id or not sae_model_id or sae_model_id == "none":
-                return {
-                    concept_section: gr.update(visible=False),
-                }
-
-            if not SAE_CONFIG_LOADED or not SAE_CONFIG:
-                return {
-                    concept_section: gr.update(visible=False),
-                }
-
-            return {
-                concept_section: gr.update(visible=False),
-            }
-
         def toggle_intervention(enabled):
             """Enable/disable intervention controls"""
             return {
                 sae_model_dropdown: gr.update(interactive=True),
-                layer_dropdown: gr.update(interactive=enabled),
                 load_sae_btn: gr.update(interactive=enabled),
             }
 
@@ -1042,7 +982,7 @@ def create_dashboard():
                     gr.update(elem_classes=["main-section", "section-not-loaded"]),  # Yellow
                 )
 
-        def handle_load_sae(sae_model_id, layer_id):
+        def handle_load_sae(sae_model_id):
             """Load SAE model and show concepts on success"""
             MAX_CONCEPTS = 20
 
@@ -1070,7 +1010,7 @@ def create_dashboard():
                     result.append(gr.update(value=16, interactive=False))
                 return tuple(result)
 
-            if sae_model_id == "none" or not layer_id:
+            if sae_model_id == "none":
                 yield build_empty_result()
                 return
 
@@ -1101,10 +1041,12 @@ def create_dashboard():
 
                 # Get SAE model info from config
                 sae_name = sae_model_id
+                layer_id = ""
                 if SAE_CONFIG_LOADED and SAE_CONFIG:
                     sae_model_config = SAE_CONFIG.get_sae_model(sae_model_id)
                     if sae_model_config:
                         sae_name = sae_model_config.name
+                        layer_id = sae_model_config.layer_id
 
                 gr.Info(
                     f"Loading SAE model: {sae_name} ({layer_id})... This may take a moment.",
@@ -1120,12 +1062,10 @@ def create_dashboard():
                 state.log(f"SAE loaded in {load_time:.1f}s", "success")
                 gr.Info(f"✓ SAE model loaded successfully ({load_time:.1f}s)", duration=15)
 
-                # Get concepts for this layer from config
+                # Get concepts for this SAE model from config
                 concept_choices = []
                 if SAE_CONFIG_LOADED and SAE_CONFIG:
-                    concept_choices = get_concept_choices_for_layer(
-                        SAE_CONFIG, sae_model_id, layer_id
-                    )
+                    concept_choices = get_concept_choices(SAE_CONFIG, sae_model_id)
 
                 # Enable generate only if SD base is also loaded
                 sd_loaded = state.model_states["sd_base"] == ModelLoadState.LOADED
@@ -1171,27 +1111,15 @@ def create_dashboard():
                 gr.Warning(f"Failed to load SAE model: {str(e)}", duration=15)
                 yield build_empty_result()
 
-        # SAE model selection - update layers dropdown
+        # SAE model selection
         sae_model_dropdown.change(
             fn=handle_sae_model_change,
             inputs=[sae_model_dropdown],
             outputs=[
-                layer_section,
-                layer_dropdown,
-                layer_info,
                 concept_section,
                 enable_intervention,
                 section_intervention,
                 generate_btn,
-            ],
-        )
-
-        # Layer selection - update concepts
-        layer_dropdown.change(
-            fn=handle_layer_change,
-            inputs=[sae_model_dropdown, layer_dropdown],
-            outputs=[
-                concept_section,
             ],
         )
 
@@ -1201,7 +1129,6 @@ def create_dashboard():
             inputs=[enable_intervention],
             outputs=[
                 sae_model_dropdown,
-                layer_dropdown,
                 load_sae_btn,
             ],
         )
@@ -1213,7 +1140,7 @@ def create_dashboard():
             guidance,
             seed,
             intervention_enabled,
-            layer,
+            sae_model_id,
             nudenet_enabled,
             concept_meta,  # List of (name, id) tuples
             *concept_values,  # All checkbox, strength, neurons values flattened
@@ -1238,7 +1165,7 @@ def create_dashboard():
             print(f"[DEBUG] prompt: {prompt[:50] if prompt else 'None'}...")
             print(f"[DEBUG] steps: {steps}, guidance: {guidance}, seed: {seed}")
             print(f"[DEBUG] intervention_enabled: {intervention_enabled}")
-            print(f"[DEBUG] layer: {layer}")
+            print(f"[DEBUG] sae_model_id: {sae_model_id}")
             print(f"[DEBUG] nudenet_enabled: {nudenet_enabled}")
             print(f"[DEBUG] concept_meta: {concept_meta}")
             print(f"[DEBUG] concept_values count: {len(concept_values)}")
@@ -1254,7 +1181,7 @@ def create_dashboard():
                         strength = concept_values[idx + 1]
                         neurons = concept_values[idx + 2]
                         if is_selected:
-                            name, concept_id = concept_meta[i]
+                            name, concept_id, _description = concept_meta[i]
                             concept_configs.append(
                                 {
                                     "id": concept_id,
@@ -1296,6 +1223,14 @@ def create_dashboard():
             if intervention_enabled and state.sae_model is not None and concept_configs:
                 print("[DEBUG] INTERVENTION MODE: Generating comparison images")
                 state.log("Using comparison mode: generating both images sequentially", "info")
+
+                # Get layer ID from config
+                layer = (
+                    get_layer_id(SAE_CONFIG, sae_model_id)
+                    if SAE_CONFIG_LOADED and SAE_CONFIG
+                    else "UNET_UP_1_ATT_1"
+                )
+                print(f"[DEBUG] Using layer: {layer}")
 
                 # Total steps for both images combined
                 combined_total = total_steps * 2
@@ -1531,7 +1466,7 @@ def create_dashboard():
             guidance_input,
             seed_input,
             enable_intervention,
-            layer_dropdown,
+            sae_model_dropdown,
             nudenet_checkbox,
             concept_metadata,
         ]
@@ -1564,7 +1499,7 @@ def create_dashboard():
 
         load_sae_btn.click(
             fn=handle_load_sae,
-            inputs=[sae_model_dropdown, layer_dropdown],
+            inputs=[sae_model_dropdown],
             outputs=[
                 concept_section,
                 enable_intervention,
