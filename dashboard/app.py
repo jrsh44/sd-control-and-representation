@@ -1150,17 +1150,17 @@ def create_dashboard():
                 # Checkboxes
                 for i in range(MAX_CONCEPTS):
                     if i < len(concept_choices):
-                        name, concept_id = concept_choices[i]
-                        result.append(gr.update(label=name, value=False))
+                        name, concept_id, description = concept_choices[i]
+                        result.append(gr.update(label=name, value=False, info=description))
                     else:
-                        result.append(gr.update(label="Concept", value=False))
+                        result.append(gr.update(label="Concept", value=False, info=None))
 
                 # Strengths
-                for i in range(MAX_CONCEPTS):
+                for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(value=1.0, interactive=False))
 
                 # Neurons
-                for i in range(MAX_CONCEPTS):
+                for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(value=16, interactive=False))
 
                 yield tuple(result)

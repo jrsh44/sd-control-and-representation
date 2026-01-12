@@ -24,10 +24,15 @@ class ConceptConfig:
 
     id: str
     name: str  # Must match key in merged_feature_sums.pt
+    description: str = ""  # Short description for UI tooltip
 
     @classmethod
     def from_dict(cls, data: dict) -> "ConceptConfig":
-        return cls(id=data["id"], name=data["name"])
+        return cls(
+            id=data["id"],
+            name=data["name"],
+            description=data.get("description", ""),
+        )
 
 
 @dataclass
@@ -191,12 +196,12 @@ def get_layer_choices(config: SAEConfig, sae_model_id: str) -> list[tuple[str, s
 
 def get_concept_choices(
     config: SAEConfig, sae_model_id: str, layer_id: str
-) -> list[tuple[str, str]]:
-    """Get concept choices for Gradio checkboxes. Returns (name, id) tuples."""
+) -> list[tuple[str, str, str]]:
+    """Get concept choices for Gradio checkboxes. Returns (name, id, description) tuples."""
     layer = config.get_layer(sae_model_id, layer_id)
     if not layer:
         return []
-    return [(concept.name, concept.id) for concept in layer.concepts]
+    return [(concept.name, concept.id, concept.description) for concept in layer.concepts]
 
 
 def get_feature_sums_path(config: SAEConfig, sae_model_id: str) -> Path | None:
