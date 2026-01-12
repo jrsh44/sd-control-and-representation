@@ -4,7 +4,7 @@ SAE Configuration Loader
 Loads SAE model configurations from YAML files.
 
 Structure:
-    sae_models (list) → layers (list) → concepts (list)
+    sae_models (list) → concepts (list)
 """
 
 from dataclasses import dataclass, field
@@ -36,26 +36,6 @@ class ConceptConfig:
 
 
 @dataclass
-class LayerConfig:
-    """Configuration for a layer that an SAE model was trained on."""
-
-    id: str  # e.g., "UNET_UP_1_ATT_1"
-    path: str  # e.g., "unet.up_blocks.1.attentions.1.transformer_blocks.0"
-    concepts: list[ConceptConfig] = field(default_factory=list)
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "LayerConfig":
-        concepts = [ConceptConfig.from_dict(c) for c in data.get("concepts", [])]
-        return cls(id=data["id"], path=data["path"], concepts=concepts)
-
-    def get_concept(self, concept_id: str) -> ConceptConfig | None:
-        for concept in self.concepts:
-            if concept.id == concept_id:
-                return concept
-        return None
-
-
-@dataclass
 class SAEFilesConfig:
     """File paths for an SAE model."""
 
@@ -78,32 +58,40 @@ class SAEModelConfig:
 
     id: str
     name: str
+    layer_id: str = ""
+    layer_path: str = ""
     hyperparameters: dict[str, Any] = field(default_factory=dict)
     files: SAEFilesConfig | None = None
-    layers: list[LayerConfig] = field(default_factory=list)
+    concepts: list[ConceptConfig] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict) -> "SAEModelConfig":
         files_data = data.get("files", {})
         files = SAEFilesConfig.from_dict(files_data) if files_data else None
-        layers = [LayerConfig.from_dict(layer) for layer in data.get("layers", [])]
+
+        # Get layer info
+        layer_data = data.get("layer", {})
+        layer_id = layer_data.get("id", "")
+        layer_path = layer_data.get("path", "")
+
+        # Get concepts
+        concepts = [ConceptConfig.from_dict(c) for c in data.get("concepts", [])]
 
         return cls(
             id=data["id"],
             name=data["name"],
+            layer_id=layer_id,
+            layer_path=layer_path,
             hyperparameters=data.get("hyperparameters", {}),
             files=files,
-            layers=layers,
+            concepts=concepts,
         )
 
-    def get_layer(self, layer_id: str) -> LayerConfig | None:
-        for layer in self.layers:
-            if layer.id == layer_id:
-                return layer
+    def get_concept(self, concept_id: str) -> ConceptConfig | None:
+        for concept in self.concepts:
+            if concept.id == concept_id:
+                return concept
         return None
-
-    def get_layer_ids(self) -> list[str]:
-        return [layer.id for layer in self.layers]
 
 
 @dataclass
@@ -148,18 +136,10 @@ class SAEConfig:
                 return sae
         return None
 
-    def get_layer(self, sae_model_id: str, layer_id: str) -> LayerConfig | None:
+    def get_concept(self, sae_model_id: str, concept_id: str) -> ConceptConfig | None:
         sae = self.get_sae_model(sae_model_id)
         if sae:
-            return sae.get_layer(layer_id)
-        return None
-
-    def get_concept(
-        self, sae_model_id: str, layer_id: str, concept_id: str
-    ) -> ConceptConfig | None:
-        layer = self.get_layer(sae_model_id, layer_id)
-        if layer:
-            return layer.get_concept(concept_id)
+            return sae.get_concept(concept_id)
         return None
 
     def get_default_influence_factor(self) -> float:
@@ -186,22 +166,20 @@ def get_sae_model_choices(config: SAEConfig) -> list[tuple[str, str]]:
     return [(sae.name, sae.id) for sae in config.sae_models]
 
 
-def get_layer_choices(config: SAEConfig, sae_model_id: str) -> list[tuple[str, str]]:
-    """Get layer choices for Gradio dropdown. Returns (id, id) tuples."""
+def get_concept_choices(config: SAEConfig, sae_model_id: str) -> list[tuple[str, str, str]]:
+    """Get concept choices for Gradio checkboxes. Returns (name, id, description) tuples."""
     sae_model = config.get_sae_model(sae_model_id)
     if not sae_model:
         return []
-    return [(layer.id, layer.id) for layer in sae_model.layers]
+    return [(concept.name, concept.id, concept.description) for concept in sae_model.concepts]
 
 
-def get_concept_choices(
-    config: SAEConfig, sae_model_id: str, layer_id: str
-) -> list[tuple[str, str, str]]:
-    """Get concept choices for Gradio checkboxes. Returns (name, id, description) tuples."""
-    layer = config.get_layer(sae_model_id, layer_id)
-    if not layer:
-        return []
-    return [(concept.name, concept.id, concept.description) for concept in layer.concepts]
+def get_layer_id(config: SAEConfig, sae_model_id: str) -> str:
+    """Get the layer ID for an SAE model."""
+    sae_model = config.get_sae_model(sae_model_id)
+    if not sae_model:
+        return ""
+    return sae_model.layer_id
 
 
 def get_feature_sums_path(config: SAEConfig, sae_model_id: str) -> Path | None:
@@ -296,9 +274,8 @@ if __name__ == "__main__":
 
     for sae in config.sae_models:
         print(f"\n{sae.name}:")
-        print(f"  Layers: {sae.get_layer_ids()}")
-        for layer in sae.layers:
-            print(f"  {layer.id}: {len(layer.concepts)} concepts")
+        print(f"  Layer: {sae.layer_id} ({sae.layer_path})")
+        print(f"  Concepts: {len(sae.concepts)}")
 
         # Test feature sums path
         feature_path = get_feature_sums_path(config, sae.id)
