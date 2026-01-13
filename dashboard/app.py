@@ -239,12 +239,21 @@ def create_dashboard():
                         lines=2,
                         scale=4,
                     )
-                    nudenet_checkbox = gr.Checkbox(
-                        label="Censor Adult Content",
-                        value=True,
-                        info="⚠️ This model can generate adult content. Disabling this option is at your own risk.",
-                        scale=1,
-                    )
+                    with gr.Column(scale=1):
+                        nudenet_checkbox = gr.Checkbox(
+                            label="Censor Adult Content",
+                            value=True,
+                            info="⚠️ This model can generate adult content. Disabling this option is at your own risk.",
+                        )
+                        intervention_mode = gr.Radio(
+                            choices=[
+                                ("Per-Timestep", "per_timestep"),
+                                ("Global", "global"),
+                            ],
+                            value="per_timestep",
+                            label="Neuron Selection",
+                            info="Per-Timestep: different neurons each step. Global: same neurons all steps.",
+                        )
                 # Generate button row
                 generate_btn = gr.Button(
                     "Generate Image",
@@ -517,6 +526,7 @@ def create_dashboard():
             intervention_enabled,
             sae_model_id,
             nudenet_enabled,
+            intervention_mode_value,
             concept_meta,  # List of (name, id) tuples
             *concept_values,  # All checkbox, strength, neurons values flattened
             progress=gr.Progress(),
@@ -524,6 +534,9 @@ def create_dashboard():
             """
             Generate original and intervened images with progress tracking.
             """
+            # Determine per_timestep from radio selection
+            per_timestep = intervention_mode_value == "per_timestep"
+
             print("\n" + "*" * 80)
             print("[DEBUG] handle_generate() CALLED")
             print("*" * 80)
@@ -532,6 +545,9 @@ def create_dashboard():
             print(f"[DEBUG] intervention_enabled: {intervention_enabled}")
             print(f"[DEBUG] sae_model_id: {sae_model_id}")
             print(f"[DEBUG] nudenet_enabled: {nudenet_enabled}")
+            print(
+                f"[DEBUG] intervention_mode: {intervention_mode_value} (per_timestep={per_timestep})"
+            )
             print(f"[DEBUG] concept_meta: {concept_meta}")
             print(f"[DEBUG] concept_values count: {len(concept_values)}")
 
@@ -669,7 +685,7 @@ def create_dashboard():
                                 concept_name=concept["name"],
                                 influence_factor=concept["strength"],
                                 features_number=concept["neurons"],
-                                per_timestep=True,
+                                per_timestep=per_timestep,
                             )
 
                         layer_path = LayerPath[layer] if layer else LayerPath.UNET_UP_1_ATT_1
@@ -841,6 +857,7 @@ def create_dashboard():
             enable_intervention,
             sae_model_dropdown,
             nudenet_checkbox,
+            intervention_mode,
             concept_metadata,
         ]
         # Add all concept components in interleaved order (checkbox, strength, neurons for each)
@@ -855,6 +872,7 @@ def create_dashboard():
             guidance_input,
             seed_input,
             nudenet_checkbox,
+            intervention_mode,
             generate_btn,
             sd_model_dropdown,
             use_gpu_checkbox,
@@ -874,6 +892,7 @@ def create_dashboard():
                 gr.update(interactive=False),  # guidance_input
                 gr.update(interactive=False),  # seed_input
                 gr.update(interactive=False),  # nudenet_checkbox
+                gr.update(interactive=False),  # intervention_mode
                 gr.update(interactive=False),  # generate_btn
                 gr.update(interactive=False),  # sd_model_dropdown
                 gr.update(interactive=False),  # use_gpu_checkbox
@@ -893,6 +912,7 @@ def create_dashboard():
                 gr.update(interactive=True),  # guidance_input
                 gr.update(interactive=True),  # seed_input
                 gr.update(interactive=True),  # nudenet_checkbox
+                gr.update(interactive=True),  # intervention_mode
                 gr.update(interactive=True),  # generate_btn
                 gr.update(interactive=True),  # sd_model_dropdown
                 gr.update(interactive=CUDA_COMPATIBLE),  # use_gpu_checkbox

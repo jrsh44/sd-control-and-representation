@@ -1880,3 +1880,7 @@ td {
 .legend-dot {
   font-size: 0.9rem !important;
 }
+
+input[type="radio"] {
+  border-radius: 50% !important;
+}
