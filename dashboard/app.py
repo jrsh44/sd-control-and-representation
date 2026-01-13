@@ -905,7 +905,7 @@ def create_dashboard():
                 result.append(gr.update(interactive=False))
             return tuple(result)
 
-        def enable_controls():
+        def enable_controls(*checkbox_values):
             """Re-enable all controls after generation completes"""
             result = [
                 gr.update(interactive=True),  # prompt_input
@@ -920,13 +920,16 @@ def create_dashboard():
                 gr.update(interactive=True),  # sae_model_dropdown
                 gr.update(interactive=True),  # load_sae_btn
             ]
-            # Re-enable all concept checkboxes (strengths/neurons stay as-is, controlled by checkbox state)
+            # Re-enable all concept checkboxes
             for _ in range(MAX_CONCEPTS):
                 result.append(gr.update(interactive=True))  # checkboxes
-            for _ in range(MAX_CONCEPTS):
-                result.append(gr.update())  # strengths - don't change, keep current state
-            for _ in range(MAX_CONCEPTS):
-                result.append(gr.update())  # neurons - don't change, keep current state
+            # Restore strengths/neurons based on checkbox state
+            for i in range(MAX_CONCEPTS):
+                is_checked = checkbox_values[i] if i < len(checkbox_values) else False
+                result.append(gr.update(interactive=is_checked))  # strengths
+            for i in range(MAX_CONCEPTS):
+                is_checked = checkbox_values[i] if i < len(checkbox_values) else False
+                result.append(gr.update(interactive=is_checked))  # neurons
             return tuple(result)
 
         # Chain events: disable controls -> generate -> enable controls
@@ -945,7 +948,7 @@ def create_dashboard():
             ],
         ).then(
             fn=enable_controls,
-            inputs=None,
+            inputs=concept_components["checkboxes"],
             outputs=generation_controls,
         )
 
