@@ -42,6 +42,10 @@ from core.state import (  # noqa: E402
     ModelLoadState,
     SystemState,
 )
+from utils.clip_score import (  # noqa: E402
+    calculate_clip_scores,
+    format_clip_scores,
+)
 from utils.cuda import (  # noqa: E402
     CUDA_COMPATIBLE,
     CUDA_STATUS,
@@ -271,6 +275,12 @@ def create_dashboard():
                 nudenet_scores_comparison = gr.Markdown(
                     value="",
                     elem_classes=["nudenet-scores-comparison"],
+                )
+
+                # CLIP Scores Display
+                clip_scores_display = gr.HTML(
+                    value="",
+                    elem_classes=["clip-scores-display"],
                 )
 
         # ========================
@@ -550,7 +560,7 @@ def create_dashboard():
             # Check if model is loaded
             if state.sd_pipe is None:
                 print("[DEBUG] ERROR: SD pipe not loaded, returning None")
-                yield None, None, ""
+                yield None, None, "", ""
                 return
 
             # Resolve random seed ONCE before generating either image
@@ -725,12 +735,19 @@ def create_dashboard():
                 # Format combined comparison table
                 scores_comparison = format_nudenet_comparison(detection_orig, detection_interv)
 
+                # Calculate CLIP scores
+                device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
+                clip_scores = calculate_clip_scores(
+                    prompt, original_image, intervened_image, device, state
+                )
+                clip_scores_html = format_clip_scores(clip_scores)
+
                 state.system_state = SystemState.IDLE
 
                 # Final yield with both images and combined scores
                 print("[DEBUG] Yielding both images and scores for display")
                 print("*" * 80 + "\n")
-                yield display_original, display_intervened, scores_comparison
+                yield display_original, display_intervened, scores_comparison, clip_scores_html
 
             else:
                 # =====================================================================
@@ -800,12 +817,17 @@ def create_dashboard():
                 # Format comparison table (intervention column will show dashes)
                 scores_comparison = format_nudenet_comparison(detection_orig, None)
 
+                # Calculate CLIP scores (only for original since no intervention)
+                device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
+                clip_scores = calculate_clip_scores(prompt, original_image, None, device, state)
+                clip_scores_html = format_clip_scores(clip_scores)
+
                 state.system_state = SystemState.IDLE
 
                 # Yield original only (no intervention image)
                 print("[DEBUG] Yielding original image only (no intervention)")
                 print("*" * 80 + "\n")
-                yield display_original, None, scores_comparison
+                yield display_original, None, scores_comparison, clip_scores_html
 
         # Build inputs list for generate button
         generate_inputs = [
@@ -830,6 +852,7 @@ def create_dashboard():
                 img_original,
                 img_unlearned,
                 nudenet_scores_comparison,
+                clip_scores_display,
             ],
         )
 
