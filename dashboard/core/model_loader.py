@@ -190,8 +190,16 @@ def load_sae_model(
 
         state.log(f"Loading feature sums from: {feature_sums_path.name}", "loading")
 
-        # Load feature sums (concept statistics)
-        device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
+        # Use the same device as SD pipeline for compatibility
+        # SAE must be on same device as SD since they share tensors during intervention
+        if state.sd_pipe is not None:
+            device = str(state.sd_pipe.device)
+            state.log(f"SAE will use same device as SD pipeline: {device}", "info")
+        else:
+            # Fallback if SD not loaded yet (shouldn't happen in normal flow)
+            device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
+            state.log(f"SD pipeline not loaded, using default device: {device}", "warning")
+
         feature_sums = torch.load(feature_sums_path, map_location=device, weights_only=False)
 
         state.log(f"Feature sums loaded: {len(feature_sums)} concepts", "success")
