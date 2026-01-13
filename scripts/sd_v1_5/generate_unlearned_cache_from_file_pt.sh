@@ -73,7 +73,7 @@ INFLUENCE_FACTORS=(0.1 0.2 0.4 0.8 1.6 3.2 6.4 12.8)
 PROMPTS_FILE="/mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation/data/nudity/prompts_test.txt"  # e.g., "data/prompts/templates.txt"
 SAE_DIR_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096"  # e.g., "/path/to/sae/directory"
 CONCEPT_SUMS_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt"  # e.g., "/path/to/concept_sums.pt"
-RESULTS_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images"  # e.g., "/path/to/results"
+RESULTS_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images_per_timestep"  # e.g., "/path/to/results"
 
 # Get concept for this array task
 CONCEPT="${CONCEPTS[$SLURM_ARRAY_TASK_ID]}"
@@ -117,7 +117,8 @@ uv run scripts/sd_v1_5/generate_unlearned_cache_from_file.py \
     --guidance-scale 7.5 \
     --steps 50 \
     --seed 42 \
-    --generate_without_unlearning
+    --generate_without_unlearning \
+    --per_timestep
 
 echo "========================================="
 echo "Job completed successfully!"
