@@ -849,7 +849,72 @@ def create_dashboard():
             generate_inputs.append(concept_components["strengths"][i])
             generate_inputs.append(concept_components["neurons"][i])
 
+        # Controls to disable/enable during generation
+        generation_controls = [
+            prompt_input,
+            guidance_input,
+            seed_input,
+            nudenet_checkbox,
+            generate_btn,
+            sd_model_dropdown,
+            use_gpu_checkbox,
+            load_sd_btn,
+            sae_model_dropdown,
+            load_sae_btn,
+        ]
+        # Add all concept components (checkboxes, strengths, neurons)
+        generation_controls.extend(concept_components["checkboxes"])
+        generation_controls.extend(concept_components["strengths"])
+        generation_controls.extend(concept_components["neurons"])
+
+        def disable_controls():
+            """Disable all controls before generation starts"""
+            result = [
+                gr.update(interactive=False),  # prompt_input
+                gr.update(interactive=False),  # guidance_input
+                gr.update(interactive=False),  # seed_input
+                gr.update(interactive=False),  # nudenet_checkbox
+                gr.update(interactive=False),  # generate_btn
+                gr.update(interactive=False),  # sd_model_dropdown
+                gr.update(interactive=False),  # use_gpu_checkbox
+                gr.update(interactive=False),  # load_sd_btn
+                gr.update(interactive=False),  # sae_model_dropdown
+                gr.update(interactive=False),  # load_sae_btn
+            ]
+            # Disable all concept checkboxes, strengths, neurons
+            for _ in range(MAX_CONCEPTS * 3):
+                result.append(gr.update(interactive=False))
+            return tuple(result)
+
+        def enable_controls():
+            """Re-enable all controls after generation completes"""
+            result = [
+                gr.update(interactive=True),  # prompt_input
+                gr.update(interactive=True),  # guidance_input
+                gr.update(interactive=True),  # seed_input
+                gr.update(interactive=True),  # nudenet_checkbox
+                gr.update(interactive=True),  # generate_btn
+                gr.update(interactive=True),  # sd_model_dropdown
+                gr.update(interactive=CUDA_COMPATIBLE),  # use_gpu_checkbox
+                gr.update(interactive=True),  # load_sd_btn
+                gr.update(interactive=True),  # sae_model_dropdown
+                gr.update(interactive=True),  # load_sae_btn
+            ]
+            # Re-enable all concept checkboxes (strengths/neurons stay as-is, controlled by checkbox state)
+            for _ in range(MAX_CONCEPTS):
+                result.append(gr.update(interactive=True))  # checkboxes
+            for _ in range(MAX_CONCEPTS):
+                result.append(gr.update())  # strengths - don't change, keep current state
+            for _ in range(MAX_CONCEPTS):
+                result.append(gr.update())  # neurons - don't change, keep current state
+            return tuple(result)
+
+        # Chain events: disable controls -> generate -> enable controls
         generate_btn.click(
+            fn=disable_controls,
+            inputs=None,
+            outputs=generation_controls,
+        ).then(
             fn=handle_generate,
             inputs=generate_inputs,
             outputs=[
@@ -858,6 +923,10 @@ def create_dashboard():
                 nudenet_scores_comparison,
                 clip_scores_display,
             ],
+        ).then(
+            fn=enable_controls,
+            inputs=None,
+            outputs=generation_controls,
         )
 
         # Model loading buttons
