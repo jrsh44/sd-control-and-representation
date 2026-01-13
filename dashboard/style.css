@@ -1316,6 +1316,10 @@ pre.code [class*="timestamp"] {
   margin-bottom: 16px !important;
 }
 
+.prompt-generate-row .form .block [data-testid="status-tracker"] {
+  display: none !important;
+}
+
 .prompt-generate-row > .form {
   display: flex !important;
   flex: 1 !important;
