@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 
 """
+Calculate FID scores between a reference image set and multiple subdirectories.
+
 Example usage:
     python scripts/image_evaluation/fid_script.py \
-        --images_first_set_path /mnt/evafs/groups/mi2lab/jcwalina/results/test/test_image_set_1 \
-        --images_second_set_path /mnt/evafs/groups/mi2lab/jcwalina/results/test/test_image_set_2 
-"""  # noqa: E501
+        --reference_path /mnt/evafs/groups/mi2lab/jcwalina/results/test/reference_images \
+        --subdirs_parent_path /mnt/evafs/groups/mi2lab/jcwalina/results/test/generated_sets \
+        --output_file /mnt/evafs/groups/mi2lab/jcwalina/results/test/fid_results.txt
+"""
 
 import argparse
-import os
 import sys
-from os import listdir  # noqa: F401
 from pathlib import Path
 
-import numpy as np
-import torch
-import torchvision.models as models
-import torchvision.transforms as transforms
 from dotenv import load_dotenv
-from PIL import Image
-from scipy.linalg import sqrtm
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -28,132 +23,111 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
+from src.utils.fid import calculate_fid  # noqa: E402
+
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Calculate FID between two image datasets.")
-    # Dataset parameters
-    parser.add_argument(
-        "--images_first_set_path",
-        type=str,
-        required=True,
-        help="Path to first set of images for FID evaluation",
+    parser = argparse.ArgumentParser(
+        description="Calculate FID between reference images and multiple subdirectories."
     )
     parser.add_argument(
-        "--images_second_set_path",
+        "--reference_path",
         type=str,
         required=True,
-        help="Path to second set of images for FID evaluation",
+        help="Path to reference image directory",
     )
-    # skip wandb
-    parser.add_argument("--skip-wandb", action="store_true")
+    parser.add_argument(
+        "--subdirs_parent_path",
+        type=str,
+        required=True,
+        help="Path to parent directory containing subdirectories with images",
+    )
+    parser.add_argument(
+        "--output_file",
+        type=str,
+        default=None,
+        help="Optional: Save results to a text file",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    reference_path = Path(args.reference_path)
+    subdirs_parent_path = Path(args.subdirs_parent_path)
+
+    # Validate paths
+    if not reference_path.exists():
+        print(f"✗ ERROR: Reference path does not exist: {reference_path}")
+        return 1
+
+    if not subdirs_parent_path.exists():
+        print(f"✗ ERROR: Subdirectories parent path does not exist: {subdirs_parent_path}")
+        return 1
 
     print("=" * 80)
-    print("EVALUATING FID SCORES")
+    print("BATCH FID EVALUATION")
     print("=" * 80)
-    print(f"Image path: {args.images_first_set_path}")
-    print(f"Image path: {args.images_second_set_path}")
-    print("-" * 80)
+    print(f"Reference: {reference_path}")
+    print(f"Parent directory: {subdirs_parent_path}")
+    print("=" * 80)
 
+    # Find all subdirectories containing images
+    subdirs = []
+    for item in sorted(subdirs_parent_path.iterdir()):
+        if item.is_dir():
+            # Check if directory contains images
+            image_files = (
+                list(item.glob("*.png")) + list(item.glob("*.jpg")) + list(item.glob("*.jpeg"))
+            )
+            if image_files:
+                subdirs.append(item)
+
+    if not subdirs:
+        print("✗ ERROR: No subdirectories with images found")
+        return 1
+
+    print(f"Found {len(subdirs)} subdirectories with images\n")
+
+    # Calculate FID for each subdirectory
+    results = []
     try:
-        # Initialize wandb
-        # if not args.skip_wandb:
-        #     wandb.login()
-        #     wandb.init(
-        #         project="sd-control-representation",
-        #         entity="bartoszjezierski28-warsaw-university-of-technology",
-        #         name="evaluation of nudity",
-        #         config={
-        #             "image_path": args.image_path,
-        #             "detection_scores_path": args.detection_scores_path,
-        #         },
-        #         tags=["evaluation", "nudity", "detection"],
-        #         notes="Feature selection using pretrained SAE",
-        #     )
+        for idx, subdir in enumerate(subdirs, 1):
+            print(f"\n[{idx}/{len(subdirs)}] Processing: {subdir.name}")
+            print("-" * 80)
 
-        FID_model = models.inception_v3(weights=models.Inception_V3_Weights.IMAGENET1K_V1)  # noqa: N806
-        print("✓ FID model loaded successfully.")
-        FID_model.fc = torch.nn.Identity()
-        FID_model.eval()
-        FID_model.to(device)
+            fid_score = calculate_fid(
+                images_first_set_path=str(reference_path),
+                images_second_set_path=str(subdir),
+                verbose=False,
+            )
 
-        # Inception v3 expects 299x299 images with ImageNet normalization
-        preprocess = transforms.Compose(
-            [
-                transforms.Resize(299),
-                transforms.CenterCrop(299),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ]
-        )
+            results.append((subdir.name, fid_score))
+            print(f"✓ FID score for {subdir.name}: {fid_score:.4f}")
 
-        # Count images first
-        num_images_1 = len(
-            [
-                f
-                for f in os.listdir(args.images_first_set_path)
-                if f.endswith((".png", ".jpg", ".jpeg"))
-            ]
-        )
-        image_first_set_vectors = torch.empty((num_images_1, 2048), device=device)
-        image_files_1 = [
-            f
-            for f in os.listdir(args.images_first_set_path)
-            if f.endswith((".png", ".jpg", ".jpeg"))
-        ]
+        # Print summary
+        print("\n" + "=" * 80)
+        print("SUMMARY")
+        print("=" * 80)
+        print(f"{'Directory':<50} {'FID Score':>15}")
+        print("-" * 80)
+        for name, score in results:
+            print(f"{name:<50} {score:>15.4f}")
+        print("=" * 80)
 
-        for idx, images in enumerate(image_files_1):
-            print(f"Processing image {idx + 1}/{len(image_files_1)}: {images}")
-            image_path = os.path.join(args.images_first_set_path, images)
-            image = Image.open(image_path).convert("RGB")
-            image_tensor = preprocess(image).unsqueeze(0).to(device)
-            with torch.no_grad():
-                features = FID_model(image_tensor)
-            image_first_set_vectors[idx] = features
-        print(f"Processed {num_images_1} images from first set.")
-
-        # Count images second
-        num_images_2 = len(
-            [
-                f
-                for f in os.listdir(args.images_second_set_path)
-                if f.endswith((".png", ".jpg", ".jpeg"))
-            ]
-        )
-        image_second_set_vectors = torch.empty((num_images_2, 2048), device=device)
-        image_files_2 = [
-            f
-            for f in os.listdir(args.images_second_set_path)
-            if f.endswith((".png", ".jpg", ".jpeg"))
-        ]
-
-        for idx, images in enumerate(image_files_2):
-            print(f"Processing image {idx + 1}/{len(image_files_2)}: {images}")
-            image_path = os.path.join(args.images_second_set_path, images)
-            image = Image.open(image_path).convert("RGB")
-            image_tensor = preprocess(image).unsqueeze(0).to(device)
-            with torch.no_grad():
-                features = FID_model(image_tensor)
-            image_second_set_vectors[idx] = features
-        print(f"Processed {num_images_2} images from second set.")
-
-        mu1 = np.mean(image_first_set_vectors.cpu().numpy(), axis=0)
-        sigma1 = np.cov(image_first_set_vectors.cpu().numpy(), rowvar=False)
-        mu2 = np.mean(image_second_set_vectors.cpu().numpy(), axis=0)
-        sigma2 = np.cov(image_second_set_vectors.cpu().numpy(), rowvar=False)
-
-        diff = mu1 - mu2
-        covmean, _ = sqrtm(sigma1 @ sigma2, disp=False)
-        if np.iscomplexobj(covmean):
-            covmean = covmean.real
-        fid_score = diff @ diff + np.trace(sigma1 + sigma2 - 2 * covmean)
-        print(f"\nFID score between the two image sets: {fid_score}")
+        # Save to file if requested
+        if args.output_file:
+            output_path = Path(args.output_file)
+            with open(output_path, "w") as f:
+                f.write(f"Reference: {reference_path}\n")
+                f.write(f"Parent: {subdirs_parent_path}\n")
+                f.write("=" * 80 + "\n")
+                f.write(f"{'Directory':<50} {'FID Score':>15}\n")
+                f.write("-" * 80 + "\n")
+                for name, score in results:
+                    f.write(f"{name:<50} {score:>15.4f}\n")
+            print(f"\n✓ Results saved to: {output_path}")
 
         return 0
 

@@ -11,7 +11,7 @@ Usage:
     --guidance-scale 7.5 --steps 50 --seed 42 \
     --sae-dir-path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096 \
     --concept-sums-path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt \
-    --epsilon 1e-8 --ignore-modification "false" \
+    --epsilon 1e-8 \
     --influence-factors 1.0 2.0 3.0 \
     --feature-numbers 10 20 30
 
@@ -123,10 +123,9 @@ def parse_args() -> argparse.Namespace:
         help="Small value to avoid division by zero (default: 1e-8)",
     )
     parser.add_argument(
-        "--ignore-modification",
-        type=str,
-        default="false",
-        help="Type of generation: 'true' (no modification), 'false' (with modification)",
+        "--generate_without_unlearning",
+        action="store_true",
+        help="If set, generates images without applying unlearning (for comparison)",
     )
     parser.add_argument(
         "--influence-factors",
@@ -141,6 +140,11 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         required=True,
         help="List of feature numbers to use for unlearning (e.g., --feature-numbers 10 20 30)",
+    )
+    parser.add_argument(
+        "--per_timestep",
+        action="store_true",
+        help="If set, applies unlearning per timestep (default: per_timestep=False)",
     )
     return parser.parse_args()
 
@@ -254,7 +258,7 @@ def main():
         sae=sae,
         stats_dict=concept_sums,
         epsilon=args.epsilon,
-        ignore_modification=args.ignore_modification,
+        ignore_modification="true",
         device=device,
     )
 
@@ -270,7 +274,7 @@ def main():
         concept_name=args.concept,
         influence_factor=initial_influence,
         features_number=initial_features,
-        per_timestep=False,
+        per_timestep=args.per_timestep,
     )
     print(
         f"✓ Concept '{args.concept}' added for unlearning "
@@ -366,6 +370,107 @@ def main():
     total_inference_time = 0.0
     total_combinations = len(args.influence_factors) * len(args.feature_numbers)
 
+    # --------------------------------------------------------------------------
+    # 6a. Generate baseline images without unlearning (if requested)
+    # --------------------------------------------------------------------------
+    if args.generate_without_unlearning:
+        print("\n" + "=" * 80)
+        print("GENERATING BASELINE IMAGES (NO INTERVENTION)")
+        print("=" * 80)
+
+        concept_dir = results_dir / args.concept.replace(" ", "_")
+        baseline_dir = concept_dir / "no_intervention"
+        baseline_dir.mkdir(parents=True, exist_ok=True)
+        print(f"✓ Baseline directory: {baseline_dir}")
+
+        # Set modifier to ignore modifications for baseline generation
+        modifier.set_ignore_modification()
+        print("✓ Modifier set to ignore modifications (generating without unlearning)")
+
+        for prompt_nr, prompt_text in prompts.items():
+            # Check if image already exists
+            image_filename = f"prompt_{prompt_nr:04d}.png"
+            image_path = baseline_dir / image_filename
+
+            if image_path.exists():
+                print(f"  [{prompt_nr}] ⏭️  Skipping (already exists): {image_filename}")
+                continue
+
+            print(f"  [{prompt_nr}] 🎨 Generating baseline: {prompt_text[:60]}...")
+
+            try:
+                generator = torch.Generator(device).manual_seed(args.seed)
+                system_metrics_start = get_system_metrics(device) if not args.skip_wandb else {}
+
+                # Generate image without unlearning (modifier ignores modifications)
+                inference_start = time.time()
+                representations, image = capture_layer_representations_with_unlearning(
+                    pipe=pipe,
+                    prompt=prompt_text,
+                    layer_paths=[],  # Empty list - no representations cached
+                    modifier=modifier,  # Modifier with ignore_modification=true
+                    num_inference_steps=args.steps,
+                    guidance_scale=args.guidance_scale,
+                    generator=generator,
+                )
+                inference_time = time.time() - inference_start
+                total_inference_time += inference_time
+
+                # Save image to disk
+                image.save(image_path)
+
+                total_generations += 1
+                print(f"      ✅ Generated in {inference_time:.2f}s, saved to {image_filename}")
+
+                # Log to WandB
+                if not args.skip_wandb:
+                    system_metrics_end = get_system_metrics(device)
+                    log_data = {
+                        "concept": args.concept,
+                        "baseline": True,
+                        "prompt_nr": prompt_nr,
+                        "inference_time": inference_time,
+                        "total_generations": total_generations,
+                        **system_metrics_end,
+                        "gpu_memory_delta_mb": system_metrics_end.get("gpu_memory_mb", 0)
+                        - system_metrics_start.get("gpu_memory_mb", 0),
+                    }
+
+                    if args.log_images_every and (total_generations % args.log_images_every == 0):
+                        log_data["generated_image"] = wandb.Image(image, caption=prompt_text)
+
+                    wandb.log(log_data)
+
+                # Free GPU memory
+                if image is not None:
+                    del image
+                torch.cuda.empty_cache()
+
+            except Exception as e:
+                if not args.skip_wandb:
+                    wandb.log(
+                        {
+                            "error": str(e),
+                            "concept": args.concept,
+                            "baseline": True,
+                            "prompt_nr": prompt_nr,
+                            "prompt_text": prompt_text,
+                        }
+                    )
+                failed_generations += 1
+                print(f"      ❌ ERROR: {e}")
+                import traceback
+
+                traceback.print_exc()
+
+        # Re-enable modifications for parameter combinations
+        modifier.unset_ignore_modification()
+        print("\n✓ Modifier re-enabled for parameter combinations")
+        print("=" * 80)
+
+    # --------------------------------------------------------------------------
+    # 6b. Generate images with unlearning (parameter combinations)
+    # --------------------------------------------------------------------------
     print(
         f"\nStarting generation for {total_prompts} prompts × "
         f"{total_combinations} parameter combinations..."
@@ -392,6 +497,15 @@ def main():
 
             # Inner loop: prompts
             for prompt_nr, prompt_text in prompts.items():
+                # Check if image already exists
+                image_filename = f"prompt_{prompt_nr:04d}.png"
+                image_path = param_dir / image_filename
+
+                if image_path.exists():
+                    print(f"  [{prompt_nr}] ⏭️  Skipping (already exists): {image_filename}")
+                    total_generations += 1
+                    continue
+
                 print(f"  [{prompt_nr}] 🎨 Generating: {prompt_text[:60]}...")
 
                 try:
@@ -412,9 +526,7 @@ def main():
                     inference_time = time.time() - inference_start
                     total_inference_time += inference_time
 
-                    # Save image to disk
-                    image_filename = f"prompt_{prompt_nr:04d}.png"
-                    image_path = param_dir / image_filename
+                    # Save image to disk (image_path already defined above)
                     image.save(image_path)
 
                     total_generations += 1

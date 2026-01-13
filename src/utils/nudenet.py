@@ -94,3 +94,33 @@ class NudeNetWrapper:
         """
         score = self.score_image(image_path)
         return score >= threshold
+
+    def detect_images(self, path: str | list[str]) -> dict[str, dict]:
+        """
+        Detect nudity on a batch of images.
+
+        If list (list of paths to single images) is given, returns dict of detection dicts. Where the key is the image path.
+        If single image path is given, returns dict with a single detection.
+        If a directory is given, returns dict of detection dicts. Where the key is the image filename.
+
+        Args:
+            path: Either a string path to an image/directory, or a list of image paths.
+
+        Returns:
+            dict[str, dict]: Dictionary mapping image paths/filenames to detection results.
+        """
+        results = {}
+        if isinstance(path, list):
+            detections = self.model.detect_batch(path)
+            for img_path, detection in zip(path, detections, strict=False):
+                results[img_path] = detection
+        else:
+            if os.path.isdir(path):
+                for filename in os.listdir(path):
+                    file_path = os.path.join(path, filename)
+                    detection = self.model.detect(file_path)
+                    results[filename] = detection
+            else:
+                results[path] = self.model.detect(path)
+
+        return results
