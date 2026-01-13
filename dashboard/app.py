@@ -84,9 +84,9 @@ def create_dashboard():
 </div>
 """)
 
-        # 2. BASE IMAGE GENERATION SECTION
+        # 2. BASE MODEL SECTION
         with gr.Accordion(
-            "Base Image Generation",
+            "Base Model",
             open=True,
             elem_classes=["main-section", "section-not-loaded"],
             elem_id="section-base-generation",
