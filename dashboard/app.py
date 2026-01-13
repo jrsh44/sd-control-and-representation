@@ -184,9 +184,9 @@ def create_dashboard():
                                 elem_classes=["concept-checkbox"],
                             )
                             concept_strength = gr.Slider(
-                                minimum=-10.0,
-                                maximum=10.0,
-                                value=1.0,
+                                minimum=-0.0,
+                                maximum=32.0,
+                                value=4.0,
                                 step=0.1,
                                 label="Strength",
                                 scale=2,
@@ -196,7 +196,7 @@ def create_dashboard():
                             concept_neurons = gr.Slider(
                                 minimum=1,
                                 maximum=32,
-                                value=16,
+                                value=8,
                                 step=1,
                                 label="Neurons",
                                 scale=2,
@@ -384,10 +384,10 @@ def create_dashboard():
                     result.append(gr.update(label="Concept", value=False))
                 # Add updates for strengths
                 for _ in range(MAX_CONCEPTS):
-                    result.append(gr.update(value=1.0, interactive=False))
+                    result.append(gr.update(value=4.0, interactive=False))
                 # Add updates for neurons
                 for _ in range(MAX_CONCEPTS):
-                    result.append(gr.update(value=16, interactive=False))
+                    result.append(gr.update(value=8, interactive=False))
                 return tuple(result)
 
             if sae_model_id == "none":
@@ -483,12 +483,11 @@ def create_dashboard():
 
                 # Strengths
                 for _ in range(MAX_CONCEPTS):
-                    result.append(gr.update(value=1.0, interactive=False))
+                    result.append(gr.update(value=4.0, interactive=False))
 
                 # Neurons
                 for _ in range(MAX_CONCEPTS):
-                    result.append(gr.update(value=16, interactive=False))
-
+                    result.append(gr.update(value=8, interactive=False))
                 yield tuple(result)
 
             except Exception as e:
