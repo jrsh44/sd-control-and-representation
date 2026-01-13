@@ -240,9 +240,9 @@ def create_dashboard():
                         scale=4,
                     )
                     nudenet_checkbox = gr.Checkbox(
-                        label="Enable NudeNet Detection",
+                        label="Censor Adult Content",
                         value=True,
-                        info="Run safety detection on generated images",
+                        info="⚠️ This model can generate adult content. Disabling this option is at your own risk.",
                         scale=1,
                     )
                 # Generate button row
