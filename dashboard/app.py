@@ -72,11 +72,12 @@ def create_dashboard():
     with gr.Blocks(title="SD Control") as app:
         # 1. HEADER - Title and Description
         gr.HTML("""
-<div style="margin-bottom: 3rem; text-align: center;">
-    <h1 style="font-family: 'Space Mono', monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 0.5rem; background: linear-gradient(135deg, #00d4ff, #b24bf3); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
-        Stable Diffusion Control Dashboard
+<div style="margin-bottom: 3rem; align-items:center; display: flex;">
+    <h1 style="font-family: 'Space Mono', monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.05em; background: linear-gradient(135deg, #5b9bd5, #c87bf3); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; text-align: left;">
+        Stable Diffusion <br/>
+        Control Dashboard
     </h1>
-    <p style="font-family: 'Inter', sans-serif; font-size: 1rem; color: #8fa3c4; max-width: 800px; margin: 0 auto;">
+    <p style="font-family: 'Inter', sans-serif; font-size: 1rem; color: #8fa3c4; max-width: 800px; margin-left: auto; text-align: right;">
         Interactive dashboard for controlling Stable Diffusion's internal representations through Sparse Autoencoders.
         Load a base model, apply concept interventions, and visualize the results.
     </p>
@@ -272,7 +273,7 @@ def create_dashboard():
                         )
 
                 # NudeNet Scores Comparison Table
-                nudenet_scores_comparison = gr.Markdown(
+                nudenet_scores_comparison = gr.HTML(
                     value="",
                     elem_classes=["nudenet-scores-comparison"],
                 )

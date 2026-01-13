@@ -130,23 +130,15 @@ def format_nudenet_comparison(
     detection_interv: dict | None,
 ) -> str:
     """
-    Format NudeNet detection results as a comparison table in Markdown.
+    Format NudeNet detection results as a comparison table in HTML.
 
     Args:
         detection_orig: Detection results for original image
         detection_interv: Detection results for intervention image
 
     Returns:
-        Markdown formatted comparison table
+        HTML formatted comparison table
     """
-    # Build comparison table
-    lines = [
-        '<div class="nudenet-scores-comparison">',
-        "",
-        "| Body Part | Original | Intervention |",
-        "|-----------|----------|--------------|",
-    ]
-
     # Get all detections from both
     orig_scores = {}
     interv_scores = {}
@@ -168,36 +160,90 @@ def format_nudenet_comparison(
     # Combine all labels
     all_labels = set(orig_scores.keys()) | set(interv_scores.keys())
 
+    # Build table rows
     if not all_labels:
-        lines.append("| No detections | - | - |")
+        table_rows = '<tr><td colspan="3" style="text-align: center; color: var(--text-secondary);">No detections</td></tr>'
     else:
         # Sort by original score descending
         sorted_labels = sorted(all_labels, key=lambda x: orig_scores.get(x, 0.0), reverse=True)
-
+        rows = []
         for label in sorted_labels:
             orig_val = orig_scores.get(label, 0.0)
             interv_val = interv_scores.get(label, 0.0)
 
             # Format with color coding
-            orig_str = get_score_cell_text(orig_val)
-            interv_str = get_score_cell_text(interv_val)
+            orig_str = get_score_cell_html(orig_val)
+            interv_str = get_score_cell_html(interv_val)
 
             # Add indicators for unsafe labels
             if label in UNSAFE_LABELS:
-                label_display = f"⚠️ {label}"
+                label_display = f'<span class="unsafe-label">⚠️ {label}</span>'
             else:
                 label_display = label
 
-            lines.append(f"| {label_display} | {orig_str} | {interv_str} |")
+            rows.append(
+                f"<tr><td>{label_display}</td><td>{orig_str}</td><td>{interv_str}</td></tr>"
+            )
+        table_rows = "\n                ".join(rows)
 
-    lines.append("")
-    lines.append("</div>")
+    html = f"""
+<div class="analysis-container nudenet-container">
+    <div class="analysis-header">
+        <h4>NudeNet Detection Analysis</h4>
+        <p class="analysis-description">
+            <strong>NudeNet</strong> is an NSFW object detection model that identifies exposed body parts in images.
+            Each detection includes a confidence score (0-100%) indicating detection certainty.
+            Scores above <strong>50%</strong> are considered significant. ⚠️ marks unsafe content categories.
+        </p>
+    </div>
 
-    return "\n".join(lines)
+    <div class="analysis-content">
+        <table class="detection-table">
+            <thead>
+                <tr>
+                    <th>Body Part</th>
+                    <th>Original</th>
+                    <th>Intervention</th>
+                </tr>
+            </thead>
+            <tbody>
+                {table_rows}
+            </tbody>
+        </table>
+    </div>
+</div>
+"""
+    return html
 
 
+def get_score_cell_html(score: float) -> str:
+    """Get formatted score HTML for table cell.
+
+    Args:
+        score: Detection score (0.0 to 1.0)
+
+    Returns:
+        HTML formatted score string with color indicator
+    """
+    if score >= 0.75:
+        css_class = "score-high"
+        emoji = "🔴"
+    elif score >= 0.5:
+        css_class = "score-medium"
+        emoji = "🟠"
+    elif score >= 0.25:
+        css_class = "score-low"
+        emoji = "🟡"
+    else:
+        css_class = "score-safe"
+        emoji = "🟢"
+
+    return f'<span class="score-value {css_class}">{emoji} {score:.0%}</span>'
+
+
+# Keep old function for backward compatibility
 def get_score_cell_text(score: float) -> str:
-    """Get formatted score text for table cell.
+    """Get formatted score text for table cell (deprecated, use get_score_cell_html).
 
     Args:
         score: Detection score (0.0 to 1.0)
@@ -205,15 +251,4 @@ def get_score_cell_text(score: float) -> str:
     Returns:
         Formatted score string
     """
-    emoji = ""
-
-    if score >= 0.75:
-        emoji = "🔴"
-    elif score >= 0.5:
-        emoji = "🟠"
-    elif score >= 0.25:
-        emoji = "🟡"
-    elif score >= 0.0:
-        emoji = "🟢"
-
-    return f"{emoji} {score:.2%}"
+    return get_score_cell_html(score)

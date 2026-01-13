@@ -1431,10 +1431,10 @@ pre.code [class*="timestamp"] {
   display: none !important;
 }
 
-/* ===== NUDENET SCORES COMPARISON TABLE ===== */
+/* ===== LEGACY NUDENET STYLES (backwards compatibility) ===== */
+/* These are replaced by .nudenet-container in the shared analysis styles */
 .nudenet-scores-comparison {
   width: 100% !important;
-  margin-top: 1rem;
 }
 
 .nudenet-scores-comparison > [data-testid="status-tracker"] {
@@ -1444,29 +1444,33 @@ pre.code [class*="timestamp"] {
 .nudenet-scores-comparison table {
   width: 100% !important;
   border-collapse: collapse;
-  font-family: "JetBrains Mono", monospace;
+  font-family: "Inter", sans-serif;
   font-size: 0.9rem;
 }
 
 .nudenet-scores-comparison th,
 .nudenet-scores-comparison td {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--border-default);
+  padding: 10px 12px;
+  text-align: left !important;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .nudenet-scores-comparison th {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .nudenet-scores-comparison td {
-  background: var(--bg-secondary);
+  background: transparent;
   color: var(--text-secondary);
 }
 
 .nudenet-scores-comparison tr:hover td {
-  background: var(--bg-tertiary);
+  background: var(--bg-accent);
 }
 
 /* ===== TOAST NOTIFICATIONS ===== */
@@ -1619,7 +1623,167 @@ pre.code [class*="timestamp"] {
   display: none !important;
 }
 
-/* ===== CLIP SCORES DISPLAY ===== */
+/* ===================================================================
+   SHARED ANALYSIS CONTAINER STYLES (CLIP & NudeNet)
+   =================================================================== */
+
+/* ===== BASE ANALYSIS CONTAINER ===== */
+.analysis-container {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 8px !important;
+  padding: 20px !important;
+  margin-top: 16px !important;
+}
+
+.analysis-header {
+  margin-bottom: 16px !important;
+}
+
+.analysis-header h4 {
+  font-family: "Inter", sans-serif !important;
+  font-size: 1.1rem !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  margin: 0 0 8px 0 !important;
+}
+
+.analysis-description {
+  font-size: 0.875rem !important;
+  color: var(--text-secondary) !important;
+  line-height: 1.5 !important;
+  margin: 0 !important;
+}
+
+.analysis-description strong {
+  color: var(--accent-primary) !important;
+}
+
+.analysis-content {
+  margin-top: 12px !important;
+}
+
+/* ===== SHARED SCORE VALUE STYLES ===== */
+.score-value {
+  font-family: "JetBrains Mono", monospace !important;
+  font-weight: 600 !important;
+}
+
+.score-value.score-high {
+  color: var(--accent-error) !important;
+}
+
+.score-value.score-medium {
+  color: #e09f3e !important;
+}
+
+.score-value.score-low {
+  color: var(--accent-warning) !important;
+}
+
+.score-value.score-safe {
+  color: var(--accent-success) !important;
+}
+
+.score-value.score-na {
+  color: var(--text-tertiary) !important;
+}
+
+/* ===== CLIP SCORES SPECIFIC ===== */
+.clip-container .clip-scores-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 16px !important;
+}
+
+@media (max-width: 768px) {
+  .clip-container .clip-scores-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.clip-score-card {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 6px !important;
+  padding: 16px !important;
+  text-align: center !important;
+  transition: all var(--timing-fast) var(--ease-out) !important;
+}
+
+.clip-score-card:hover {
+  border-color: var(--border-accent) !important;
+  background: var(--bg-accent) !important;
+}
+
+.clip-score-label {
+  font-family: "Inter", sans-serif !important;
+  font-size: 0.9rem !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 4px !important;
+}
+
+.clip-score-sublabel {
+  font-size: 0.75rem !important;
+  color: var(--text-tertiary) !important;
+  margin-bottom: 12px !important;
+}
+
+.clip-score-card .score-value {
+  font-size: 1.5rem !important;
+  display: block !important;
+}
+
+/* ===== NUDENET DETECTION SPECIFIC ===== */
+.nudenet-container .detection-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  font-family: "Inter", sans-serif !important;
+  font-size: 0.9rem !important;
+}
+
+.nudenet-container .detection-table th,
+.nudenet-container .detection-table td {
+  padding: 10px 12px !important;
+  text-align: left !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+}
+
+.nudenet-container .detection-table th {
+  background: var(--bg-tertiary) !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+  font-size: 0.85rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.03em !important;
+}
+
+.nudenet-container .detection-table td {
+  color: var(--text-secondary) !important;
+}
+
+.nudenet-container > tbody,
+tr,
+th,
+td {
+  border: 1px solid var(--border-default) !important;
+}
+
+.nudenet-container .detection-table tbody tr:hover td {
+  background: var(--bg-accent) !important;
+}
+
+.nudenet-container .detection-table .score-value {
+  font-size: 0.9rem !important;
+}
+
+.nudenet-container .unsafe-label {
+  color: var(--accent-warning) !important;
+  font-weight: 500 !important;
+}
+
+/* ===== LEGACY CLIP STYLES (backwards compatibility) ===== */
 .clip-scores-container {
   background: var(--bg-secondary) !important;
   border: 1px solid var(--border-default) !important;
@@ -1662,34 +1826,6 @@ pre.code [class*="timestamp"] {
   .clip-scores-grid {
     grid-template-columns: 1fr !important;
   }
-}
-
-.clip-score-card {
-  background: var(--bg-tertiary) !important;
-  border: 1px solid var(--border-default) !important;
-  border-radius: 6px !important;
-  padding: 16px !important;
-  text-align: center !important;
-  transition: all var(--timing-fast) var(--ease-out) !important;
-}
-
-.clip-score-card:hover {
-  border-color: var(--border-accent) !important;
-  background: var(--bg-accent) !important;
-}
-
-.clip-score-label {
-  font-family: "Inter", sans-serif !important;
-  font-size: 0.9rem !important;
-  font-weight: 500 !important;
-  color: var(--text-primary) !important;
-  margin-bottom: 4px !important;
-}
-
-.clip-score-sublabel {
-  font-size: 0.75rem !important;
-  color: var(--text-tertiary) !important;
-  margin-bottom: 12px !important;
 }
 
 .clip-score-value {

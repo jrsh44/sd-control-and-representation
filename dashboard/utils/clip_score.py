@@ -203,59 +203,41 @@ def format_clip_scores(scores: dict) -> str:
     # Format individual scores
     def format_score(score: float | None) -> str:
         if score is None:
-            return '<span class="clip-score-value">—</span>'
-        # Color indicators commented out - showing plain values only
-        # emoji, css_class = get_score_indicator(score)
-        # return f'<span class="clip-score-value {css_class}">{emoji} {score:.1f}</span>'
-        return f'<span class="clip-score-value">{score:.1f}</span>'
+            return '<span class="score-value score-na">—</span>'
+        return f'<span class="score-value">{score:.1f}</span>'
 
     html = f"""
-<div class="clip-scores-container">
-    <div class="clip-scores-header">
-        <h4>📊 CLIP Score Analysis</h4>
-        <p class="clip-scores-description">
-            CLIP Score measures semantic similarity between text and images (0-100).
+<div class="analysis-container clip-container">
+    <div class="analysis-header">
+        <h4>CLIP Score Analysis</h4>
+        <p class="analysis-description">
+            <strong>CLIP Score</strong> measures semantic similarity between text and images (0-100).
             Higher scores indicate better alignment. For text-to-image, scores of
             <strong>25-35</strong> typically indicate good prompt adherence.
         </p>
     </div>
 
-    <div class="clip-scores-grid">
-        <div class="clip-score-card">
-            <div class="clip-score-label">🖼️ Original ↔ Intervention</div>
-            <div class="clip-score-sublabel">Image-to-image similarity</div>
-            {format_score(image_sim)}
-        </div>
+    <div class="analysis-content">
+        <div class="clip-scores-grid">
+            <div class="clip-score-card">
+                <div class="clip-score-label">🖼️ Original ↔ Intervention</div>
+                <div class="clip-score-sublabel">Image-to-image similarity</div>
+                {format_score(image_sim)}
+            </div>
 
-        <div class="clip-score-card">
-            <div class="clip-score-label">📝 Prompt → Original</div>
-            <div class="clip-score-sublabel">Text-to-image alignment</div>
-            {format_score(prompt_orig)}
-        </div>
+            <div class="clip-score-card">
+                <div class="clip-score-label">📝 Prompt → Original</div>
+                <div class="clip-score-sublabel">Text-to-image alignment</div>
+                {format_score(prompt_orig)}
+            </div>
 
-        <div class="clip-score-card">
-            <div class="clip-score-label">📝 Prompt → Intervention</div>
-            <div class="clip-score-sublabel">Text-to-image alignment</div>
-            {format_score(prompt_interv)}
+            <div class="clip-score-card">
+                <div class="clip-score-label">📝 Prompt → Intervention</div>
+                <div class="clip-score-sublabel">Text-to-image alignment</div>
+                {format_score(prompt_interv)}
+            </div>
         </div>
     </div>
-
-    <!-- Legend commented out - showing plain values only
-    <div class="clip-scores-legend">
-        <span class="legend-item">
-            <span class="legend-dot score-excellent">🟢</span> Excellent (≥30)
-        </span>
-        <span class="legend-item">
-            <span class="legend-dot score-good">🟡</span> Good (25-30)
-        </span>
-        <span class="legend-item">
-            <span class="legend-dot score-moderate">🟠</span> Moderate (20-25)
-        </span>
-        <span class="legend-item">
-            <span class="legend-dot score-low">🔴</span> Low (&lt;20)
-        </span>
-    </div>
-    -->
 </div>
 """
     return html
