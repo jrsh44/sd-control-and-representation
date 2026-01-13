@@ -89,6 +89,7 @@ class DashboardState:
         self.sae_model = None
         self.sae_stats = None  # SAE statistics for RepresentationModifier
         self.nudenet_detector = None
+        self.clip_model = None  # CLIP model for similarity scoring
 
         # Model load times
         self.load_times: Dict[str, Optional[float]] = {

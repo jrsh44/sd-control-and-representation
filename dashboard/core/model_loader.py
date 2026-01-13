@@ -94,11 +94,49 @@ def load_sd_model(
                     pass
 
         state.log("SD model loaded successfully", "success")
+        print("SD model loaded successfully")
         state.sd_pipe = pipe
+
+        # Also load CLIP model for similarity scoring (silently)
+        try:
+            load_clip_model(state, device=device)
+            print("CLIP model pre-loaded successfully")
+        except Exception as clip_e:
+            # Log but don't fail - CLIP can be loaded later during analysis
+            state.log(f"CLIP pre-load skipped: {clip_e}", "info")
+
         return pipe
     except Exception as e:
         state.log(f"Failed to load SD model: {str(e)}", "error")
         raise
+
+
+def load_clip_model(
+    state: "DashboardState",
+    device: str = "cpu",
+) -> Any:
+    """Load CLIP model for similarity scoring.
+
+    Args:
+        state: Dashboard state to store the model
+        device: Device to load model on ('cpu' or 'cuda')
+
+    Returns:
+        Loaded CLIPScore model
+    """
+    if state.clip_model is not None:
+        return state.clip_model
+
+    try:
+        from torchmetrics.multimodal import CLIPScore
+
+        clip_model = CLIPScore(model_name_or_path="openai/clip-vit-large-patch14")
+        clip_model = clip_model.to(device)
+        state.clip_model = clip_model
+        state.clip_device = device
+        return clip_model
+    except Exception as e:
+        raise RuntimeError(f"Failed to load CLIP model: {e}") from e
 
 
 def load_sae_model(
