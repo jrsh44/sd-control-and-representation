@@ -4,7 +4,7 @@ uv run scripts/sd_v1_5/generate_unlearned_cache_batch.py \
     --results_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
     --prompts_csv /mnt/evafs/groups/mi2lab/jcwalina/results/test/prompts/prompts.csv \
     --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096 \
-    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_sums/merged_feature_sums.pt \
+    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_merged/merged_feature_sums.pt \
     --epsilon 1e-8 \
     --ignore_modification false \
     --layers UNET_UP_1_ATT_1 UNET_DOWN_2_RES_0 \
