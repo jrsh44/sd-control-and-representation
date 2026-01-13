@@ -636,7 +636,8 @@ def create_dashboard():
 
                 # Generate with intervention
                 try:
-                    device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
+                    # Use same device as SD pipeline for consistency
+                    device = str(state.sd_pipe.device)
 
                     valid_concepts = []
                     for config in concept_configs:
@@ -735,10 +736,10 @@ def create_dashboard():
                 # Format combined comparison table
                 scores_comparison = format_nudenet_comparison(detection_orig, detection_interv)
 
-                # Calculate CLIP scores
-                device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
+                # Calculate CLIP scores (use same device as SD pipeline)
+                clip_device = str(state.sd_pipe.device)
                 clip_scores = calculate_clip_scores(
-                    prompt, original_image, intervened_image, device, state
+                    prompt, original_image, intervened_image, clip_device, state
                 )
                 clip_scores_html = format_clip_scores(clip_scores)
 
@@ -818,8 +819,10 @@ def create_dashboard():
                 scores_comparison = format_nudenet_comparison(detection_orig, None)
 
                 # Calculate CLIP scores (only for original since no intervention)
-                device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
-                clip_scores = calculate_clip_scores(prompt, original_image, None, device, state)
+                clip_device = str(state.sd_pipe.device)
+                clip_scores = calculate_clip_scores(
+                    prompt, original_image, None, clip_device, state
+                )
                 clip_scores_html = format_clip_scores(clip_scores)
 
                 state.system_state = SystemState.IDLE
