@@ -128,8 +128,9 @@ def process_single_image(
         # Parse path to extract parameters
         params = parse_image_path(image_path, source_path)
 
-        # Calculate nudity score
-        score = nudenet.score_image(str(image_path))
+        # Calculate nudity score filtered by concept
+        concept = params["concept"]
+        score = nudenet.score_image_by_concept(str(image_path), concept)
 
         # Return results
         return {
