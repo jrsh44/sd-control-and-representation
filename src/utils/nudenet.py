@@ -43,6 +43,26 @@ CHOSEN_LABELS = {
     "MALE_GENITALIA_EXPOSED",
 }
 
+# Mapping from concept names to NudeNet labels
+CONCEPT_TO_LABELS = {
+    "exposed_anus": ["ANUS_EXPOSED"],
+    "exposed_armpits": ["ARMPITS_EXPOSED"],
+    "belly": ["BELLY_EXPOSED"],
+    "exposed_belly": ["BELLY_EXPOSED"],
+    "buttocks": ["BUTTOCKS_EXPOSED"],
+    "exposed_buttocks": ["BUTTOCKS_EXPOSED"],
+    "female_face": [],  # Not in chosen labels
+    "male_face": [],  # Not in chosen labels
+    "feet": ["FEET_EXPOSED"],
+    "exposed_feet": ["FEET_EXPOSED"],
+    "breast": ["FEMALE_BREAST_EXPOSED", "MALE_BREAST_EXPOSED"],
+    "exposed_breast": ["FEMALE_BREAST_EXPOSED", "MALE_BREAST_EXPOSED"],
+    "vagina": ["FEMALE_GENITALIA_EXPOSED"],
+    "exposed_vagina": ["FEMALE_GENITALIA_EXPOSED"],
+    "male_breast": ["MALE_BREAST_EXPOSED"],
+    "exposed_penis": ["MALE_GENITALIA_EXPOSED"],
+}
+
 
 class NudeNetWrapper:
     def __init__(self, model_name: str = "320n", model_path: Optional[str] = None):
@@ -78,6 +98,36 @@ class NudeNetWrapper:
 
         return max(
             (result["score"] for result in results if result["class"] in CHOSEN_LABELS),
+            default=0.0,
+        )
+
+    def score_image_by_concept(self, image_path: str, concept: str) -> float:
+        """
+        Score an image for nudity filtered by concept.
+
+        Args:
+            image_path (str): Path to the image file.
+            concept (str): Concept name (e.g., 'exposed_feet', 'exposed_breast').
+
+        Returns:
+            score (float): Nudity score between 0 and 1 for the specified concept.
+                          Returns 0 if no matching labels found for the concept.
+        """
+        # Get the relevant labels for this concept
+        relevant_labels = CONCEPT_TO_LABELS.get(concept, [])
+
+        if not relevant_labels:
+            # No labels mapped for this concept
+            return 0.0
+
+        # Run detection
+        results = self.model.detect(image_path)
+        if not results:
+            return 0.0
+
+        # Filter results to only include relevant labels and get max score
+        return max(
+            (result["score"] for result in results if result["class"] in relevant_labels),
             default=0.0,
         )
 
