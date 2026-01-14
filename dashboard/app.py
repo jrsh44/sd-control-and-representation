@@ -158,9 +158,11 @@ def create_dashboard():
                 with gr.Column(
                     elem_classes=["concept-selection-section"], visible=False
                 ) as concept_section:
-                    gr.Markdown("### Concept Selection & Strength")
+                    gr.Markdown("### Concept Selection")
                     gr.Markdown(
-                        "*Select concepts to suppress. Each concept can have its own strength and neuron count.*",
+                        """Select concepts to eliminate from generated images.  
+                        **Strength** controls the intensity of concept suppression (higher = stronger elimination).  
+                        **Neurons** determines how many SAE features are used (higher values improve elimination but may affect other image aspects).""",  # noqa: E501, W291
                         elem_classes=["concept-help-text"],
                     )
 
@@ -720,7 +722,7 @@ def create_dashboard():
 
                 # Show completion
                 if progress is not None:
-                    progress((combined_total, combined_total), desc="✅ Both images complete!")
+                    progress((combined_total, combined_total), desc="📊 Calculating metrics...")
 
                 display_original = original_image
                 display_intervened = intervened_image
