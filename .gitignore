@@ -64,3 +64,10 @@ Thumbs.db
 
 # WANDB
 wandb/
+
+# images
+**/images_global_neurons/**/*.png
+**/images_timestep_neurons/**/*.png
+
+# cache
+.cache/
