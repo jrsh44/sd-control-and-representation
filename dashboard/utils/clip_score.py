@@ -209,7 +209,6 @@ def format_clip_scores(scores: dict) -> str:
     html = f"""
 <div class="analysis-container clip-container">
     <div class="analysis-header">
-        <h4>CLIP Score Analysis</h4>
         <p class="analysis-description">
             <strong>CLIP Score</strong> measures semantic similarity between text and images (0-100).
             Higher scores indicate better alignment. For text-to-image, scores of
