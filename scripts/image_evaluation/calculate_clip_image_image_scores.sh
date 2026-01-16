@@ -17,8 +17,8 @@
 # sbatch scripts/image_evaluation/calculate_clip_image_image_scores.sh
 
 # Set source folder and output CSV
-SOURCE_FOLDER="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images"
-OUTPUT_CSV="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/clip_image_scores.csv"
+SOURCE_FOLDER="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images_per_timestep"
+OUTPUT_CSV="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/scores_per_timestep/clip_image_scores.csv"
 
 # Navigate to project directory
 cd /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation
