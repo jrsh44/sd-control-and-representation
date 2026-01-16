@@ -1087,6 +1087,54 @@ pre.code [class*="timestamp"] {
   border-bottom: 1px solid var(--border-subtle) !important;
 }
 
+/* ===== INNER SECTIONS ===== */
+/* Inner sections are nested accordions within main sections - styled with borders like main sections */
+.inner-section {
+  background: var(--bg-tertiary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 6px !important;
+  padding: 0 !important;
+  margin-top: 12px !important;
+  margin-bottom: 8px !important;
+  box-shadow: none;
+  transition: border-color var(--timing-medium) var(--ease-out);
+}
+
+.inner-section > .label-wrap {
+  width: 100% !important;
+  padding: 12px 16px !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 6px 6px 0 0 !important;
+  border-bottom: 1px solid var(--border-default) !important;
+}
+
+.inner-section > .label-wrap:hover {
+  background: var(--bg-accent) !important;
+}
+
+/* Separator line when accordion is open */
+.inner-section[open] > .label-wrap {
+  border-bottom: 1px solid var(--border-default) !important;
+  border-radius: 6px 6px 0 0 !important;
+}
+
+/* Content inside inner section accordion */
+.inner-section > div {
+  gap: 12px !important;
+  padding: 16px !important;
+}
+
+/* Inner section title styling */
+.inner-section > .label-wrap span {
+  font-family: "Inter", sans-serif !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  color: var(--text-primary) !important;
+}
+
 /* Remove borders from columns within main sections */
 .main-section .gr-column,
 .main-section .column {
@@ -1293,7 +1341,11 @@ pre.code [class*="timestamp"] {
   display: none !important;
 }
 
-.icon-button-wrapper {
+.image-container > .icon-button-wrapper {
+  display: none !important;
+}
+
+.gallery-container > .preview > .icon-button-wrapper > :not(:last-child) {
   display: none !important;
 }
 
@@ -1392,7 +1444,7 @@ pre.code [class*="timestamp"] {
 }
 
 .result-image-bordered img {
-  border-radius: 6px !important;
+  border-radius: 8px !important;
 }
 
 /* ===== STATUS TRACKER - LOADING OVERLAY ===== */
@@ -1427,12 +1479,54 @@ pre.code [class*="timestamp"] {
 .pending,
 .translucent {
   border-color: transparent !important;
+  border: none !important;
 }
 
 /* Hide any orange animations from Gradio */
 .generating::before,
 .pending::before {
   display: none !important;
+}
+
+/* Hide loading borders on heatmap accordion when generating */
+[id*="heatmap"].pending {
+  border: none !important;
+}
+
+.inner-section.pending {
+  border-color: var(--border-default) !important;
+}
+
+/* Don't show pending borders on the accordion itself during generation */
+.accordion.pending {
+  border: none !important;
+}
+
+/* Completely hide those blue horizontal loading bars */
+.wrap.pending,
+.wrap.generating {
+  border-top: none !important;
+  border-bottom: none !important;
+}
+
+.wrap.pending::before,
+.wrap.pending::after,
+.wrap.generating::before,
+.wrap.generating::after {
+  display: none !important;
+}
+
+/* Hide any border animations during loading */
+[data-testid="block-container"].pending {
+  border: 1px solid var(--border-default) !important;
+}
+
+/* Specifically target the heatmap section's loading borders */
+#component-heatmap .wrap.pending,
+[id*="heatmap"] .wrap.pending {
+  border: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
 }
 
 /* ===== LEGACY NUDENET STYLES (backwards compatibility) ===== */
@@ -1637,7 +1731,6 @@ pre.code [class*="timestamp"] {
   border: 1px solid var(--border-default) !important;
   border-radius: 8px !important;
   padding: 20px !important;
-  margin-top: 16px !important;
 }
 
 .analysis-header {
@@ -1883,4 +1976,33 @@ td {
 
 input[type="radio"] {
   border-radius: 50% !important;
+}
+
+.heatmap-controls-row {
+  display: flex !important;
+  gap: 16px !important;
+  align-items: center !important;
+}
+
+.heatmap-controls-row > .form > .block > .container {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.heatmap-gallery.block {
+  border: 1px solid var(--border-accent) !important;
+  border-radius: 8px !important;
+}
+
+.gallery-container {
+  border: 1px solid var(--border-accent) !important;
+  border-radius: 8px !important;
+}
+
+.gallery-container > .fixed-height {
+  max-height: none !important;
+}
+
+.no-status-tracker [data-testid="status-tracker"] {
+  display: none !important;
 }
