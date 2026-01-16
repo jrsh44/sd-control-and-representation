@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Dict, List
 
 import torch
+import torchvision.transforms as transforms
+from PIL import Image
 from torchmetrics.multimodal.clip_score import CLIPScore
 
 # Add project root to path
@@ -196,6 +198,14 @@ def evaluate_prompt_clip_scores(
     writer.writeheader()
     csvfile.flush()
 
+    # Image transformation for CLIPScore
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Lambda(lambda x: (x * 255).byte()),  # Convert to 0-255 range
+        ]
+    )
+
     # Process images sequentially
     num_processed = 0
     total_score = 0.0
@@ -222,8 +232,12 @@ def evaluate_prompt_clip_scores(
                 concept_name = format_concept_name(concept)
                 filled_prompt = prompt_template.replace("{}", concept_name)
 
+                # Load and convert image to tensor
+                img = Image.open(image_path).convert("RGB")
+                img_tensor = transform(img)
+
                 # Calculate CLIP score between prompt and image
-                score = metric(str(image_path), filled_prompt).item()
+                score = metric(img_tensor, filled_prompt).item()
 
                 # Create result
                 result = {
