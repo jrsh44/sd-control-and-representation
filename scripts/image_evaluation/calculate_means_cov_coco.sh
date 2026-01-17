@@ -1,31 +1,32 @@
 #!/bin/bash
 ################################################################################
-# SLURM Job Script - FID Score Calculation
+# SLURM Job Script - COCO Statistics Extraction
 #
 # Purpose:
-#   Calculate FID scores between reference images and multiple subdirectories
+#   Extract and save Inception v3 statistics from COCO-2017 validation set
+#   for FID calculation
 #
 # Usage:
-#   sbatch scripts/image_evaluation/fid_script.sh
+#   sbatch scripts/image_evaluation/calculate_means_cov_coco.sh
 #
 # Output:
-#   - FID results saved to file
-#   - Logs: logs/fid_job_{JOB_ID}.log
+#   - Mean and covariance matrices saved as .npy files
+#   - Logs: logs/coco_stats_%j.log
 ################################################################################
 
 #==============================================================================
 # RESOURCE ALLOCATION
 #==============================================================================
 #SBATCH --account mi2lab
-#SBATCH --job-name fid_calc
-#SBATCH --time 0-02:00:00
+#SBATCH --job-name coco_stats
+#SBATCH --time 0-04:00:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:0
-#SBATCH --cpus-per-task 8
-#SBATCH --mem 32G
+#SBATCH --cpus-per-task 16
+#SBATCH --mem 64G
 #SBATCH --partition short
-#SBATCH --output logs/fid_job_%j.log  # %j=job ID
+#SBATCH --output logs/coco_stats_%j.log  # %j=job ID
 
 # Optional email notification
 # #SBATCH --mail-user=01180694@pw.edu.pl
@@ -41,7 +42,7 @@ set -eu
 #==============================================================================
 
 echo "=========================================="
-echo "FID Score Calculation Job"
+echo "COCO Statistics Extraction"
 echo "Job ID: ${SLURM_JOB_ID:-no_slurm_job_id}"
 echo "Running on: $(hostname)"
 echo "Start: $(date)"
@@ -62,7 +63,8 @@ fi
 
 echo ""
 echo "Environment Configuration:"
-echo "  RESULTS_DIR: ${RESULTS_DIR:-Not set}"
+echo "  Python: $(which python)"
+echo "  CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-Not set}"
 echo ""
 
 #==============================================================================
@@ -70,75 +72,58 @@ echo ""
 #==============================================================================
 
 # Python script
-PYTHON_SCRIPT="scripts/image_evaluation/fid_script.py"
+PYTHON_SCRIPT="scripts/image_evaluation/calcualte_means_cov_coco.py"
 
-# Path to reference images (the baseline/original images)
-REFERENCE_PATH=""
+# Output directory for statistics
+OUTPUT_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/coco"
 
-# Path to parent directory containing subdirectories with images to compare
-SUBDIRS_PARENT_PATH=""
+# Number of COCO images to process
+NUM_IMAGES=40000
 
-# Optional: output file to save results
-OUTPUT_FILE=""
+# Classes to filter (space-separated)
+CLASSES="person"
+
+# Device (cuda or cpu)
+DEVICE="cpu"
 
 #==============================================================================
 # VALIDATION
 #==============================================================================
-if [ -z "$REFERENCE_PATH" ]; then
-  echo "ERROR: REFERENCE_PATH is not set"
-  exit 1
-fi
 
-if [ -z "$SUBDIRS_PARENT_PATH" ]; then
-  echo "ERROR: SUBDIRS_PARENT_PATH is not set"
-  exit 1
-fi
-
-if [ ! -d "$REFERENCE_PATH" ]; then
-  echo "ERROR: Reference path not found: $REFERENCE_PATH"
-  exit 1
-fi
-
-if [ ! -d "$SUBDIRS_PARENT_PATH" ]; then
-  echo "ERROR: Subdirectories parent path not found: $SUBDIRS_PARENT_PATH"
+if [ ! -f "$PYTHON_SCRIPT" ]; then
+  echo "ERROR: Python script not found: $PYTHON_SCRIPT"
   exit 1
 fi
 
 #==============================================================================
-# RUN FID CALCULATION
+# RUN COCO STATISTICS EXTRACTION
 #==============================================================================
 
 echo ""
-echo "Starting FID calculation..."
+echo "Starting COCO statistics extraction..."
 echo ""
 
 echo "Configuration:"
-echo "  Reference path: ${REFERENCE_PATH}"
-echo "  Subdirs parent: ${SUBDIRS_PARENT_PATH}"
-if [ -n "$OUTPUT_FILE" ]; then
-    echo "  Output file: ${OUTPUT_FILE}"
-fi
+echo "  Output directory: ${OUTPUT_DIR}"
+echo "  Number of images: ${NUM_IMAGES}"
+echo "  Classes: ${CLASSES}"
+echo "  Device: ${DEVICE}"
 echo "=========================================="
 
-# Build command
-CMD="uv run python ${PYTHON_SCRIPT} \
-    --reference_path \"${REFERENCE_PATH}\" \
-    --subdirs_parent_path \"${SUBDIRS_PARENT_PATH}\"
-    --output_file \"${OUTPUT_FILE}\""
-
-
-
-# Add output file if specified
-if [ -n "$OUTPUT_FILE" ]; then
-    CMD="${CMD} --output_file \"${OUTPUT_FILE}\""
-fi
-
+# Build and run command
 echo ""
 echo "Running:"
-echo "${CMD}"
+echo "uv run python ${PYTHON_SCRIPT} \\"
+echo "    --output-dir ${OUTPUT_DIR} \\"
+echo "    --num-images ${NUM_IMAGES} \\"
+echo "    --classes ${CLASSES} \\"
+echo "    --device ${DEVICE}"
 echo ""
 
-eval ${CMD}
+uv run python ${PYTHON_SCRIPT} \
+    --output-dir ${OUTPUT_DIR} \
+    --num-images ${NUM_IMAGES} \
+    --classes ${CLASSES}
 
 EXIT_CODE=$?
 
@@ -148,14 +133,13 @@ EXIT_CODE=$?
 echo ""
 echo "=========================================="
 if [ $EXIT_CODE -eq 0 ]; then
-    echo "✓ FID calculation completed successfully"
-    echo "  Reference: ${REFERENCE_PATH}"
-    echo "  Compared with: ${SUBDIRS_PARENT_PATH}"
-    if [ -n "$OUTPUT_FILE" ]; then
-        echo "  Results saved to: ${OUTPUT_FILE}"
-    fi
+    echo "✓ COCO statistics extraction completed successfully"
+    echo "  Output directory: ${OUTPUT_DIR}"
+    echo "  Files created:"
+    echo "    - coco2017_val_${NUM_IMAGES}_${CLASSES}_mean.npy"
+    echo "    - coco2017_val_${NUM_IMAGES}_${CLASSES}_cov.npy"
 else
-    echo "✗ FID calculation FAILED (code: ${EXIT_CODE})"
+    echo "✗ COCO statistics extraction FAILED (code: ${EXIT_CODE})"
 fi
 echo "End: $(date)"
 echo "=========================================="
