@@ -101,3 +101,115 @@ sae_models:
       - id: "male_face"
         name: "male face"
         description: "Facial features identifying male person"
+
+  - id: "nudity_topk16"
+    name: "Nudity SAE (Top-K 16)"
+    
+    hyperparameters:
+      topk: 16
+      learning_rate: 5.0e-4
+      warmup_steps: 100000
+      auxiliary_loss: 0.03125
+      epochs: 2
+      batch_size: 4096
+      nb_concepts: 40960
+    
+    files:
+      model_dir: "cc3m-wds_nudity/unet_up_1_att_1/exp32_topk16_lr5em4_warmup100000_aux003125_ep2_bs4096"
+      model_file: "model.pt"
+      feature_sums_file: "exp32_topk16/merged_feature_sums.pt"
+    
+    layer:
+      id: "UNET_UP_1_ATT_1"
+      path: "unet.up_blocks.1.attentions.1.transformer_blocks.0"
+    
+    concepts:
+      - id: "exposed_anus"
+        name: "anus"
+        description: "Visible anus without clothing coverage"
+      - id: "exposed_armpits"
+        name: "armpits"
+        description: "Uncovered underarm area"
+      - id: "exposed_belly"
+        name: "belly"
+        description: "Bare stomach or abdominal area"
+      - id: "exposed_buttocks"
+        name: "buttocks"
+        description: "Visible buttocks without clothing"
+      - id: "exposed_feet"
+        name: "feet"
+        description: "Bare feet without shoes or socks"
+      - id: "exposed_breast"
+        name: "female breast"
+        description: "Visible female breast without coverage"
+      - id: "male_breast"
+        name: "male breast"
+        description: "Male chest area"
+      - id: "exposed_vagina"
+        name: "female genitalia"
+        description: "Visible female genitalia"
+      - id: "exposed_penis"
+        name: "male genitalia"
+        description: "Visible male genitalia"
+      - id: "female_face"
+        name: "female face"
+        description: "Facial features identifying female person"
+      - id: "male_face"
+        name: "male face"
+        description: "Facial features identifying male person"
+
+  - id: "nudity_topk64"
+    name: "Nudity SAE (Top-K 64)"
+    
+    hyperparameters:
+      topk: 64
+      learning_rate: 1.0e-3
+      warmup_steps: 100000
+      auxiliary_loss: 0.0625
+      epochs: 2
+      batch_size: 4096
+      nb_concepts: 46080
+    
+    files:
+      model_dir: "cc3m-wds_nudity/unet_up_1_att_1/exp36_topk64_lr1em3_warmup100000_aux00625_ep2_bs4096"
+      model_file: "model.pt"
+      feature_sums_file: "exp36_topk64/merged_feature_sums.pt"
+    
+    layer:
+      id: "UNET_UP_1_ATT_1"
+      path: "unet.up_blocks.1.attentions.1.transformer_blocks.0"
+    
+    concepts:
+      - id: "exposed_anus"
+        name: "anus"
+        description: "Visible anus without clothing coverage"
+      - id: "exposed_armpits"
+        name: "armpits"
+        description: "Uncovered underarm area"
+      - id: "exposed_belly"
+        name: "belly"
+        description: "Bare stomach or abdominal area"
+      - id: "exposed_buttocks"
+        name: "buttocks"
+        description: "Visible buttocks without clothing"
+      - id: "exposed_feet"
+        name: "feet"
+        description: "Bare feet without shoes or socks"
+      - id: "exposed_breast"
+        name: "female breast"
+        description: "Visible female breast without coverage"
+      - id: "male_breast"
+        name: "male breast"
+        description: "Male chest area"
+      - id: "exposed_vagina"
+        name: "female genitalia"
+        description: "Visible female genitalia"
+      - id: "exposed_penis"
+        name: "male genitalia"
+        description: "Visible male genitalia"
+      - id: "female_face"
+        name: "female face"
+        description: "Facial features identifying female person"
+      - id: "male_face"
+        name: "male face"
+        description: "Facial features identifying male person"

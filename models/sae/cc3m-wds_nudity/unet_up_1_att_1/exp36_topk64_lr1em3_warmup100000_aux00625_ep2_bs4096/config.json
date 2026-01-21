@@ -1,0 +1,23 @@
+{
+  "input_dim": 1280,
+  "nb_concepts": 46080,
+  "expansion_factor": 36,
+  "top_k": 64,
+  "learning_rate": 0.001,
+  "num_epochs": 2,
+  "batch_size": 4096,
+  "datasets_name": "cc3m-wds_nudity",
+  "dataset_paths": [
+    "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/cc3m-wds/representations/unet_up_1_att_1",
+    "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1"
+  ],
+  "validation_percent": 10,
+  "validation_seed": 42,
+  "aux_loss_alpha": 0.0625,
+  "scheduler": {
+    "enabled": true,
+    "warmup_steps": 100000,
+    "warmup_start_factor": 0.01,
+    "min_lr_ratio": 0.1
+  }
+}
