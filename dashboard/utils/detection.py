@@ -77,7 +77,7 @@ def detect_nudity_coordinates(
 
         # Filter for unsafe labels with sufficient confidence
         unsafe_detections = [
-            det for det in detections if det["class"] in UNSAFE_LABELS and det["score"] > 0.5
+            det for det in detections if det["class"] in UNSAFE_LABELS and det["score"] > 0.45
         ]
 
         return unsafe_detections
