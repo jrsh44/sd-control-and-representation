@@ -1,7 +1,10 @@
 from io import BytesIO
-from typing import Callable, List
+from pathlib import Path
+from typing import Callable, Dict, List
 
+import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from IPython.display import Image as IPImage
 from IPython.display import display
@@ -169,3 +172,106 @@ def create_visualization_callback(pipe, storage_list: List[Image.Image]) -> Call
         return callback_kwargs
 
     return capture_step_visualization
+
+
+def create_heatmaps_and_overlay(
+    activations: Dict[int, Dict[int, np.ndarray]],
+    images: Dict[int, Image.Image],
+    output_path: Path,
+    prompt: str,
+    colormap: int = cv2.COLORMAP_JET,
+    alpha: float = 0.4,
+) -> None:
+    """
+    Create heatmaps from SAE feature activations and overlay on images.
+
+    Args:
+        activations: Dict[timestep -> Dict[feature_idx -> activation_array]]
+                     where activation_array is 1D array of length seq_len
+        images: Dict[timestep -> PIL.Image] - images to overlay on
+        output_path: Base path for saving results
+        prompt: Prompt text (for organizing output)
+        colormap: OpenCV colormap to use (default: COLORMAP_JET)
+        alpha: Overlay transparency (0=transparent, 1=opaque)
+
+    Output structure:
+        {output_path}/{prompt}/{timestep_XXX}/{feature_XXXXX}/
+            - overlay.png: Main result with heatmap overlaid on image
+            - heatmap.png: Pure heatmap visualization
+            - original.png: Original image without overlay
+    """
+    print(f"\n{'=' * 80}")
+    print("Creating Heatmaps and Overlays")
+    print(f"{'=' * 80}")
+
+    # Create output directory structure
+    prompt_safe = prompt.replace(" ", "_").replace("/", "_")[:50]
+    base_dir = output_path / prompt_safe
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Output directory: {base_dir}")
+
+    total_saved = 0
+
+    for timestep, step_activations in activations.items():
+        print(f"\nProcessing timestep {timestep}...")
+        image = images[timestep]
+        img_array = np.array(image)
+        img_h, img_w = img_array.shape[:2]
+
+        for feature_idx, activation in step_activations.items():
+            print(f"  Feature {feature_idx}...", end=" ")
+
+            # 1. Reshape activation to spatial dimensions
+            seq_len = len(activation)
+            spatial_size = int(np.sqrt(seq_len))
+
+            # Pad if not perfect square
+            if spatial_size * spatial_size != seq_len:
+                target_len = spatial_size * spatial_size
+                if seq_len < target_len:
+                    activation = np.pad(
+                        activation,
+                        (0, target_len - seq_len),
+                        mode="constant",
+                    )
+                else:
+                    activation = activation[:target_len]
+
+            heatmap_2d = activation.reshape(spatial_size, spatial_size)
+            # 2. Normalize to [0, 1]
+            if heatmap_2d.max() > heatmap_2d.min():
+                heatmap_2d = (heatmap_2d - heatmap_2d.min()) / (heatmap_2d.max() - heatmap_2d.min())
+            # 3. Resize to image dimensions
+            heatmap_resized = cv2.resize(
+                heatmap_2d,
+                (img_w, img_h),
+                # interpolation=cv2.INTER_LINEAR,
+            )
+
+            # 4. Apply colormap
+            heatmap_uint8 = (heatmap_resized * 255).astype(np.uint8)
+            heatmap_colored = cv2.applyColorMap(heatmap_uint8, colormap)
+            heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
+
+            # 5. Overlay on image
+            overlaid = cv2.addWeighted(img_array, 1 - alpha, heatmap_colored, alpha, 0)
+            overlaid_image = Image.fromarray(overlaid)
+
+            # 6. Save to {output_path}/{prompt}/{timestep}/{feature_nr}/
+            feature_dir = base_dir / f"timestep_{timestep:03d}" / f"feature_{feature_idx:05d}"
+            feature_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save overlay
+            overlay_path = feature_dir / "overlay.png"
+            overlaid_image.save(overlay_path)
+
+            # Also save pure heatmap and original image for reference
+            heatmap_img = Image.fromarray((heatmap_resized * 255).astype(np.uint8))
+            heatmap_img.save(feature_dir / "heatmap.png")
+            image.save(feature_dir / "original.png")
+
+            print(f"✓ Saved to {feature_dir.relative_to(output_path)}")
+            total_saved += 1
+
+    print(f"\n✓ Saved {total_saved} feature visualizations")
