@@ -15,9 +15,8 @@ from torch.amp.grad_scaler import GradScaler
 from torch.utils.data import DataLoader
 
 from .config import EpochMetrics, TrainingConfig, TrainingState
-from .losses import criterion_laux_detailed
+from .losses import criterion_laux
 from .metrics import (
-    ActiveFeaturesTracker,
     MetricsAggregator,
     compute_dictionary_metrics,
     compute_encoder_decoder_similarity,
@@ -253,7 +252,6 @@ class SAETrainer:
             learning_rate=self.optimizer.param_groups[0]["lr"],
             mean_activation=avg_metrics.get("mean_activation", 0),
             max_activation=avg_metrics.get("max_activation", 0),
-            active_ratio=avg_metrics.get("active_ratio", 0),
             dict_sparsity=avg_metrics.get("dict_sparsity", 0),
             dict_norms_mean=avg_metrics.get("dict_norms_mean", 0),
             data_loading_time=total_data_loading_time,
@@ -303,8 +301,8 @@ class SAETrainer:
 
         if self.scaler is not None:
             with autocast("cuda"):
-                _, z, x_hat = self.model(x)
-                recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+                pre_codes, codes, x_hat = self.model(x)
+                recon_loss, aux_loss = criterion_laux(x, x_hat, pre_codes, codes, dictionary)
                 loss = recon_loss + self.config.aux_loss_alpha * aux_loss
 
             self.scaler.scale(loss).backward()
@@ -314,8 +312,8 @@ class SAETrainer:
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
-            _, z, x_hat = self.model(x)
-            recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+            pre_codes, codes, x_hat = self.model(x)
+            recon_loss, aux_loss = criterion_laux(x, x_hat, pre_codes, codes, dictionary)
             loss = recon_loss + self.config.aux_loss_alpha * aux_loss
             loss.backward()
             if self.config.clip_grad:
@@ -326,8 +324,8 @@ class SAETrainer:
             self.scheduler.step()
 
         if self.dead_tracker is None:
-            self.dead_tracker = DeadCodeTracker(z.shape[1], self.device)
-            print(f"   Initialized dead code tracker ({z.shape[1]} features)")
+            self.dead_tracker = DeadCodeTracker(codes.shape[1], self.device)
+            print(f"   Initialized dead code tracker ({codes.shape[1]} features)")
 
         metrics = {
             "loss": loss.item(),
@@ -338,18 +336,17 @@ class SAETrainer:
         should_compute_expensive = batch_idx % self.config.log_interval == 0
 
         if should_compute_expensive:
-            self.dead_tracker.update(z.detach())
+            self.dead_tracker.update(codes.detach())
 
             if self.config.compute_expensive_metrics:
                 with torch.no_grad():
                     metrics["r2"] = compute_reconstruction_error(x, x_hat)
 
-                    sparsity_metrics = compute_sparsity_metrics(z.detach())
+                    sparsity_metrics = compute_sparsity_metrics(codes.detach())
                     metrics["l0_sparsity"] = sparsity_metrics["l0_sparsity"]
                     metrics["z_l2"] = sparsity_metrics["z_l2"]
                     metrics["mean_activation"] = sparsity_metrics["mean_activation"]
                     metrics["max_activation"] = sparsity_metrics["max_activation"]
-                    metrics["active_ratio"] = sparsity_metrics["active_ratio"]
 
                     dict_metrics = compute_dictionary_metrics(dictionary)
                     metrics["dict_sparsity"] = dict_metrics["sparsity"]
@@ -378,7 +375,6 @@ class SAETrainer:
         start_time = time.time()
         last_logged_progress = 0
         val_dead_tracker = None
-        active_features_tracker = None
 
         # Timing accumulators
         total_data_loading_time = 0.0
@@ -402,22 +398,21 @@ class SAETrainer:
 
                 if self.scaler is not None:
                     with autocast("cuda"):
-                        _, z, x_hat = self.model(x)
-                        recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+                        pre_codes, codes, x_hat = self.model(x)
+                        recon_loss, aux_loss = criterion_laux(
+                            x, x_hat, pre_codes, codes, dictionary
+                        )
                         loss = recon_loss + self.config.aux_loss_alpha * aux_loss
                 else:
-                    _, z, x_hat = self.model(x)
-                    recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, z, dictionary)
+                    pre_codes, codes, x_hat = self.model(x)
+                    recon_loss, aux_loss = criterion_laux(x, x_hat, pre_codes, codes, dictionary)
                     loss = recon_loss + self.config.aux_loss_alpha * aux_loss
 
                 # Initialize trackers
                 if val_dead_tracker is None:
-                    val_dead_tracker = DeadCodeTracker(z.shape[1], self.device)
-                    active_features_tracker = ActiveFeaturesTracker(z.shape[1], self.device)
+                    val_dead_tracker = DeadCodeTracker(codes.shape[1], self.device)
 
-                val_dead_tracker.update(z)
-                if active_features_tracker is not None:
-                    active_features_tracker.update(z)
+                val_dead_tracker.update(codes)
 
                 metrics = {
                     "loss": loss.item(),
@@ -426,11 +421,10 @@ class SAETrainer:
                     "r2": compute_reconstruction_error(x, x_hat),
                 }
 
-                sparsity_metrics = compute_sparsity_metrics(z)
+                sparsity_metrics = compute_sparsity_metrics(codes)
                 metrics["l0_sparsity"] = sparsity_metrics["l0_sparsity"]
                 metrics["z_l2"] = sparsity_metrics["z_l2"]
                 metrics["mean_activation"] = sparsity_metrics["mean_activation"]
-                metrics["active_ratio"] = sparsity_metrics["active_ratio"]
 
                 compute_end = time.time()
                 total_batch_compute_time += compute_end - compute_start
@@ -457,11 +451,6 @@ class SAETrainer:
         # Compute similarity metrics at end of validation
         similarity_metrics = compute_encoder_decoder_similarity(self.model)
 
-        # Get active features at thresholds
-        active_features = (
-            active_features_tracker.get_active_features() if active_features_tracker else {}
-        )
-
         epoch_metrics = EpochMetrics(
             loss=avg_metrics.get("loss", 0),
             recon_loss=avg_metrics.get("recon_loss", 0),
@@ -473,15 +462,9 @@ class SAETrainer:
             time_seconds=elapsed,
             num_batches=num_batches,
             mean_activation=avg_metrics.get("mean_activation", 0),
-            active_ratio=avg_metrics.get("active_ratio", 0),
             encoder_avg_max_cos=similarity_metrics.get("encoder_avg_max_cos", 0),
             decoder_avg_max_cos=similarity_metrics.get("decoder_avg_max_cos", 0),
             decoder_mean_norm=similarity_metrics.get("decoder_mean_norm", 0),
-            active_features_0_5=int(active_features.get("active_features_0.5", 0)),
-            active_features_0_4=int(active_features.get("active_features_0.4", 0)),
-            active_features_0_3=int(active_features.get("active_features_0.3", 0)),
-            active_features_0_2=int(active_features.get("active_features_0.2", 0)),
-            active_features_0_1=int(active_features.get("active_features_0.1", 0)),
             data_loading_time=total_data_loading_time,
             batch_compute_time=total_batch_compute_time,
             avg_data_loading_time=total_data_loading_time / num_batches if num_batches > 0 else 0,
@@ -494,11 +477,6 @@ class SAETrainer:
             f"R²: {epoch_metrics.r2:.4f} | "
             f"L0: {epoch_metrics.l0_sparsity:.2f} | "
             f"Dead: {epoch_metrics.dead_features_ratio * 100:.1f}%"
-        )
-        print(
-            f"   📊 Active Features - >0.5: {epoch_metrics.active_features_0_5}, "
-            f">0.3: {epoch_metrics.active_features_0_3}, "
-            f">0.1: {epoch_metrics.active_features_0_1}"
         )
         print(
             f"   📊 Similarity - Encoder: {epoch_metrics.encoder_avg_max_cos:.4f}, "
@@ -529,7 +507,6 @@ class SAETrainer:
         logs["time_epoch"].append(metrics.time_seconds)
         logs["learning_rate"].append(metrics.learning_rate)
         logs["mean_activation"].append(metrics.mean_activation)
-        logs["active_ratio"].append(metrics.active_ratio)
 
         # Timing metrics
         logs["data_loading_time"].append(metrics.data_loading_time)
@@ -553,11 +530,6 @@ class SAETrainer:
             logs["encoder_avg_max_cos"].append(metrics.encoder_avg_max_cos)
             logs["decoder_avg_max_cos"].append(metrics.decoder_avg_max_cos)
             logs["decoder_mean_norm"].append(metrics.decoder_mean_norm)
-            logs["active_features_0.5"].append(metrics.active_features_0_5)
-            logs["active_features_0.4"].append(metrics.active_features_0_4)
-            logs["active_features_0.3"].append(metrics.active_features_0_3)
-            logs["active_features_0.2"].append(metrics.active_features_0_2)
-            logs["active_features_0.1"].append(metrics.active_features_0_1)
 
     def _log_progress(
         self,
@@ -641,11 +613,6 @@ class SAETrainer:
             print(f"  L0 Sparsity: {val_logs['z_sparsity'][-1]:.2f}")
             print(f"  Dead Features: {val_logs['dead_features'][-1] * 100:.1f}%")
             print(f"  Best Val Loss: {self.state.best_val_loss:.4f}")
-            print()
-            print("  Active Features:")
-            print(f"    >0.5: {val_logs['active_features_0.5'][-1]}")
-            print(f"    >0.3: {val_logs['active_features_0.3'][-1]}")
-            print(f"    >0.1: {val_logs['active_features_0.1'][-1]}")
             print()
             print("  Similarity Metrics:")
             print(f"    Encoder Avg Max Cos: {val_logs['encoder_avg_max_cos'][-1]:.4f}")

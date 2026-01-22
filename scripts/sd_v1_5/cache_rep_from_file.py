@@ -21,9 +21,8 @@ from pathlib import Path
 from typing import Dict, List
 
 import torch
-from dotenv import load_dotenv
-
 import wandb
+from dotenv import load_dotenv
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -490,6 +489,7 @@ def main():
                 num_inference_steps=args.steps,
                 guidance_scale=args.guidance_scale,
                 generator=generator,
+                skip_initial_timestep=True,
             )
             inference_time = time.time() - inference_start
             total_inference_time += inference_time
