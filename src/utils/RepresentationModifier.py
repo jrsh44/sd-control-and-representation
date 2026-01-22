@@ -9,15 +9,21 @@ from overcomplete.sae import TopKSAE
 class RepresentationModifier:
     def __init__(
         self,
-        sae: TopKSAE,
+        sae: TopKSAE | None,
         stats_dict: Dict[str, Any],
         epsilon: float = 1e-8,
         device: str = "cuda",
         ignore_modification: str = "false",
         max_concepts_number: int = 32,
     ):
-        self.sae = sae.to(device)
-        self.sae.eval()
+        if sae is None:
+            # inform that RepresentationModifier will not modify anything, just calculate scores
+            print(
+                "Warning: SAE model is None. RepresentationModifier will not modify anything, only calculate scores."  # noqa: E501
+            )
+        else:
+            self.sae = sae.to(device)
+            self.sae.eval()
         self.device = device
         self.stats_dict = stats_dict
         self.epsilon = epsilon
@@ -33,12 +39,7 @@ class RepresentationModifier:
         sums_all = torch.stack(
             [stats_dict["all"]["sums_per_timestep"][t].to(torch.float32) for t in all_timesteps]
         )
-        # n_all = max(
-        #     sum([stats_dict["all"]["counts_per_timestep"][t] for t in all_timesteps]),
-        #     1,
-        # )
 
-        # n_all is a tensor of numbers of samples per timestep (not sumed, it should be the size of number of timesteps)  # noqa: E501
         n_all = torch.tensor(
             [stats_dict["all"]["counts_per_timestep"][t] for t in all_timesteps],
             dtype=torch.float32,
@@ -83,10 +84,7 @@ class RepresentationModifier:
                 [stats_concept["counts_per_timestep"][t] for t in timesteps],
                 dtype=torch.float32,
             ).to(self.device)
-            # n_true = max(
-            #     sum([stats_concept["counts_per_timestep"][t] for t in timesteps]),
-            #     1,
-            # )
+
             sums_false = torch.stack(
                 [
                     stats_all["sums_per_timestep"][t].to(torch.float32)
@@ -94,11 +92,7 @@ class RepresentationModifier:
                     for t in timesteps
                 ]
             )
-            # n_false = max(
-            #     sum([stats_all["counts_per_timestep"][t] for t in timesteps])
-            #     - sum([stats_concept["counts_per_timestep"][t] for t in timesteps]),
-            #     1,
-            # )
+
             n_false = torch.tensor(
                 [
                     stats_all["counts_per_timestep"][t] - stats_concept["counts_per_timestep"][t]
@@ -107,8 +101,6 @@ class RepresentationModifier:
                 dtype=torch.float32,
             ).to(self.device)
 
-            # mean_true_per_timestep = sums_true / n_true  # float32
-            # mean_false_per_timestep = sums_false / n_false  # float32
             mean_true_per_timestep = sums_true / n_true.unsqueeze(1)  # float32
             mean_false_per_timestep = sums_false / n_false.unsqueeze(1)  # float32
 
@@ -122,14 +114,12 @@ class RepresentationModifier:
             top_indices = torch.topk(
                 scores_per_timestep, k=self.max_concepts_number, dim=1
             ).indices  # (timesteps, features_number)
-            # Zapisz jako float32!
+
             mean_true_top = mean_true_per_timestep[
                 torch.arange(len(timesteps)).unsqueeze(1),
                 top_indices,
             ].to(self.device, dtype=torch.float32)  # (timesteps, features_number)
         else:
-            # All-timesteps mode: aggregate across all timesteps, compute single set of features
-            # Aggregate sums across all timesteps
             sum_true_aggregated = sum(
                 [stats_concept["sums_per_timestep"][t].to(torch.float32) for t in timesteps]
             )
@@ -245,8 +235,6 @@ class RepresentationModifier:
             scores = prob_true_per_timestep - prob_false_per_timestep
 
         else:
-            # All-timesteps mode: aggregate across all timesteps, compute single set of features
-            # Aggregate sums across all timesteps
             sum_true_aggregated = sum(
                 [stats_concept["sums_per_timestep"][t].to(torch.float32) for t in timesteps]
             )

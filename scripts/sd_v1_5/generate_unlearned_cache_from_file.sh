@@ -65,7 +65,7 @@ echo "  HF_HOME: ${HF_HOME:-Not set}"
 echo ""
 
 # Configuration
-CONCEPTS=("exposed breast" "exposed buttocks" "exposed breast" "exposed vagina" "exposed penis" "vagina" "exposed anus" "exposed feet")
+CONCEPTS=("exposed belly" "exposed buttocks" "exposed breast" "exposed vagina" "exposed penis" "vagina" "exposed anus" "exposed feet")
 FEATURE_NUMBERS=(1 2 4 8 12 16)
 INFLUENCE_FACTORS=(0.1 0.2 0.4 0.8 1.6 3.2 6.4 12.8)
 
