@@ -10,75 +10,46 @@ import torch
 def criterion_laux(
     x: torch.Tensor,
     x_hat: torch.Tensor,
-    codes: torch.Tensor,
-    dictionary: torch.Tensor,
-    alpha: float = 1 / 32,
-) -> torch.Tensor:
-    """
-    Custom criterion function for SAE training.
-
-    Uses auxiliary loss to encourage activation of potentially dead features.
-    The auxiliary loss reconstructs using only the least-active features,
-    which helps prevent feature collapse and dead latents.
-
-    Args:
-        x: Original input tensor (batch_size, input_dim).
-        x_hat: Reconstructed output tensor from the SAE.
-        codes: Final sparse codes after applying top-k sparsity.
-        dictionary: The learned dictionary (decoder weights).
-        alpha: Scaling factor for auxiliary loss (default: 1/32).
-
-    Returns:
-        The computed loss value (MSE + alpha * auxiliary_loss).
-    """
-    recon_loss, aux_loss = criterion_laux_detailed(x, x_hat, codes, dictionary)
-    return recon_loss + alpha * aux_loss
-
-
-def criterion_laux_detailed(
-    x: torch.Tensor,
-    x_hat: torch.Tensor,
+    pre_codes: torch.Tensor,
     codes: torch.Tensor,
     dictionary: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Custom criterion function for SAE training with separate loss components.
+    Top-K Auxiliary Loss
 
-    Uses auxiliary loss to encourage activation of potentially dead features.
-    The auxiliary loss reconstructs using only the least-active features,
-    which helps prevent feature collapse and dead latents.
+    This loss encourages dead features to revive by forcing them to predict
+    the 'residual' that the main Top-K features failed to capture.
 
     Args:
-        x: Original input tensor (batch_size, input_dim).
-        x_hat: Reconstructed output tensor from the SAE.
-        codes: Final sparse codes after applying top-k sparsity.
-        dictionary: The learned dictionary (decoder weights).
+        x: Original input (batch_size, input_dim).
+        x_hat: Reconstructed output (batch_size, input_dim).
+        pre_codes: Latent values BEFORE Top-K and ReLU (batch_size, dict_size).
+        codes: Final sparse latent values AFTER Top-K (batch_size, dict_size).
+        dictionary: The decoder weight matrix (dict_size, input_dim).
 
     Returns:
         Tuple of (reconstruction_loss, auxiliary_loss).
     """
-    n = x.shape[1]
 
-    # Compute reconstruction MSE
-    recon_loss = torch.mean((x - x_hat) ** 2)
+    # Calculate the Main Reconstruction Loss
+    residual = x - x_hat
+    main_mse = residual.square().mean()
 
-    # Number of least active features for auxiliary loss
-    k_aux = n // 2
+    # Identify the "Runner-Up" Features
+    potential_activations = torch.relu(pre_codes)
+    dead_features_val = potential_activations - codes
 
-    # Compute mean activation per feature across the batch
-    feature_acts = codes.mean(dim=0)
+    # Select the Top-K of these "Dead" Features
+    aux_k = dictionary.shape[0] // 2
+    aux_topk = torch.topk(dead_features_val, k=aux_k, dim=1)
 
-    # Select indices of k_aux features with the lowest mean activations
-    low_act_indices = torch.topk(feature_acts, k_aux, largest=False)[1]
+    # Create the Auxiliary Code Vector
+    aux_codes = torch.zeros_like(codes)
+    aux_codes.scatter_(-1, aux_topk.indices, aux_topk.values)
 
-    # Create a masked codes tensor using only the low-activation features
-    codes_aux = torch.zeros_like(codes)
-    codes_aux[:, low_act_indices] = codes[:, low_act_indices]
+    # Predict the Residual
+    residual_hat = aux_codes @ dictionary
 
-    # Reconstruct using only these features
-    x_aux = torch.matmul(codes_aux, dictionary)
+    aux_mse = (residual.detach() - residual_hat).square().mean()
 
-    # Compute auxiliary MSE on this partial reconstruction
-    aux_loss = torch.mean((x - x_aux) ** 2)
-
-    return recon_loss, aux_loss
+    return main_mse, aux_mse

@@ -19,6 +19,7 @@
 #==============================================================================
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
+#SBATCH --time 0-5:00:00
 #SBATCH --array=0-15         # 16 tasks: 16 nudity concepts
 #SBATCH --time 0-1:30:00
 #SBATCH --nodes 1
@@ -53,6 +54,7 @@ echo "=========================================="
 
 # Navigate to project directory
 cd /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation
+source .venv/bin/activate
 source ./.venv/bin/activate
 
 # Create directories
