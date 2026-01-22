@@ -20,12 +20,12 @@
 #SBATCH --account mi2lab
 #SBATCH --job-name sae_select
 #SBATCH --array=0-3  # 4 parallel jobs for 23.04M samples
-#SBATCH --time 0-23:30:00
+#SBATCH --time 0-05:00:00
 #SBATCH --nodes 1
 #SBATCH --ntasks-per-node 1
 #SBATCH --gres gpu:0
 #SBATCH --cpus-per-task 16
-#SBATCH --mem 256G
+#SBATCH --mem 128G
 #SBATCH --partition short
 #SBATCH --output ../logs/sae_select_%A_%a.log  # %A=job ID, %a=array task ID
 
@@ -76,7 +76,7 @@ echo ""
 PYTHON_SCRIPT="scripts/sae/feature_selection.py"
 
 # Dataset configuration
-DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/cc3m-wds/representations/unet_up_1_att_1_test_subset"
+DATASET_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/cc3m-wds_fs/representations/unet_up_1_att_1"
 DATASET_NAME="cc3m-wds"
 
 # Model configuration
@@ -84,11 +84,11 @@ LAYER_NAME="unet_up_1_att_1"
 SAE_DIR_PATH="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096"
 
 # Output configuration
-FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums_2"
+FEATURES_DIR="/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums"
 
 # Index range configuration (23.04M samples split into 4 chunks)
-TOTAL_SAMPLES=23040000
-CHUNK_SIZE=5760000  # 23.04M / 4 = 5.76M per job
+TOTAL_SAMPLES=25600000
+CHUNK_SIZE=6400000  # 25.6M / 4 = 6.4M per job
 
 LOWER_INDEX=$((SLURM_ARRAY_TASK_ID * CHUNK_SIZE))
 UPPER_INDEX=$(((SLURM_ARRAY_TASK_ID + 1) * CHUNK_SIZE))
