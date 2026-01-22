@@ -2,8 +2,6 @@ import time
 
 import torch
 
-from src.models.sae.training.utils import extract_input, get_dictionary
-
 # --- Bezpieczne importowanie wandb ---
 try:
     import wandb  # noqa: F401

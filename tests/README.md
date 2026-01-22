@@ -212,3 +212,33 @@ Tests for `src/utils/visualization.py` - Image display utilities.
 | `test_display_image_invalid_input` | Tests graceful handling of invalid input. |
 | `test_display_sequence_empty_list` | Tests handling of empty image list. |
 | `test_display_sequence_sampling` | Tests image sequence with sampling rate. |
+
+---
+
+### test_dashboard.py
+Tests for `dashboard/` modules - Dashboard state, layers, and concepts.
+
+| Function | Description |
+|----------|-------------|
+| `test_state_initialization` | Verifies DashboardState initializes with correct defaults. |
+| `test_log_message` | Tests logging functionality with log level. |
+| `test_model_state_update` | Tests model state updates with load times. |
+| `test_get_model_status_text` | Tests model status text generation. |
+| `test_generation_progress` | Tests generation progress tracking and formatting. |
+| `test_get_all_layers` | Tests getting all UNet layers organized by category. |
+| `test_get_layer_choices` | Tests layer choices formatting for dropdowns. |
+| `test_get_layer_info_single` | Tests layer info retrieval for single layer. |
+| `test_get_layer_info_empty` | Tests layer info with empty selection. |
+| `test_get_layer_info_multiple` | Tests layer info with multiple layers. |
+| `test_get_flat_layer_list` | Tests getting flat list of all layers. |
+| `test_is_recommended_layer` | Tests checking if layer is recommended. |
+| `test_load_concepts` | Tests concept loading from file. |
+| `test_get_concept_choices` | Tests concept choices formatting. |
+| `test_get_concept_info_empty` | Tests concept info with empty selection. |
+| `test_get_concept_info_single` | Tests concept info with single selection. |
+| `test_get_concept_info_multiple` | Tests concept info with multiple selection. |
+| `test_get_concept_label` | Tests getting single concept label. |
+| `test_validate_concepts` | Tests concept validation. |
+| `test_load_concepts_missing_file` | Tests concept loading with missing file. |
+| `test_state_lifecycle` | Tests complete state lifecycle. |
+| `test_layer_concept_workflow` | Tests layer and concept selection workflow. | |

@@ -46,7 +46,6 @@ from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearni
 from src.models.sd_v1_5.layers import (  # noqa: E402
     LayerPath,  # noqa: E402
 )
-from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearning  # noqa: E402
 
 # from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.RepresentationModifier import RepresentationModifier  # noqa: E402
