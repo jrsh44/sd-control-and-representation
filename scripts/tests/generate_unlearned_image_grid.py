@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 EXAMPLE:
-uv run scripts/sd_v1_5/generate_unlearned_image.py \
+uv run scripts/tests/generate_unlearned_image_grid.py \
     --prompt "a girl with exposed anus on a bed" \
     --preferred_device cpu \
     --guidance_scale 4 \
@@ -14,11 +14,14 @@ uv run scripts/sd_v1_5/generate_unlearned_image.py \
     --ignore_modification false \
     --layers UNET_UP_1_ATT_2 UNET_DOWN_1_RES_0 \
     --skip_wandb \
-    --unlearn_concept "breast" 10 3 false \
-
-    --unlearn_concept "exposed anus" 10 2 false \
-    --unlearn_concept "exposed breast" 10 2 false \
-    --unlearn_concept "buttocks" 25 2 false \
+    --concept_name "breast" \
+    --parameter_pairs 5 2 \
+    --parameter_pairs 5 5 \
+    --parameter_pairs 5 10 \
+    --parameter_pairs 8 2 \
+    --parameter_pairs 8 5 \
+    --parameter_pairs 8 10 \
+    --parameter_pairs 2 20
 
 """  # noqa: E501
 
@@ -31,10 +34,11 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-import wandb
 from diffusers import StableDiffusionPipeline  # noqa: E402
 from dotenv import load_dotenv
 from overcomplete.sae import TopKSAE
+
+import wandb
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent
@@ -43,13 +47,8 @@ if str(project_root) not in sys.path:
 
 load_dotenv(dotenv_path=project_root / ".env")
 
-# from src.data import load_prompts_from_directory  # noqa: E402
-# from src.data.cache import RepresentationCache  # noqa: E402
-# from src.models.config import ModelRegistry  # noqa: E402
 from src.models.sd_v1_5.hooks import capture_layer_representations_with_unlearning  # noqa: E402
 from src.models.sd_v1_5.layers import LayerPath  # noqa: E402
-
-# from src.utils.model_loader import ModelLoader  # noqa: E402
 from src.utils.RepresentationModifier import RepresentationModifier  # noqa: E402
 from src.utils.script_functions import parse_layer_names  # noqa: E402
 
@@ -77,7 +76,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sae_dir_path",
         type=str,
-        required=True,  # lub default=None jeśli chcesz opcjonalny
+        required=True,
         help="Path to SAE weights (.pt)",
     )
     parser.add_argument(
@@ -107,12 +106,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--skip_wandb", action="store_true", help="Skip wandb logging")
     parser.add_argument(
-        "--unlearn_concept",
+        "--concept_name",
+        type=str,
+        required=True,
+        help="Name of the concept to unlearn",
+    )
+    parser.add_argument(
+        "--parameter_pairs",
         action="append",
-        nargs=4,
-        metavar=("CONCEPT_NAME", "INFLUENCE_FACTOR", "FEATURES_NUMBER", "REP_TIMESTEP_MODE"),
-        help="Concept to unlearn with parameters. Can be specified multiple times. "
-        "Example: --unlearn_concept 'exposed anus' 140 25 true --unlearn_concept 'nudity' 100 20 false",  # noqa: E501
+        nargs=2,
+        type=int,
+        metavar=("FEATURES_NUMBER", "INFLUENCE_FACTOR"),
+        help="Parameter pairs (features_number influence_factor). Can be specified multiple times. "
+        "Example: --parameter_pairs 2 10 --parameter_pairs 5 25",
+    )
+    parser.add_argument(
+        "--per_timestep",
+        action="store_true",
+        help="Use per-timestep mode for unlearning",
     )
 
     return parser.parse_args()
@@ -121,6 +132,11 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
+    # Validate parameter_pairs
+    if not args.parameter_pairs:
+        print("ERROR: At least one parameter pair must be specified", file=sys.stderr)
+        return 1
+
     try:
         # Initialize wandb
         if not args.skip_wandb:
@@ -128,14 +144,16 @@ def main():
             wandb.init(
                 project="sd-control-representation",
                 entity="bartoszjezierski28-warsaw-university-of-technology",
-                name=f"Image_Generation_SAE_Unlearning {Path(args.sae_dir_path).stem} ",
+                name=f"Image_Generation_SAE_Unlearning_Grid_{Path(args.sae_dir_path).stem}",
                 config={
                     "sae_dir_path": args.sae_dir_path,
                     "concept_sums_path": args.concept_sums_path,
                     "epsilon": args.epsilon,
+                    "concept_name": args.concept_name,
+                    "parameter_pairs": args.parameter_pairs,
                 },
-                tags=["cache_generation", "sae", "feature_selection"],
-                notes="Image generation with Stable Diffusion and SAE unlearning",
+                tags=["image_grid", "sae", "unlearning"],
+                notes="Image generation grid with Stable Diffusion and SAE unlearning",
             )
 
         # Get SLURM environment variables
@@ -171,14 +189,12 @@ def main():
         # 1. MODEL
         # --------------------------------------------------------------------------
         model_load_start = time.time()
-        # loader = ModelLoader(model_enum=ModelRegistry.FINETUNED_SAEURON)
-        # pipe = loader.load_model(device=device)
         model_id = "sd-legacy/stable-diffusion-v1-5"
         dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id,
             torch_dtype=dtype,
-            safety_checker=None,  # None - to better analyze the behavior of the raw model
+            safety_checker=None,
         ).to(device)
         model_load_time = time.time() - model_load_start
         print(f"Model loaded in {model_load_time:.2f} seconds")
@@ -250,175 +266,169 @@ def main():
 
         concept_sums = torch.load(concept_scores_path, map_location=device)
 
+        # --------------------------------------------------------------------------
+        # 4. GENERATION & REPRESENTATION CAPTURING
+        # --------------------------------------------------------------------------
+        layers_to_capture = parse_layer_names(args.layers)
+        if not layers_to_capture:
+            print("ERROR: No valid layers specified")
+            return 1
+
+        print(
+            f"\nGenerating {len(args.parameter_pairs)} images for concept '{args.concept_name}'..."
+        )
+        print(f"Parameter pairs: {args.parameter_pairs}")
+
+        # Find max features_number to set max_concepts_number appropriately
+        max_features = max(fn for fn, _ in args.parameter_pairs)
+
+        # Create modifier once and attach to pipeline
         modifier = RepresentationModifier(
             sae=sae,
             stats_dict=concept_sums,
             epsilon=args.epsilon,
             ignore_modification=args.ignore_modification,
             device=device,
+            max_concepts_number=max_features,
         )
-
         modifier.attach_to(pipe, sae_layer_path)
 
-        # Add concepts to unlearn based on user arguments
-        if args.unlearn_concept:
-            print(f"\nAdding {len(args.unlearn_concept)} concept(s) to unlearn:")
-            for concept_params in args.unlearn_concept:
-                concept_name = concept_params[0]
-                influence_factor = float(concept_params[1])
-                features_number = int(concept_params[2])
-                rep_timestep_mode = concept_params[3].lower() == "true"  # unused for now
+        # Add the concept once with initial parameters
+        initial_features, initial_influence = args.parameter_pairs[0]
+        modifier.add_concept_to_unlearn(
+            concept_name=args.concept_name,
+            influence_factor=initial_influence,
+            features_number=initial_features,
+            per_timestep=args.per_timestep,
+        )
+        print(f"Concept '{args.concept_name}' added to modifier (per_timestep={args.per_timestep})")
 
-                print(
-                    f"  - {concept_name}: influence={influence_factor}, features={features_number}, per_timestep={rep_timestep_mode}"  # noqa: E501
-                )
-                modifier.add_concept_to_unlearn(
-                    concept_name=concept_name,
-                    influence_factor=influence_factor,
-                    features_number=features_number,
-                    per_timestep=rep_timestep_mode,
-                )
-        else:
+        # Loop through each parameter pair and generate images
+        for pair_idx, (features_number, influence_factor) in enumerate(args.parameter_pairs, 1):
+            print(f"\n{'=' * 50}")
             print(
-                "\nWarning: No concepts specified for unlearning. Image will be generated without modification."
+                f"[{pair_idx}/{len(args.parameter_pairs)}] features={features_number}, influence={influence_factor}"
+            )
+            print(f"{'=' * 50}")
+
+            # Update parameters for this configuration
+            modifier.set_number_of_features_for_concept(args.concept_name, features_number)
+            modifier.set_influence_factor_for_concept(args.concept_name, influence_factor)
+
+            # Reset timestep counter for new generation
+            modifier.reset_timestep()
+
+            print(
+                f"Unlearning: {args.concept_name} (features={features_number}, influence={influence_factor}, per_timestep={args.per_timestep})"
             )
 
-        # --------------------------------------------------------------------------
-        # 4. GENERATION & REPRESENTATION CAPTURING
-        # --------------------------------------------------------------------------
-        # layers_to_capture = [
-        #     # Text conditioning
-        #     # LayerPath.TEXT_EMBEDDING_FINAL,
-        #     # Critical attention layers
-        #     # LayerPath.UNET_MID_ATT,
-        #     # LayerPath.UNET_DOWN_2_ATT_0,
-        #     LayerPath.UNET_UP_1_ATT_2,
-        #     # ResNet features for comparison
-        #     LayerPath.UNET_DOWN_1_RES_0,
-        #     # LayerPath.UNET_MID_RES_1,
-        #     # LayerPath.UNET_UP_0_RES_2,
-        # ]
+            # Generate with unique seed for each image
+            generator = torch.Generator(device).manual_seed(args.seed)
+            inference_start = time.time()
 
-        layers_to_capture = parse_layer_names(args.layers)
-        if not layers_to_capture:
-            print("ERROR: No valid layers specified")
-            return 1
+            # Capture representations and generate image
+            representations, image = capture_layer_representations_with_unlearning(
+                pipe=pipe,
+                prompt=args.prompt,
+                layer_paths=layers_to_capture,
+                modifier=modifier,
+                num_inference_steps=args.steps,
+                guidance_scale=args.guidance_scale,
+                generator=generator,
+            )
 
-        generator = torch.Generator(device).manual_seed(args.seed)
-        print("\nGenerating unlearned image and capturing representations...")
-        inference_start = time.time()
+            inference_time = time.time() - inference_start
+            num_repr = len(representations)
+            print(
+                f"Image generated and {num_repr} representations captured in {inference_time:.2f} seconds"
+            )
 
-        # Capture representations and generate image simultaneously
-        representations, image = capture_layer_representations_with_unlearning(
-            pipe=pipe,
-            prompt=args.prompt,
-            layer_paths=layers_to_capture,
-            modifier=modifier,
-            num_inference_steps=args.steps,
-            guidance_scale=args.guidance_scale,
-            generator=generator,
-        )
+            # --------------------------------------------------------------------------
+            # SAVE OUTPUTS FOR THIS PARAMETER PAIR
+            # --------------------------------------------------------------------------
+            # Determine output directory
+            if args.output_dir:
+                output_dir = Path(args.output_dir)
+            else:
+                output_dir = results_base_path / "images"
 
-        inference_time = time.time() - inference_start
-        num_repr = len(representations)
-        print(
-            f"Image generated and {num_repr} representations captured in {inference_time:.2f} seconds"  # noqa: E501
-        )
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-        # --------------------------------------------------------------------------
-        # 5. SAVE OUTPUTS
-        # --------------------------------------------------------------------------
-        # Determine output directory
-        if args.output_dir:
-            # Use custom output directory if specified
-            output_dir = Path(args.output_dir)
-        else:
-            # Use RESULTS_DIR/images or default results/images
-            output_dir = results_base_path / "images"
+            # Create filename with parameter info
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_prompt = "".join(
+                c for c in args.prompt[:30] if c.isalnum() or c in (" ", "_")
+            ).strip()
+            save_prompt = save_prompt.replace(" ", "_")
 
-        output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"\nSaving to: {output_dir}")
+            # Format: concept_name_fn{features}_if{influence}
+            concept_name_clean = args.concept_name.replace(" ", "_")
+            concept_suffix = (
+                f"_unlearn_{concept_name_clean}_fn{features_number}_if{influence_factor}"
+            )
 
-        # Create filename with timestamp and task info
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_prompt = "".join(c for c in args.prompt[:30] if c.isalnum() or c in (" ", "_")).strip()
-        save_prompt = save_prompt.replace(" ", "_")
+            image_filename = f"task_{task_id}_{timestamp}_{save_prompt}{concept_suffix}.png"
+            image_path = output_dir / image_filename
 
-        # Add unlearned concepts info to filename
-        concept_suffix = ""
-        if args.unlearn_concept:
-            concept_parts = []
-            for concept_params in args.unlearn_concept:
-                concept_name = concept_params[0].replace(" ", "_")
-                influence_factor = concept_params[1]
-                features_number = concept_params[2]
-                # Format: conceptname_if{influence}_fn{features}
-                concept_parts.append(f"{concept_name}_if{influence_factor}_fn{features_number}")
-            concept_suffix = "_unlearn_" + "_".join(concept_parts)
+            # Save image
+            image.save(image_path)
+            print(f"✓ Image saved to: {image_path}")
 
-        image_filename = f"task_{task_id}_{timestamp}_{save_prompt}{concept_suffix}.png"
-        image_path = output_dir / image_filename
+            # Save representations
+            repr_dir = output_dir / "representations"
+            repr_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save image
-        image.save(image_path)
-        print(f"\n✓ Image saved to: {image_path}")
+            repr_base_filename = f"task_{task_id}_{timestamp}_{save_prompt}{concept_suffix}"
+            saved_repr_files = []
 
-        # Save representations
-        repr_dir = output_dir / "representations"
-        repr_dir.mkdir(parents=True, exist_ok=True)
-
-        repr_base_filename = f"task_{task_id}_{timestamp}_{save_prompt}{concept_suffix}"
-        saved_repr_files = []
-
-        print(f"\nSaving {len(representations)} layer representations...")
-        for i, (layer_path, repr_tensor) in enumerate(
-            zip(layers_to_capture, representations, strict=True)
-        ):
-            layer_name = layer_path.name
-            repr_filename = f"{repr_base_filename}_{layer_name}.pt"
-            repr_file_path = repr_dir / repr_filename
-
-            # Save tensor
-            torch.save(repr_tensor, repr_file_path)
-            saved_repr_files.append(repr_filename)
-
-            # Print shape info
-            shape_str = f"{tuple(repr_tensor.shape)}"
-            print(f"  [{i + 1}/{len(representations)}] {layer_name}: {shape_str} → {repr_filename}")
-
-        print(f"\n✓ All representations saved to: {repr_dir}")
-
-        # Save metadata
-        metadata_file = output_dir / f"task_{task_id}_{timestamp}{concept_suffix}_metadata.txt"
-        with open(metadata_file, "w") as f:
-            f.write(f"Task {task_id}\n")
-            f.write(f"Job: {job_id}\n")
-            f.write(f"Timestamp: {timestamp}\n")
-            f.write(f"Prompt: {args.prompt}\n")
-            f.write(f"Device: {device}\n")
-            f.write(f"Guidance Scale: {args.guidance_scale}\n")
-            f.write(f"Steps: {args.steps}\n")
-            f.write(f"Seed: {args.seed}\n")
-            f.write(f"Model Load Time: {model_load_time:.2f}s\n")
-            f.write(f"Inference Time: {inference_time:.2f}s\n")
-            f.write(f"Total Time: {model_load_time + inference_time:.2f}s\n")
-            f.write(f"Image: {image_filename}\n")
-            f.write(f"\nCaptured Representations ({len(representations)} layers):\n")
+            print(f"Saving {len(representations)} layer representations...")
             for i, (layer_path, repr_tensor) in enumerate(
                 zip(layers_to_capture, representations, strict=True)
             ):
-                f.write(f"  {i + 1}. {layer_path.name}: {tuple(repr_tensor.shape)}\n")
-                f.write(f"     File: {saved_repr_files[i]}\n")
+                layer_name = layer_path.name
+                repr_filename = f"{repr_base_filename}_{layer_name}.pt"
+                repr_file_path = repr_dir / repr_filename
 
-        print(f"✓ Metadata saved to: {metadata_file}")
-        print("\nTiming Summary:")
-        print(f"  Model Load: {model_load_time:.2f}s")
-        print(f"  Inference: {inference_time:.2f}s")
-        print(f"  Total: {model_load_time + inference_time:.2f}s")
-        print("\nOutput Summary:")
-        print(f"  Image: {image_path}")
-        print(f"  Representations: {len(representations)} layers in {repr_dir}")
-        print(f"  Metadata: {metadata_file}")
+                torch.save(repr_tensor, repr_file_path)
+                saved_repr_files.append(repr_filename)
+
+            print(f"✓ Representations saved to: {repr_dir}")
+
+            # Save metadata
+            metadata_file = output_dir / f"task_{task_id}_{timestamp}{concept_suffix}_metadata.txt"
+            with open(metadata_file, "w") as f:
+                f.write(f"Task {task_id}\n")
+                f.write(f"Job: {job_id}\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Prompt: {args.prompt}\n")
+                f.write(f"Concept: {args.concept_name}\n")
+                f.write(f"Features Number: {features_number}\n")
+                f.write(f"Influence Factor: {influence_factor}\n")
+                f.write(f"Per Timestep: {args.per_timestep}\n")
+                f.write(f"Device: {device}\n")
+                f.write(f"Guidance Scale: {args.guidance_scale}\n")
+                f.write(f"Steps: {args.steps}\n")
+                f.write(f"Seed: {args.seed + pair_idx}\n")
+                f.write(f"Model Load Time: {model_load_time:.2f}s\n")
+                f.write(f"Inference Time: {inference_time:.2f}s\n")
+                f.write(f"Image: {image_filename}\n")
+                f.write(f"\nCaptured Representations ({len(representations)} layers):\n")
+                for i, (layer_path, repr_tensor) in enumerate(
+                    zip(layers_to_capture, representations, strict=True)
+                ):
+                    f.write(f"  {i + 1}. {layer_path.name}: {tuple(repr_tensor.shape)}\n")
+                    f.write(f"     File: {saved_repr_files[i]}\n")
+
+            print(f"✓ Metadata saved: {metadata_file}")
+
+        # Cleanup: detach modifier
+        modifier.detach()
+
+        # Final summary
+        print("\n" + "=" * 50)
+        print(f"Grid generation complete: {len(args.parameter_pairs)} images generated")
+        print(f"Model load time: {model_load_time:.2f}s")
+        print(f"Output directory: {output_dir}")
         print("=" * 50)
 
         return 0
