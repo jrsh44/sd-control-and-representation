@@ -250,15 +250,23 @@ def capture_layer_representations_with_unlearning(
         handle = module.register_forward_hook(make_capture_hook(f"hook_{i}"))
         capture_handles.append(handle)
 
-    # === 2. Podłączamy modyfikator (on sam wie, do której warstwy się podpiąć) ===
-    with modifier:
-        # === 3. Generowanie obrazu (modyfikator działa tylko w tym bloku) ===
-        image = pipe(
-            prompt=prompt,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            generator=generator,
-        ).images[0]
+    # # === 2. Podłączamy modyfikator (on sam wie, do której warstwy się podpiąć) ===
+    # with modifier:
+    #     # === 3. Generowanie obrazu (modyfikator działa tylko w tym bloku) ===
+    #     image = pipe(
+    #         prompt=prompt,
+    #         num_inference_steps=num_inference_steps,
+    #         guidance_scale=guidance_scale,
+    #         generator=generator,
+    #     ).images[0]
+    # === 2. Modifier is already attached externally, no need for context manager ===
+    # === 3. Generowanie obrazu (modyfikator działa) ===
+    image = pipe(
+        prompt=prompt,
+        num_inference_steps=num_inference_steps,
+        guidance_scale=guidance_scale,
+        generator=generator,
+    ).images[0]
 
     # === 4. Usuwamy hooki przechwytywania ===
     for h in capture_handles:
