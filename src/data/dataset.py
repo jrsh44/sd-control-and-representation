@@ -177,12 +177,12 @@ class RepresentationDataset(Dataset):
         self._feature_dim = feature_dim
 
         # Build sorted start_idx list for binary search (if metadata loaded)
-        self._entry_start_indices = None
-        if self._metadata:
-            self._entry_start_indices = [entry["start_idx"] for entry in self._metadata]
-            print(
-                f"  Built binary search index for {len(self._entry_start_indices)} metadata entries"
-            )
+        # self._entry_start_indices = None
+        # if self._metadata:
+        #     self._entry_start_indices = [entry["start_idx"] for entry in self._metadata]
+        #     print(
+        #         f"  Built binary search index for {len(self._entry_start_indices)} metadata entries"
+        #     )
 
     def close(self):
         """Explicitly close memmap to release file handle."""
@@ -210,27 +210,41 @@ class RepresentationDataset(Dataset):
         """Return the feature dimension of the representations."""
         return self._feature_dim
 
-    @functools.lru_cache(maxsize=8192)  # Cache lookups for consecutive indices  # noqa: B019
     def _find_entry_for_index(self, real_idx: int) -> Optional[Dict]:
-        """Find metadata entry that contains the given sample index using binary search."""
-        if self._metadata is None or self._entry_start_indices is None:
+        """Find metadata entry that contains the given sample index."""
+        if self._metadata is None:
             return None
 
-        # Binary search O(log n) to find the entry containing real_idx
-        # Find rightmost entry whose start_idx <= real_idx
-        pos = bisect.bisect_right(self._entry_start_indices, real_idx) - 1
-
-        if pos < 0 or pos >= len(self._metadata):
-            return None
-
-        entry = self._metadata[pos]
-
-        # Verify the index is actually within this entry's range
-        if entry["start_idx"] <= real_idx < entry["end_idx"]:
-            # Convert to hashable dict for caching
-            return entry
-
+        # Binary search for efficiency (entries are sorted by start_idx)
+        for entry in self._metadata:
+            if entry["start_idx"] <= real_idx < entry["end_idx"]:
+                return entry
         return None
+
+    # @functools.lru_cache(maxsize=8192)  # Cache lookups for consecutive indices  # noqa: B019
+    # def _find_entry_for_index(self, real_idx: int) -> Optional[Dict]:
+    #     """Find metadata entry that contains the given sample index using binary search."""
+    #     if self._metadata is None or self._entry_start_indices is None:
+    #         raise ValueError("Metadata not loaded, cannot find entry for index")
+    #         # return None
+
+    #     # Binary search O(log n) to find the entry containing real_idx
+    #     # Find rightmost entry whose start_idx <= real_idx
+    #     pos = bisect.bisect_right(self._entry_start_indices, real_idx) - 1
+
+    #     if pos < 0 or pos >= len(self._metadata):
+    #         print("KURWA MAĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆĆ")
+    #         raise ValueError(f"Index {real_idx} out of bounds for metadata entries")
+    #         # return None
+
+    #     entry = self._metadata[pos]
+
+    #     # Verify the index is actually within this entry's range
+    #     if entry["start_idx"] <= real_idx < entry["end_idx"]:
+    #         # Convert to hashable dict for caching
+    #         return entry
+
+    #     return None
 
     def _get_metadata_for_index(self, real_idx: int) -> Dict:
         """Get metadata for a given sample index."""

@@ -299,6 +299,14 @@ class RepresentationModifier:
         self.concepts_to_unlearn_dict[concept_name]["influence_factor"] = influence_factor
         print(f"Influence factor for concept '{concept_name}' set to {influence_factor}.")
 
+    def set_ignore_modification(self):
+        self.ignore_modification = "true"
+        print("Modifications will be ignored.")
+
+    def unset_ignore_modification(self):
+        self.ignore_modification = "false"
+        print("Modifications will be applied.")
+
     def remove_concept_to_unlearn(self, concept_name: str):
         if concept_name in self.concepts_to_unlearn_dict:
             del self.concepts_to_unlearn_dict[concept_name]
