@@ -44,9 +44,7 @@ sae_models:
       nb_concepts: 46080
     
     files:
-      model_dir: "cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096"
-      model_file: "model.pt"
-      feature_sums_file: "exp36_topk32/merged_feature_sums.pt"
+      model_dir: "models/sd-v1-5/sae/exp36_topk32"
     
     layer:
       id: "UNET_UP_1_ATT_1"
@@ -115,9 +113,7 @@ sae_models:
       nb_concepts: 40960
     
     files:
-      model_dir: "cc3m-wds_nudity/unet_up_1_att_1/exp32_topk16_lr5em4_warmup100000_aux003125_ep2_bs4096"
-      model_file: "model.pt"
-      feature_sums_file: "exp32_topk16/merged_feature_sums.pt"
+      model_dir: "models/sd-v1-5/sae/exp32_topk16"
     
     layer:
       id: "UNET_UP_1_ATT_1"
@@ -171,9 +167,7 @@ sae_models:
       nb_concepts: 46080
     
     files:
-      model_dir: "cc3m-wds_nudity/unet_up_1_att_1/exp36_topk64_lr1em3_warmup100000_aux00625_ep2_bs4096"
-      model_file: "model.pt"
-      feature_sums_file: "exp36_topk64/merged_feature_sums.pt"
+      model_dir: "models/sd-v1-5/sae/exp36_topk64"
     
     layer:
       id: "UNET_UP_1_ATT_1"
