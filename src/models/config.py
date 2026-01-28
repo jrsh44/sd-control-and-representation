@@ -18,7 +18,6 @@ class ModelConfig(NamedTuple):
 class ModelRegistry(Enum):
     """Enum containing available model configurations."""
 
-    # Hugging Face SDv1.5
     SD_V1_5 = ModelConfig(
         model_id="sd-legacy/stable-diffusion-v1-5",
         source="huggingface",
@@ -26,7 +25,6 @@ class ModelRegistry(Enum):
         pipeline_type="sd_v1_5",
     )
 
-    # Model From Saeuron
     FINETUNED_SAEURON = ModelConfig(
         model_id="https://drive.google.com/drive/folders/14_ckUo_JLOt8opkIXPVmjk6nSuKjFm-C",
         source="gdrive",
@@ -34,7 +32,6 @@ class ModelRegistry(Enum):
         pipeline_type="sd_v1_5",
     )
 
-    # SD 3 Model
     SD_V3 = ModelConfig(
         model_id="stabilityai/stable-diffusion-3-medium-diffusers",
         source="huggingface",

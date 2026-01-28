@@ -31,14 +31,12 @@ def _lock_file(fd):
     """Cross-platform file locking."""
     if HAS_FCNTL:
         fcntl.flock(fd, fcntl.LOCK_EX)
-    # On Windows, file locking is automatic through OS, so we can skip explicit locking
 
 
 def _unlock_file(fd):
     """Cross-platform file unlocking."""
     if HAS_FCNTL:
         fcntl.flock(fd, fcntl.LOCK_UN)
-    # On Windows, file locking is automatic through OS
 
 
 class RepresentationCache:
@@ -72,15 +70,12 @@ class RepresentationCache:
         self.use_fp16 = use_fp16
         self.dtype = np.float16 if use_fp16 else np.float32
 
-        # SLURM array job info
         self.array_id = array_id
         self.array_total = array_total
         self.is_primary = array_id is None or array_id == 0
 
-        # Track active memmap files for each layer
         self._active_memmaps: Dict[str, Dict] = {}
 
-        # Process ID for unique metadata files
         self.pid = os.getpid()
         self._cleanup_done = False
 
@@ -91,7 +86,6 @@ class RepresentationCache:
         for layer_info in self._active_memmaps.values():
             if "memmap" in layer_info and layer_info["memmap"] is not None:
                 try:
-                    # Delete memmap reference to close the file
                     del layer_info["memmap"]
                 except Exception:
                     pass
@@ -135,7 +129,6 @@ class RepresentationCache:
 
         for layer_name, layer_info in self._active_memmaps.items():
             try:
-                # Save any pending metadata to temp file
                 if layer_info.get("pending_metadata"):
                     self._save_metadata_to_temp_file(layer_name, layer_info["pending_metadata"])
                     count = len(layer_info["pending_metadata"])
@@ -190,7 +183,6 @@ class RepresentationCache:
                 info = {}
 
             existing_entries = info.get("entries", [])
-            # Use (prompt_nr, object, style) as unique key to distinguish entries across classes
             existing_keys = {
                 (e["prompt_nr"], e.get("object", ""), e.get("style", "")) for e in existing_entries
             }
@@ -336,7 +328,6 @@ class RepresentationCache:
             layer_info["memmap"].flush()
             del layer_info["memmap"]
 
-            # Read old data and create new larger file
             old_data = np.memmap(
                 str(data_path),
                 dtype=self.dtype,
@@ -352,7 +343,6 @@ class RepresentationCache:
                 shape=(new_size, layer_info["feature_dim"]),
             )
 
-            # Copy in chunks
             chunk_size = 10000
             for i in range(0, current_size, chunk_size):
                 end = min(i + chunk_size, current_size)
@@ -364,7 +354,6 @@ class RepresentationCache:
 
             temp_path.replace(data_path)
 
-            # Update metadata
             info["total_samples"] = new_size
             with open(metadata_path, "w") as f:
                 json.dump(info, f, indent=2)
@@ -730,7 +719,6 @@ class RepresentationCache:
                 info = {"entries": []}
 
             existing_entries = info.get("entries", [])
-            # Use (prompt_nr, object, style) as unique key to distinguish entries across classes
             existing_keys = {
                 (e["prompt_nr"], e.get("object", ""), e.get("style", "")) for e in existing_entries
             }

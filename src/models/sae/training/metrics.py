@@ -111,16 +111,13 @@ def compute_avg_max_cosine_similarity(weight_matrix: torch.Tensor) -> float:
     Returns:
         Average maximum cosine similarity across all features
     """
-    # Normalize weights to unit norm (L2 normalize each row)
+
     normalized = torch.nn.functional.normalize(weight_matrix, p=2, dim=1)
 
-    # Compute absolute pairwise cosine similarities (nb_features x nb_features)
     cos_sim = (normalized @ normalized.T).abs()
 
-    # Set diagonal to -inf to exclude self-similarity when finding max
     cos_sim.fill_diagonal_(-float("inf"))
 
-    # For each feature, find max similarity with other features, then average
     avg_max_cos = cos_sim.max(dim=1)[0].mean().item()
 
     return avg_max_cos
@@ -141,7 +138,6 @@ def compute_encoder_decoder_similarity(model: torch.nn.Module) -> dict:
     """
     metrics = {}
 
-    # Get decoder weights
     dictionary = model.get_dictionary
     if callable(dictionary):
         dictionary = dictionary()
@@ -149,12 +145,10 @@ def compute_encoder_decoder_similarity(model: torch.nn.Module) -> dict:
     metrics["decoder_avg_max_cos"] = compute_avg_max_cosine_similarity(dictionary)
     metrics["decoder_mean_norm"] = torch.norm(dictionary, dim=1).mean().item()
 
-    # Try to get encoder weights (TopKSAE specific)
     try:
         encoder_weights = model.encoder.final_block[0].weight.data  # type: ignore
         metrics["encoder_avg_max_cos"] = compute_avg_max_cosine_similarity(encoder_weights)
     except (AttributeError, IndexError, TypeError):
-        # Model doesn't have expected encoder structure
         metrics["encoder_avg_max_cos"] = 0.0
 
     return metrics

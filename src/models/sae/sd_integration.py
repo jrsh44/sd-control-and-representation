@@ -28,24 +28,24 @@ def callback_handler(self, step: int, timestep: int, callback_kwargs: dict):
 
 def latent_modification(codes: torch.Tensor) -> torch.Tensor:
     """
-    Modyfikuje wybrane koncepcje w reprezentacji latentnej.
+    Modify latent codes by suppressing selected concepts.
 
     Args:
-        codes (torch.Tensor): Tensor kodów latentnych o wymiarach (batch_size, num_concepts).
+        codes (torch.Tensor): Tensor of latent codes with shape (batch_size, num_concepts).
     Returns:
-        torch.Tensor: Zmodyfikowany tensor kodów latentnych.
+        torch.Tensor: Modified tensor of latent codes.
     """
     global concept_vector
-    modified_codes = codes - 100 * (codes * concept_vector)  # Zero out selected concepts
+    modified_codes = codes - 100 * (codes * concept_vector)
     return modified_codes
 
 
 def sae_integration_hook(module, input, output):
-    """Hook integrujący SAE z modelem U-Net.
-    args:
-        module: Moduł, do którego jest podłączony hook.
-        input: Wejście do modułu (nieużywane tutaj).
-        output: Wyjście z modułu (aktywacje U-Net).
+    """Hook integrating SAE with the U-Net model.
+    Args:
+        module: Module to which the hook is attached.
+        input: Input to the module (not used here).
+        output: Output from the module (U-Net activations).
     """
     try:
         global sae_encodings, concept_vector, sae
@@ -53,19 +53,19 @@ def sae_integration_hook(module, input, output):
             act = output[0]
         else:
             act = output
-        original_dtype = act.dtype  # Should be torch.float16
+        original_dtype = act.dtype
         act = act.float()
         batch, seq_len, dim = act.shape
         act_reshaped = rearrange(act, "b t d -> (b t) d")
         with torch.no_grad():
-            pre_codes, codes = sae.encode(act_reshaped)  # sae on 'cuda'
+            pre_codes, codes = sae.encode(act_reshaped)
             modified_codes = latent_modification(codes)
             act_reconstructed = sae.decode(modified_codes)
             act_reconstructed = rearrange(act_reconstructed, "(b t) d -> b t d", b=batch, t=seq_len)
             act_reconstructed = act_reconstructed.to(dtype=original_dtype)
         sae_encodings.append(
             {
-                "pre_codes": pre_codes,  # Keep on GPU
+                "pre_codes": pre_codes,
                 "codes": codes,
                 "modified_codes": modified_codes,
             }

@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 from diffusers import StableDiffusionPipeline
 
-# from einops import rearrange
 from src.utils.RepresentationModifier import RepresentationModifier
 
 from .layers import LayerPath
@@ -74,13 +73,11 @@ def capture_layer_representations(
             - image: Generated PIL Image
             - latents: Captured latents [timesteps, batch, 4, 64, 64] (only when capture_latents=True)
     """
-    # Store representations for each timestep: {hook_name: [list of tensors per timestep]}
     captured_representations: Dict[str, List[torch.Tensor]] = {
         f"hook_{i}": [] for i in range(len(layer_paths))
     }
     hook_handles: List[Any] = []
 
-    # Check if classifier-free guidance is enabled
     do_classifier_free_guidance = guidance_scale > 1.0
 
     def create_capture_hook(name: str):
@@ -92,22 +89,16 @@ def capture_layer_representations(
             else:
                 tensor = output.detach().cpu()
 
-            # Handle classifier-free guidance: split batch and keep only conditional
             if do_classifier_free_guidance:
-                # With CFG, batch contains [unconditional, conditional]
-                # We only want the conditional part (second half)
                 batch_size = tensor.shape[0]
                 if batch_size == 2:
-                    # Keep batch dim: [1, ...]
                     tensor = tensor[1:2]
                 captured_representations[name].append(tensor)
             else:
-                # No CFG, capture as-is
                 captured_representations[name].append(tensor)
 
         return hook
 
-    # Register forward hooks on target layers
     for i, layer_enum in enumerate(layer_paths):
         path = str(layer_enum)
         hook_name = f"hook_{i}"
@@ -119,17 +110,14 @@ def capture_layer_representations(
         except Exception as e:
             print(f"ERROR: Cannot find module for path '{path}'. Error: {e}")
 
-    # Setup latent capture if requested
     captured_latents_list = []
 
     if capture_latents:
 
         def latent_callback(pipe_obj, step_idx, timestep, callback_kwargs):
-            """Capture latent sample at each step."""
             latents = callback_kwargs["latents"]
-            # Handle CFG: keep only conditional part
             if do_classifier_free_guidance and latents.shape[0] == 2:
-                latents = latents[1:2]  # Keep batch dim: [1, ...]
+                latents = latents[1:2]
             captured_latents_list.append(latents.cpu().clone())
             return callback_kwargs
 
@@ -139,7 +127,6 @@ def capture_layer_representations(
         actual_callback = None
         actual_tensor_inputs = ["latents"]
 
-    # Generate image to trigger activations
     pipe_args = {
         "prompt": prompt,
         "num_inference_steps": num_inference_steps,
@@ -153,20 +140,15 @@ def capture_layer_representations(
 
     image = pipe(**pipe_args).images[0]
 
-    # Clean up hooks
     for handle in hook_handles:
         handle.remove()
 
-    # Stack timesteps and flatten spatial dimensions: [timesteps, batch, spatial, features]
     results = []
     for i in range(len(layer_paths)):
         hook_name = f"hook_{i}"
         if hook_name in captured_representations and captured_representations[hook_name]:
             timestep_tensors = captured_representations[hook_name]
 
-            # Apply skip_initial_timestep logic for U-Net related layers
-            # Text encoder layers (TEXT_EMBEDDING_FINAL etc.) only have 1 timestep
-            # so this check should only apply to layers that might have > 1 timestep
             if (
                 skip_initial_timestep
                 and len(timestep_tensors) > 1
@@ -174,12 +156,9 @@ def capture_layer_representations(
             ):
                 timestep_tensors = timestep_tensors[1:]
 
-            # Stack all timesteps into first dimension
             stacked = torch.stack(timestep_tensors, dim=0)  # [timesteps, batch, ...]
             print(f"Timestep: {i}, layer: {layer_paths[i].name}, stacked.shape: {stacked.shape}")
-            # Flatten spatial dimensions if present
             if stacked.dim() == 5:
-                # [timesteps, batch, h, w, features] -> [timesteps, batch, h*w, features]
                 t, b, h, w, f = stacked.shape
                 stacked = stacked.reshape(t, b, h * w, f)
 
@@ -187,13 +166,10 @@ def capture_layer_representations(
         else:
             results.append(None)
 
-    # Process captured latents if requested and return appropriate tuple
     if capture_latents:
         latents_tensor = None
         if captured_latents_list:
-            latents_tensor = torch.stack(
-                captured_latents_list, dim=0
-            )  # [timesteps, batch, 4, 64, 64]
+            latents_tensor = torch.stack(captured_latents_list, dim=0)
         return results, image, latents_tensor
     else:
         return results, image
@@ -203,29 +179,26 @@ def capture_layer_representations_with_unlearning(
     pipe: StableDiffusionPipeline,
     prompt: str,
     layer_paths: List[LayerPath],
-    modifier: RepresentationModifier,  # ← gotowy modyfikator!
+    modifier: RepresentationModifier,
     num_inference_steps: int = 50,
     guidance_scale: float = 7.5,
     generator: Optional[torch.Generator] = None,
 ) -> Tuple[List[torch.Tensor], torch.Tensor]:
     """
-    Generuje obraz z unlearningiem przy użyciu gotowego RepresentationModifier.
-    Przechwytuje aktywacje ze wszystkich timestepów z wybranych warstw.
+    Generates an image with unlearning using a pre-configured RepresentationModifier.
 
     Args:
         pipe: Stable Diffusion pipeline
-        prompt: tekstowy prompt
-        layer_paths: warstwy do przechwytywania aktywacji
-        modifier: gotowy obiekt RepresentationModifier (już skonfigurowany z sae, means, top-N itd.)
-        ... reszta parametrów generowania
+        prompt: text prompt for generation
+        layer_paths: layers from which to capture activations
+        modifier: pre-configured RepresentationModifier object (already set up with sae, means, top-N, etc.)
+        ... rest of generation parameters
 
-    Returns:s
+    Returns:
         (list_of_activations_per_layer, generated_image)
     """
-    # === 0. Zresetowanie modyfikatora (indeks timestepów) ===
     modifier.reset_timestep()
 
-    # === 1. Hooki do przechwytywania aktywacji (wszystkie warstwy) ===
     captured = {f"hook_{i}": [] for i in range(len(layer_paths))}
     capture_handles = []
 
@@ -239,28 +212,16 @@ def capture_layer_representations_with_unlearning(
                 x = output
             x = x.detach().cpu()
             if do_cfg and x.shape[0] == 2:
-                x = x[1:2]  # tylko conditional (CFG)
+                x = x[1:2]
             captured[name].append(x)
 
         return hook
 
-    # Rejestrujemy hooki przechwytywania
     for i, layer_path in enumerate(layer_paths):
         module = get_nested_module(pipe, str(layer_path.value))
         handle = module.register_forward_hook(make_capture_hook(f"hook_{i}"))
         capture_handles.append(handle)
 
-    # # === 2. Podłączamy modyfikator (on sam wie, do której warstwy się podpiąć) ===
-    # with modifier:
-    #     # === 3. Generowanie obrazu (modyfikator działa tylko w tym bloku) ===
-    #     image = pipe(
-    #         prompt=prompt,
-    #         num_inference_steps=num_inference_steps,
-    #         guidance_scale=guidance_scale,
-    #         generator=generator,
-    #     ).images[0]
-    # === 2. Modifier is already attached externally, no need for context manager ===
-    # === 3. Generowanie obrazu (modyfikator działa) ===
     image = pipe(
         prompt=prompt,
         num_inference_steps=num_inference_steps,
@@ -268,11 +229,9 @@ def capture_layer_representations_with_unlearning(
         generator=generator,
     ).images[0]
 
-    # === 4. Usuwamy hooki przechwytywania ===
     for h in capture_handles:
         h.remove()
 
-    # === 5. Przygotowanie wyników ===
     results = []
     for i in range(len(layer_paths)):
         tensors = captured[f"hook_{i}"]
@@ -280,10 +239,9 @@ def capture_layer_representations_with_unlearning(
             results.append(None)
             continue
 
-        stacked = torch.stack(tensors, dim=0)  # [timesteps, ...]
+        stacked = torch.stack(tensors, dim=0)
 
-        # Spłaszcz wymiary przestrzenne jeśli są
-        if stacked.dim() == 5:  # [T, B, H, W, C]
+        if stacked.dim() == 5:
             t, b, h, w, c = stacked.shape
             stacked = stacked.reshape(t, b, h * w, c)
 

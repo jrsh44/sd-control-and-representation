@@ -15,7 +15,7 @@ def get_system_metrics(device: str) -> Dict:
     gpu_metrics = {}
     if device == "cuda":
         try:
-            gpu = GPUtil.getGPUs()[0]  # Assuming first GPU
+            gpu = GPUtil.getGPUs()[0]
             gpu_metrics = {
                 "gpu_memory_used": gpu.memoryUsed,
                 "gpu_memory_total": gpu.memoryTotal,
@@ -104,10 +104,8 @@ def download_images_from_run(
         except Exception as e:
             return None, file.name, str(e)
 
-    # Download all image files from media folder in parallel
     try:
         files = run.files()
-        # Filter for image files
         image_files = [
             file
             for file in files
@@ -119,7 +117,6 @@ def download_images_from_run(
             print("  No image files found in media/images/")
             return downloaded_images
 
-        # Download images in parallel
         num_cpus = len(os.sched_getaffinity(0))
         num_workers = max(num_cpus - 1, 1)
         print(f"  Available CPUs: {num_cpus}, using {num_workers} workers")
@@ -135,7 +132,6 @@ def download_images_from_run(
                     print(f"    ✗ Failed to download {filename}: {error}")
                 else:
                     downloaded_images.append(local_path)
-                    # Log progress every log_every files
                     if idx % log_every == 0 or idx == len(image_files):
                         print(f"    ✓ Progress: {idx}/{len(image_files)} files downloaded")
 

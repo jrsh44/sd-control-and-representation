@@ -2,7 +2,6 @@ import time
 
 import torch
 
-# --- Bezpieczne importowanie wandb ---
 try:
     import wandb  # noqa: F401
 
@@ -63,7 +62,6 @@ def compute_sums(
         batch_times.append(batch_time)
         total_samples += batch.size(0)
 
-        # Logowanie postępu i statystyk
         if (i + 1) % log_every == 0 or (i + 1) == len(loader):
             elapsed = time.time() - start_time
             avg_time = sum(batch_times[-log_every:]) / len(batch_times[-log_every:])
@@ -76,7 +74,6 @@ def compute_sums(
                 f"Speed: {speed_samples:,.0f} samples/s"
             )
 
-            # Logowanie do wandb (jeśli dostępne)
             if WANDB_AVAILABLE and wandb.run is not None:
                 wandb.log(
                     {
@@ -90,7 +87,7 @@ def compute_sums(
                     },
                     step=i,
                     commit=True,
-                )  # commit=False – wyślemy wszystko naraz później
+                )
 
     total_time = time.time() - start_time
     print(
@@ -98,7 +95,6 @@ def compute_sums(
         f"({total_samples:,} samples, {total_samples / total_time:,.0f} samples/s)"
     )
 
-    # Final log do wandb
     if WANDB_AVAILABLE and wandb.run is not None:
         wandb.log(
             {
@@ -122,8 +118,8 @@ def compute_sums_per_timestep(
         sums_per_timestep: dict[int, torch.Tensor] - sum of activations for each timestep
         counts_per_timestep: dict[int, int] - number of samples for each timestep
     """
-    sums_per_timestep = {}  # timestep -> sum tensor
-    counts_per_timestep = {}  # timestep -> count
+    sums_per_timestep = {}
+    counts_per_timestep = {}
 
     batch_times = []
     total_samples = 0
@@ -135,21 +131,16 @@ def compute_sums_per_timestep(
     for i, (batch, timesteps) in enumerate(loader):
         batch_start = time.time()
 
-        # Process batch on GPU
         codes = get_codes(sae, batch, device)
-        # print(f"Codes shape: {codes.shape}")
 
-        # Move to CPU as float32 (saves bandwidth in GPU->CPU transfer)
         codes_cpu = codes.to("cpu", dtype=torch.float32)
-        del codes  # Explicitly release GPU tensor
+        del codes
 
-        # Ensure timesteps is a tensor on CPU
         if not isinstance(timesteps, torch.Tensor):
             timesteps = torch.tensor(timesteps, dtype=torch.long)
         else:
             timesteps = timesteps.cpu()
 
-        # Group by timestep within batch
         unique_timesteps = torch.unique(timesteps)
         for t in unique_timesteps:
             t_val = int(t.item())
@@ -157,17 +148,13 @@ def compute_sums_per_timestep(
             codes_t = codes_cpu[mask]
 
             if t_val not in sums_per_timestep.keys():
-                # Use float64 for accumulation to prevent precision loss
-                # when adding many small numbers to large sums (millions of samples)
                 sums_per_timestep[t_val] = torch.zeros(nb_concepts, dtype=torch.float64)
                 counts_per_timestep[t_val] = 0
 
-            # Convert to float64 for accumulation (preserves precision)
             sums_per_timestep[t_val] += codes_t.sum(dim=0, dtype=torch.float64)
             counts_per_timestep[t_val] += codes_t.shape[0]
-            del codes_t  # Release memory
+            del codes_t
 
-        # Clear GPU cache periodically to prevent memory fragmentation
         if is_cuda and (i + 1) % 100 == 0:
             torch.cuda.empty_cache()
 
@@ -176,7 +163,6 @@ def compute_sums_per_timestep(
         batch_times.append(batch_time)
         total_samples += batch.size(0)
 
-        # Logging with memory stats
         if (i + 1) % log_every == 0 or (i + 1) == len(loader):
             elapsed = time.time() - start_time
             avg_time = sum(batch_times[-log_every:]) / len(batch_times[-log_every:])
@@ -196,7 +182,6 @@ def compute_sums_per_timestep(
                 f"Timesteps: {len(sums_per_timestep)}{mem_info}"
             )
 
-            # Logowanie do wandb (jeśli dostępne)
             if WANDB_AVAILABLE and wandb.run is not None:
                 wandb.log(
                     {
@@ -220,7 +205,6 @@ def compute_sums_per_timestep(
         f"({total_samples:,} samples, {len(sums_per_timestep)} timesteps)"
     )
 
-    # Final log do wandb
     if WANDB_AVAILABLE and wandb.run is not None:
         wandb.log(
             {

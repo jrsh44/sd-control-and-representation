@@ -64,8 +64,6 @@ class SAETrainer:
         self.config = config
         self.scheduler = scheduler
 
-        # Store base learning rate (before scheduler modifies it)
-        # If not provided, use current optimizer LR
         self.base_lr = base_lr if base_lr is not None else optimizer.param_groups[0]["lr"]
 
         self.device = (
@@ -131,7 +129,6 @@ class SAETrainer:
         for epoch in range(self.config.start_epoch, self.config.nb_epochs):
             self.state.current_epoch = epoch
 
-            # Set epoch on sampler if it has set_epoch method (for reproducible shuffling)
             if hasattr(train_dataloader.sampler, "set_epoch"):
                 train_dataloader.sampler.set_epoch(epoch)
 
@@ -186,23 +183,19 @@ class SAETrainer:
         start_time = time.time()
         last_logged_progress = 0
 
-        # Timing accumulators
         total_data_loading_time = 0.0
         total_batch_compute_time = 0.0
         data_load_start = time.time()
 
         for batch_idx, batch in enumerate(dataloader):
-            # Record data loading time
             data_load_end = time.time()
             total_data_loading_time += data_load_end - data_load_start
 
-            # Time the batch computation
             compute_start = time.time()
             batch_metrics = self._train_step(batch, batch_idx)
             compute_end = time.time()
             total_batch_compute_time += compute_end - compute_start
 
-            # Add timing to batch metrics
             batch_metrics["data_loading_time"] = data_load_end - data_load_start
             batch_metrics["batch_compute_time"] = compute_end - compute_start
 
@@ -224,14 +217,12 @@ class SAETrainer:
                 self._log_progress(batch_idx, len(dataloader), start_time, batch_metrics)
                 last_logged_progress = progress_percent
 
-            # Start timing next data load
             data_load_start = time.time()
 
         elapsed = time.time() - start_time
         avg_metrics = metrics_agg.get_averages()
         num_batches = len(dataloader)
 
-        # Collect parameter/gradient norms at end of epoch
         params_norms = {}
         grad_norms = {}
         for name, param in self.model.named_parameters():
@@ -376,14 +367,12 @@ class SAETrainer:
         last_logged_progress = 0
         val_dead_tracker = None
 
-        # Timing accumulators
         total_data_loading_time = 0.0
         total_batch_compute_time = 0.0
         data_load_start = time.time()
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(dataloader):
-                # Record data loading time
                 data_load_end = time.time()
                 total_data_loading_time += data_load_end - data_load_start
 
@@ -408,7 +397,6 @@ class SAETrainer:
                     recon_loss, aux_loss = criterion_laux(x, x_hat, pre_codes, codes, dictionary)
                     loss = recon_loss + self.config.aux_loss_alpha * aux_loss
 
-                # Initialize trackers
                 if val_dead_tracker is None:
                     val_dead_tracker = DeadCodeTracker(codes.shape[1], self.device)
 
@@ -441,14 +429,12 @@ class SAETrainer:
                     self._log_progress(batch_idx, len(dataloader), start_time, metrics)
                     last_logged_progress = progress_percent
 
-                # Start timing next data load
                 data_load_start = time.time()
 
         elapsed = time.time() - start_time
         avg_metrics = metrics_agg.get_averages()
         num_batches = len(dataloader)
 
-        # Compute similarity metrics at end of validation
         similarity_metrics = compute_encoder_decoder_similarity(self.model)
 
         epoch_metrics = EpochMetrics(
@@ -496,7 +482,6 @@ class SAETrainer:
         """Log epoch metrics to internal state."""
         logs = self.state.train_logs if phase == "train" else self.state.val_logs
 
-        # Core metrics
         logs["avg_loss"].append(metrics.loss)
         logs["recon_loss"].append(metrics.recon_loss)
         logs["aux_loss"].append(metrics.aux_loss)
@@ -508,7 +493,6 @@ class SAETrainer:
         logs["learning_rate"].append(metrics.learning_rate)
         logs["mean_activation"].append(metrics.mean_activation)
 
-        # Timing metrics
         logs["data_loading_time"].append(metrics.data_loading_time)
         logs["batch_compute_time"].append(metrics.batch_compute_time)
         logs["avg_data_loading_time_ms"].append(metrics.avg_data_loading_time * 1000)
@@ -518,7 +502,6 @@ class SAETrainer:
             logs["dict_sparsity"].append(metrics.dict_sparsity)
             logs["dict_norms_mean"].append(metrics.dict_norms_mean)
 
-            # Log parameter/gradient norms
             if metrics.params_norms:
                 for name, value in metrics.params_norms.items():
                     logs[f"params_norm/{name}"].append(value)
@@ -526,7 +509,6 @@ class SAETrainer:
                 for name, value in metrics.grad_norms.items():
                     logs[f"grad_norm/{name}"].append(value)
         else:
-            # Validation-specific metrics
             logs["encoder_avg_max_cos"].append(metrics.encoder_avg_max_cos)
             logs["decoder_avg_max_cos"].append(metrics.decoder_avg_max_cos)
             logs["decoder_mean_norm"].append(metrics.decoder_mean_norm)

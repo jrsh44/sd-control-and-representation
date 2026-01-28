@@ -60,44 +60,35 @@ class TrainingConfig:
 class EpochMetrics:
     """Metrics collected during one epoch."""
 
-    # Loss components
     loss: float = 0.0
     recon_loss: float = 0.0
     aux_loss: float = 0.0
 
-    # Reconstruction quality
     r2: float = 0.0
 
-    # Sparsity metrics
     l0_sparsity: float = 0.0
     z_l2: float = 0.0
     mean_activation: float = 0.0
     max_activation: float = 0.0
 
-    # Dead features
     dead_features_ratio: float = 0.0
 
-    # Dictionary metrics
     dict_sparsity: float = 0.0
     dict_norms_mean: float = 0.0
 
-    # Similarity metrics (validation only)
     encoder_avg_max_cos: float = 0.0
     decoder_avg_max_cos: float = 0.0
     decoder_mean_norm: float = 0.0
 
-    # Timing and metadata
     time_seconds: float = 0.0
     num_batches: int = 0
     learning_rate: float = 0.0
 
-    # Timing breakdown
     data_loading_time: float = 0.0  # Total time waiting for data
     batch_compute_time: float = 0.0  # Total time for forward/backward/optim
     avg_data_loading_time: float = 0.0  # Average per batch
     avg_batch_compute_time: float = 0.0  # Average per batch
 
-    # Parameter/gradient norms (optional)
     params_norms: Optional[Dict[str, float]] = None
     grad_norms: Optional[Dict[str, float]] = None
 

@@ -1,6 +1,5 @@
 import os
 import sys
-from os import listdir  # noqa: F401
 from pathlib import Path
 
 import fiftyone as fo
@@ -128,26 +127,21 @@ def extract_and_save_statistics(
             print(f"Max images: {max_images}")
         print("-" * 80)
 
-    # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Load model and preprocessing
     model = _load_inception_model(device, verbose)
     preprocess = _get_inception_preprocessing()
 
-    # Extract features
     features = _extract_features_from_directory(
         images_path, model, preprocess, device, max_images, verbose
     )
 
-    # Compute statistics
     if verbose:
         print("Computing mean and covariance...")
 
     mean = np.mean(features, axis=0)
     cov = np.cov(features, rowvar=False)
 
-    # Save statistics
     mean_path = os.path.join(output_dir, f"{dataset_name}_mean.npy")
     cov_path = os.path.join(output_dir, f"{dataset_name}_cov.npy")
 
@@ -171,7 +165,7 @@ def calculate_fid_from_statistics(
     cov_path_2: str,
     verbose: bool = True,
 ) -> float:
-    """Calculate FID (Fréchet Inception Distance) from pre-computed statistics.
+    """Calculate FID from pre-computed statistics.
 
     This is the efficient way to compute FID when you have pre-computed
     mean vectors and covariance matrices from both datasets.
@@ -196,7 +190,6 @@ def calculate_fid_from_statistics(
         print(f"Dataset 2 cov: {cov_path_2}")
         print("-" * 80)
 
-    # Load statistics
     mu1 = np.load(mean_path_1)
     sigma1 = np.load(cov_path_1)
     mu2 = np.load(mean_path_2)
@@ -206,12 +199,9 @@ def calculate_fid_from_statistics(
         print("✓ Statistics loaded successfully.")
         print("Computing FID...")
 
-    # Calculate FID using the formula:
-    # FID = ||mu1 - mu2||^2 + Tr(sigma1 + sigma2 - 2*sqrt(sigma1*sigma2))
     diff = mu1 - mu2
     covmean, _ = sqrtm(sigma1 @ sigma2, disp=False)
 
-    # Handle numerical errors - sqrtm may return complex numbers
     if np.iscomplexobj(covmean):
         if verbose:
             print(
@@ -256,7 +246,6 @@ def extract_and_save_coco_statistics(
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    # Auto-detect wandb
     if log_to_wandb is None:
         try:
             import wandb
@@ -274,7 +263,6 @@ def extract_and_save_coco_statistics(
             print(f"Filtering for classes: {classes}")
         print("-" * 80)
 
-    # Load COCO-2017 validation dataset
     dataset_kwargs = {
         "split": "test",
         "max_samples": num_images,
@@ -289,7 +277,6 @@ def extract_and_save_coco_statistics(
     if verbose:
         print(f"✓ Loaded {len(dataset)} images from COCO-2017")
 
-    # Get file paths from the dataset
     coco_image_paths = [sample.filepath for sample in dataset]
 
     if verbose:
@@ -301,11 +288,9 @@ def extract_and_save_coco_statistics(
 
         wandb.log({"coco/num_images_loaded": len(coco_image_paths)})
 
-    # Load model and preprocessing
     model = _load_inception_model(device, verbose)
     preprocess = _get_inception_preprocessing()
 
-    # Extract features directly from COCO paths
     if verbose:
         print("Extracting features from COCO images...")
 
@@ -336,7 +321,6 @@ def extract_and_save_coco_statistics(
     if verbose:
         print(f"✓ Processed {num_images_actual} images.")
 
-    # Compute statistics
     if verbose:
         print("Computing mean and covariance...")
 
@@ -349,16 +333,13 @@ def extract_and_save_coco_statistics(
     mean = np.mean(features_np, axis=0)
     cov = np.cov(features_np, rowvar=False)
 
-    # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Generate dataset name based on parameters
     dataset_name = f"coco2017_val_{num_images_actual}"
     if classes:
-        classes_str = "_".join(classes[:3])  # Use first 3 classes in name
+        classes_str = "_".join(classes[:3])
         dataset_name += f"_{classes_str}"
 
-    # Save statistics
     mean_path = os.path.join(output_dir, f"{dataset_name}_mean.npy")
     cov_path = os.path.join(output_dir, f"{dataset_name}_cov.npy")
 
@@ -394,12 +375,7 @@ def calculate_fid(
     verbose: bool = True,
 ) -> float:
     """
-    Calculate FID (Fréchet Inception Distance) between two image sets.
-
-    This is a convenience function that extracts features and computes FID in one step.
-    For better efficiency with repeated comparisons, consider using:
-    1. extract_and_save_statistics() to pre-compute statistics
-    2. calculate_fid_from_statistics() to compute FID from saved statistics
+    Calculate FID between two image sets.
 
     Args:
         images_first_set_path: Path to first set of images
@@ -421,11 +397,9 @@ def calculate_fid(
         print(f"Second set: {images_second_set_path}")
         print("-" * 80)
 
-    # Load model and preprocessing
     model = _load_inception_model(device, verbose)
     preprocess = _get_inception_preprocessing()
 
-    # Extract features from both sets
     if verbose:
         print("Processing first set...")
     features_1 = _extract_features_from_directory(
@@ -438,7 +412,6 @@ def calculate_fid(
         images_second_set_path, model, preprocess, device, None, verbose
     )
 
-    # Compute statistics
     if verbose:
         print("Computing statistics and FID...")
 
@@ -447,7 +420,6 @@ def calculate_fid(
     mu2 = np.mean(features_2, axis=0)
     sigma2 = np.cov(features_2, rowvar=False)
 
-    # Calculate FID
     diff = mu1 - mu2
     covmean, _ = sqrtm(sigma1 @ sigma2, disp=False)
     if np.iscomplexobj(covmean):
@@ -493,9 +465,7 @@ def calculate_fid_with_coco(
 
     import tempfile
 
-    # Try to use pre-computed COCO statistics
     if coco_stats_dir is not None:
-        # Generate expected filenames
         dataset_name = f"coco2017_val_{num_coco_images}"
         if classes:
             classes_str = "_".join(classes[:3])
@@ -513,7 +483,6 @@ def calculate_fid_with_coco(
                 print(f"COCO cov: {coco_cov_path}")
                 print("-" * 80)
 
-            # Extract statistics from generated images
             temp_stats_dir = tempfile.mkdtemp(prefix="fid_stats_")
             try:
                 gen_mean_path, gen_cov_path = extract_and_save_statistics(
@@ -524,7 +493,6 @@ def calculate_fid_with_coco(
                     verbose=verbose,
                 )
 
-                # Calculate FID from statistics
                 fid_score = calculate_fid_from_statistics(
                     mean_path_1=gen_mean_path,
                     cov_path_1=gen_cov_path,
@@ -543,7 +511,6 @@ def calculate_fid_with_coco(
             print(f"Pre-computed COCO statistics not found at {coco_stats_dir}")
             print("Will compute COCO statistics on-the-fly...")
 
-    # Fallback: compute COCO statistics on-the-fly
     if verbose:
         print("=" * 80)
         print("LOADING COCO-2017 VALIDATION SET")
@@ -553,7 +520,6 @@ def calculate_fid_with_coco(
             print(f"Filtering for classes: {classes}")
         print("-" * 80)
 
-    # Load COCO-2017 validation dataset
     dataset_kwargs = {
         "split": "validation",
         "max_samples": num_coco_images,
@@ -568,25 +534,21 @@ def calculate_fid_with_coco(
     if verbose:
         print(f"✓ Loaded {len(dataset)} images from COCO-2017")
 
-    # Get file paths from the dataset
     coco_image_paths = [sample.filepath for sample in dataset]
 
     if verbose:
         print(f"✓ Extracted {len(coco_image_paths)} image paths")
         print("-" * 80)
 
-    # Load model and preprocessing
     model = _load_inception_model(device, verbose)
     preprocess = _get_inception_preprocessing()
 
-    # Extract features from generated images
     if verbose:
         print("Extracting features from generated images...")
     gen_features = _extract_features_from_directory(
         generated_images_path, model, preprocess, device, None, verbose
     )
 
-    # Extract features from COCO images
     if verbose:
         print("Extracting features from COCO images...")
 
@@ -607,7 +569,6 @@ def calculate_fid_with_coco(
     if verbose:
         print(f"✓ Processed {num_coco} COCO images.")
 
-    # Compute statistics and FID
     if verbose:
         print("Computing statistics and FID...")
 

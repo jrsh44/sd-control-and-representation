@@ -31,23 +31,18 @@ def criterion_laux(
         Tuple of (reconstruction_loss, auxiliary_loss).
     """
 
-    # Calculate the Main Reconstruction Loss
     residual = x - x_hat
     main_mse = residual.square().mean()
 
-    # Identify the "Runner-Up" Features
     potential_activations = torch.relu(pre_codes)
     dead_features_val = potential_activations - codes
 
-    # Select the Top-K of these "Dead" Features
     aux_k = dictionary.shape[0] // 2
     aux_topk = torch.topk(dead_features_val, k=aux_k, dim=1)
 
-    # Create the Auxiliary Code Vector
     aux_codes = torch.zeros_like(codes)
     aux_codes.scatter_(-1, aux_topk.indices, aux_topk.values)
 
-    # Predict the Residual
     residual_hat = aux_codes @ dictionary
 
     aux_mse = (residual.detach() - residual_hat).square().mean()

@@ -76,7 +76,6 @@ def load_base_prompts(path: Path) -> List[Tuple[int, str]]:
                 try:
                     idx = int(idx_str.strip())
                 except ValueError:
-                    # fallback to sequential numbering
                     idx = len(prompts) + 1
             else:
                 idx = len(prompts) + 1
@@ -110,7 +109,6 @@ def load_classes_file(path: Path) -> Dict[int, str]:
                     continue
                 classes[idx] = label.strip()
             else:
-                # if no id, assign next integer
                 idx = max(classes.keys(), default=0) + 1
                 classes[idx] = line
     return classes

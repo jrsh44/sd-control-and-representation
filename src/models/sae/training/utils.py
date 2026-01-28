@@ -40,7 +40,6 @@ def create_warmup_cosine_scheduler(
     if warmup_steps <= 0:
         return None
 
-    # Clamp warmup_steps to be less than total_steps
     original_warmup_steps = warmup_steps
     warmup_steps = min(warmup_steps, total_steps - 1)
     if warmup_steps < original_warmup_steps:
@@ -48,12 +47,9 @@ def create_warmup_cosine_scheduler(
         print(f"     Clamping warmup_steps to {warmup_steps}")
     cosine_steps = total_steps - warmup_steps
 
-    # Get base learning rate for eta_min calculation
     base_lr = optimizer.param_groups[0]["lr"]
     eta_min = base_lr * scheduler_config.min_lr_ratio
 
-    # Phase 1: Linear warmup
-    # start_factor is the multiplier at step 0, end_factor is at warmup_steps
     warmup_scheduler = LinearLR(
         optimizer,
         start_factor=scheduler_config.warmup_start_factor,
@@ -61,14 +57,12 @@ def create_warmup_cosine_scheduler(
         total_iters=warmup_steps,
     )
 
-    # Phase 2: Cosine annealing
     cosine_scheduler = CosineAnnealingLR(
         optimizer,
         T_max=cosine_steps,
         eta_min=eta_min,
     )
 
-    # Combine schedulers: switch from warmup to cosine after warmup_steps
     scheduler = SequentialLR(
         optimizer,
         schedulers=[warmup_scheduler, cosine_scheduler],

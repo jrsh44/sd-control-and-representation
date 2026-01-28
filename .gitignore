@@ -53,7 +53,7 @@ venv.bak/
 *.safetensors
 *.bin
 *.pth
-models/
+/models/
 
 # Environment variables
 .env
