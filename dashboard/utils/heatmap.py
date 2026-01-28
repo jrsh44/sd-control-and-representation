@@ -1,10 +1,4 @@
-"""
-Feature Heatmap Utilities Module
-
-Generates SAE feature activation heatmaps overlaid on generated images.
-Used to visualize which spatial regions activate specific SAE features
-during the Stable Diffusion denoising process.
-"""
+"""SAE feature activation heatmap generation and visualization."""
 
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -25,23 +19,23 @@ def collect_activations_from_representations(
     device: str = "cuda",
     feature_scores: Optional[torch.Tensor] = None,
 ) -> Dict[int, Dict[int, np.ndarray]]:
-    """
-    Process representations through SAE to get feature activations.
+    """Process representations through SAE to get feature activations.
+
     Auto-selects the top-K most active features at each timestep,
     or uses provided feature_scores for concept-based selection.
 
     Args:
-        representations: Tensor of shape [num_timesteps, batch, seq_len, feature_dim]
-        sae: TopKSAE model
-        timesteps: List of timestep indices to process
-        top_k_features: Number of top features to select per timestep
-        device: Device to run SAE on
-        feature_scores: Optional pre-computed feature scores from RepresentationModifier
+        representations: Tensor of shape [num_timesteps, batch, seq_len, feature_dim].
+        sae: TopKSAE model.
+        timesteps: List of timestep indices to process.
+        top_k_features: Number of top features to select per timestep.
+        device: Device to run SAE on.
+        feature_scores: Optional pre-computed feature scores from RepresentationModifier.
                        Shape: [num_timesteps, num_features] for per-timestep or
-                              [num_features] for global
+                              [num_features] for global.
 
     Returns:
-        Dict[timestep -> Dict[feature_idx -> activation_array]]
+        Dict[timestep -> Dict[feature_idx -> activation_array]].
     """
     total_timesteps = representations.shape[0]
     activations = {}
@@ -50,34 +44,27 @@ def collect_activations_from_representations(
         if step_idx >= total_timesteps:
             continue
 
-        # Get representation: [batch, seq_len, feature_dim]
         rep = representations[step_idx]
 
-        # Reshape for SAE: [batch, seq_len, features] -> [seq_len, features]
         if rep.ndim == 3:
             rep = rep.squeeze(0)
 
-        # Forward through SAE
         with torch.no_grad():
             rep_device = rep.to(device).float()
-            _, codes, _ = sae(rep_device)  # codes: [seq_len, num_concepts]
+            _, codes, _ = sae(rep_device)
             codes_cpu = codes.cpu().numpy()
 
-        # Select features for this timestep
         if feature_scores is not None:
-            # Use provided feature scores from RepresentationModifier
-            if feature_scores.ndim == 2:  # Per-timestep scores
+            if feature_scores.ndim == 2:
                 if step_idx < feature_scores.shape[0]:
                     step_scores = feature_scores[step_idx]
                     top_features = torch.topk(step_scores, k=top_k_features).indices.tolist()
                 else:
-                    # Fallback to activation-based if timestep out of range
                     activation_sums = np.abs(codes_cpu).sum(axis=0)
                     top_features = np.argsort(activation_sums)[-top_k_features:][::-1].tolist()
-            else:  # Global scores
+            else:
                 top_features = torch.topk(feature_scores, k=top_k_features).indices.tolist()
         else:
-            # Auto-select top-K most active features
             activation_sums = np.abs(codes_cpu).sum(axis=0)  # [num_concepts]
             top_features = np.argsort(activation_sums)[-top_k_features:][::-1].tolist()
 
@@ -91,28 +78,25 @@ def collect_activations_from_representations(
 
 
 def decode_latent_to_image(latent: torch.Tensor, pipe, device: str) -> Image.Image:
-    """
-    Decode a latent tensor to an RGB image using the VAE decoder.
+    """Decode a latent tensor to an RGB image using the VAE decoder.
 
     Args:
-        latent: Latent tensor of shape [1, 4, 64, 64] or [4, 64, 64]
-        pipe: Stable Diffusion pipeline with VAE
-        device: Device to run decoding on
+        latent: Latent tensor of shape [1, 4, 64, 64] or [4, 64, 64].
+        pipe: Stable Diffusion pipeline with VAE.
+        device: Device to run decoding on.
 
     Returns:
-        PIL Image decoded from latent
+        Decoded PIL Image.
     """
+
     with torch.no_grad():
         latent = latent.to(device)
-        # Ensure batch dimension
         if latent.ndim == 3:
             latent = latent.unsqueeze(0)
 
-        # Decode using VAE
         scaled_latent = latent / pipe.vae.config.scaling_factor
         decoded = pipe.vae.decode(scaled_latent).sample
 
-        # Convert to image
         image = (decoded / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()[0]
         image = Image.fromarray((image * 255).astype("uint8"))
@@ -141,11 +125,9 @@ def create_heatmap_overlay(
     img_array = np.array(image)
     img_h, img_w = img_array.shape[:2]
 
-    # Reshape activation to spatial dimensions
     seq_len = len(activation)
     spatial_size = int(np.sqrt(seq_len))
 
-    # Pad if not perfect square
     if spatial_size * spatial_size != seq_len:
         target_len = spatial_size * spatial_size
         if seq_len < target_len:
@@ -155,19 +137,15 @@ def create_heatmap_overlay(
 
     heatmap_2d = activation.reshape(spatial_size, spatial_size)
 
-    # Normalize to [0, 1]
     if heatmap_2d.max() > heatmap_2d.min():
         heatmap_2d = (heatmap_2d - heatmap_2d.min()) / (heatmap_2d.max() - heatmap_2d.min())
 
-    # Resize to image dimensions
     heatmap_resized = cv2.resize(heatmap_2d, (img_w, img_h))
 
-    # Apply colormap
     heatmap_uint8 = (heatmap_resized * 255).astype(np.uint8)
     heatmap_colored = cv2.applyColorMap(heatmap_uint8, colormap)
     heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
 
-    # Overlay on image
     overlaid = cv2.addWeighted(img_array, 1 - alpha, heatmap_colored, alpha, 0)
 
     return Image.fromarray(overlaid)
@@ -203,7 +181,6 @@ def generate_heatmap_gallery(
     """
     gallery = []
 
-    # Detect nudity coordinates once from the final image
     nudity_detections = []
     if apply_censorship and nudenet_detector is not None and image is not None:
         from utils.detection import detect_nudity_coordinates
@@ -224,7 +201,6 @@ def generate_heatmap_gallery(
         step_activations = activations[timestep]
         feature_count = 0
 
-        # Use intermediate image for this timestep if available, otherwise fallback to final image
         base_image = intermediate_images.get(timestep, image) if intermediate_images else image
 
         if base_image is None:
@@ -232,18 +208,15 @@ def generate_heatmap_gallery(
                 state.log(f"No base image available for timestep {timestep}, skipping", "warning")
             continue
 
-        # Apply censorship using coordinates from final image
         display_image = base_image
         if apply_censorship and nudity_detections:
             from utils.detection import apply_censorship_boxes
 
-            # Scale coordinates if image size differs
             final_w, final_h = image.size
             base_w, base_h = base_image.size
             scale_x = base_w / final_w
             scale_y = base_h / final_h
 
-            # Create scaled detections for this image
             scaled_detections = []
             for det in nudity_detections:
                 box = det["box"]
@@ -258,7 +231,6 @@ def generate_heatmap_gallery(
 
             display_image = apply_censorship_boxes(base_image, scaled_detections)
             if state and timestep == sorted(activations.keys())[0]:
-                # Log only once for first timestep
                 state.log(
                     f"Applied censorship boxes from final image to all {len(activations)} timesteps",
                     "info",
@@ -287,7 +259,6 @@ def get_activation_score_html(activation: float) -> str:
     Returns:
         HTML formatted score string with color indicator
     """
-    # Normalize activation to determine color (higher = more significant)
     abs_val = abs(activation)
     if abs_val >= 2.0:
         css_class = "score-high"
@@ -326,7 +297,6 @@ def format_heatmap_info(
     rows = []
 
     if multi_concept:
-        # Multiple concepts: group by concept
         for concept_name, concept_activations in activations.items():
             rows.append(f"""
                 <tr style="background: rgba(94, 129, 172, 0.15);">
@@ -347,7 +317,6 @@ def format_heatmap_info(
                         </tr>
                     """)
     else:
-        # Single concept or no grouping - show each feature per timestep
         for timestep in sorted(activations.keys()):
             features = list(activations[timestep].keys())
             for feat_idx in features:
@@ -433,12 +402,11 @@ def generate_heatmaps_for_dashboard(
     from src.models.sd_v1_5.hooks import capture_layer_representations
 
     if timesteps is None:
-        timesteps = [10, 25, 40]  # Early, mid, late stages
+        timesteps = [10, 25, 40]
 
     if state:
         state.log(f"Capturing representations at timesteps: {timesteps}", "info")
 
-    # Generate image and capture representations
     generator = torch.Generator(device=device).manual_seed(seed)
 
     representations, final_image, latents = capture_layer_representations(
@@ -456,7 +424,6 @@ def generate_heatmaps_for_dashboard(
             state.log("Failed to capture representations", "error")
         return [], "", final_image
 
-    # Collect activations from representations
     activations = collect_activations_from_representations(
         representations=representations[0],
         sae=sae,
@@ -469,7 +436,6 @@ def generate_heatmaps_for_dashboard(
         total_features = sum(len(v) for v in activations.values())
         state.log(f"Extracted {total_features} feature activations", "success")
 
-    # Decode intermediate images from latents for specific timesteps
     intermediate_images = {}
     if latents is not None:
         for timestep in timesteps:
@@ -480,7 +446,6 @@ def generate_heatmaps_for_dashboard(
                 if state:
                     state.log(f"Decoded intermediate image at timestep {timestep}", "info")
 
-    # Generate heatmap gallery with intermediate images
     gallery = generate_heatmap_gallery(
         activations=activations,
         image=final_image,
@@ -489,7 +454,6 @@ def generate_heatmaps_for_dashboard(
         intermediate_images=intermediate_images,
     )
 
-    # Format info HTML
     info_html = format_heatmap_info(activations)
 
     return gallery, info_html, final_image

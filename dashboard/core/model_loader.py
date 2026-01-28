@@ -1,10 +1,5 @@
-"""
-Model Loading Module
+"""Model loading utilities for SD, SAE, and NudeNet."""
 
-Provides functions to load SD, SAE, and NudeNet models.
-"""
-
-# Use absolute import with dashboard prefix
 import sys
 from pathlib import Path as _Path
 from typing import TYPE_CHECKING, Any
@@ -29,19 +24,18 @@ def load_sd_model(
     """Load Stable Diffusion v1.5 model.
 
     Args:
-        state: Dashboard state to store the model
-        use_gpu: Whether to use GPU if available
-        model_id: HuggingFace model ID
+        state: Dashboard state to store the model.
+        use_gpu: Whether to use GPU if available.
+        model_id: HuggingFace model ID.
 
     Returns:
-        Loaded StableDiffusionPipeline
+        Loaded StableDiffusionPipeline.
     """
     state.log(f"Loading SD from {model_id}...", "loading")
 
     try:
         from diffusers import StableDiffusionPipeline
 
-        # Determine device based on user choice and compatibility
         if use_gpu and CUDA_COMPATIBLE:
             device = "cuda"
             dtype = torch.float16
@@ -59,7 +53,6 @@ def load_sd_model(
 
         state.log(f"Device: {device}, Dtype: {dtype}", "info")
 
-        # Load pipeline
         state.log("Downloading/loading model weights...", "loading")
         pipe = StableDiffusionPipeline.from_pretrained(
             model_id,
@@ -71,7 +64,6 @@ def load_sd_model(
         state.log("Moving model to device...", "loading")
         pipe = pipe.to(device)
 
-        # Enable optimizations only for compatible CUDA
         if device == "cuda":
             try:
                 pipe.enable_attention_slicing()
@@ -85,7 +77,6 @@ def load_sd_model(
             except Exception:
                 pass
 
-            # Only enable xformers if flash attention is supported
             if CUDA_FLASH_ATTENTION_OK:
                 try:
                     pipe.enable_xformers_memory_efficient_attention()
@@ -97,12 +88,10 @@ def load_sd_model(
         print("SD model loaded successfully")
         state.sd_pipe = pipe
 
-        # Also load CLIP model for similarity scoring (silently)
         try:
             load_clip_model(state, device=device)
             print("CLIP model pre-loaded successfully")
         except Exception as clip_e:
-            # Log but don't fail - CLIP can be loaded later during analysis
             state.log(f"CLIP pre-load skipped: {clip_e}", "info")
 
         return pipe
@@ -118,11 +107,11 @@ def load_clip_model(
     """Load CLIP model for similarity scoring.
 
     Args:
-        state: Dashboard state to store the model
-        device: Device to load model on ('cpu' or 'cuda')
+        state: Dashboard state to store the model.
+        device: Device to load model on ('cpu' or 'cuda').
 
     Returns:
-        Loaded CLIPScore model
+        Loaded CLIPScore model.
     """
     if state.clip_model is not None:
         return state.clip_model
@@ -150,15 +139,15 @@ def load_sae_model(
     """Load SAE model with weights and feature sums from config.
 
     Args:
-        state: Dashboard state to store the model
-        sae_model_id: ID of the SAE model to load from config
-        sae_config: SAE configuration dictionary
-        get_sae_hyperparameters: Function to get hyperparameters
-        get_feature_sums_path: Function to get feature sums path
-        get_model_path: Function to get model path
+        state: Dashboard state to store the model.
+        sae_model_id: ID of the SAE model to load from config.
+        sae_config: SAE configuration dictionary.
+        get_sae_hyperparameters: Function to get hyperparameters.
+        get_feature_sums_path: Function to get feature sums path.
+        get_model_path: Function to get model path.
 
     Returns:
-        Loaded SAE model
+        Loaded SAE model.
     """
     try:
         from overcomplete.sae import TopKSAE
@@ -173,7 +162,6 @@ def load_sae_model(
     state.log("Loading SAE model...", "loading")
 
     try:
-        # Get hyperparameters from config
         hyperparams = get_sae_hyperparameters(sae_config, sae_model_id)
         if not hyperparams:
             raise ValueError(f"No hyperparameters found for SAE model: {sae_model_id}")
@@ -183,20 +171,16 @@ def load_sae_model(
 
         state.log(f"SAE config: topk={topk}, nb_concepts={nb_concepts}", "info")
 
-        # Get feature sums path
         feature_sums_path = get_feature_sums_path(sae_config, sae_model_id)
         if not feature_sums_path or not feature_sums_path.exists():
             raise FileNotFoundError(f"Feature sums not found: {feature_sums_path}")
 
         state.log(f"Loading feature sums from: {feature_sums_path.name}", "loading")
 
-        # Use the same device as SD pipeline for compatibility
-        # SAE must be on same device as SD since they share tensors during intervention
         if state.sd_pipe is not None:
             device = str(state.sd_pipe.device)
             state.log(f"SAE will use same device as SD pipeline: {device}", "info")
         else:
-            # Fallback if SD not loaded yet (shouldn't happen in normal flow)
             device = "cuda" if (torch.cuda.is_available() and CUDA_COMPATIBLE) else "cpu"
             state.log(f"SD pipeline not loaded, using default device: {device}", "warning")
 
@@ -204,17 +188,14 @@ def load_sae_model(
 
         state.log(f"Feature sums loaded: {len(feature_sums)} concepts", "success")
 
-        # Input shape for UNET_UP_1_ATT_1 layer
         input_shape = 1280
 
-        # Get model weights path
         model_path = get_model_path(sae_config, sae_model_id)
         if not model_path or not model_path.exists():
             raise FileNotFoundError(f"SAE model weights not found: {model_path}")
 
         state.log(f"Loading SAE weights from: {model_path.name}", "loading")
 
-        # Create SAE model
         state.log("Initializing SAE architecture...", "loading")
         sae = TopKSAE(
             input_shape=input_shape,
@@ -223,7 +204,6 @@ def load_sae_model(
             device=device,
         )
 
-        # Load pre-trained weights
         model_weights = torch.load(model_path, map_location=device, weights_only=False)
         sae.load_state_dict(model_weights)
 
@@ -245,10 +225,10 @@ def load_nudenet_model(state: "DashboardState") -> Any:
     """Load NudeNet detector.
 
     Args:
-        state: Dashboard state to store the detector
+        state: Dashboard state to store the detector.
 
     Returns:
-        Loaded NudeDetector
+        Loaded NudeDetector.
     """
     state.log("Loading NudeNet detector...", "loading")
 
@@ -260,7 +240,6 @@ def load_nudenet_model(state: "DashboardState") -> Any:
         raise ImportError(error_msg)
 
     try:
-        # Force CPU provider if flash attention is not supported
         if not CUDA_FLASH_ATTENTION_OK:
             state.log("Using CPU for NudeNet (Flash Attention not supported on this GPU)", "info")
             providers = ["CPUExecutionProvider"]

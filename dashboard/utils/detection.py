@@ -1,8 +1,4 @@
-"""
-NudeNet Detection Utilities Module
-
-Provides content detection and censoring functionality using NudeNet.
-"""
+"""Content detection and censoring using NudeNet."""
 
 import time
 from typing import TYPE_CHECKING
@@ -19,7 +15,6 @@ if TYPE_CHECKING:
     from core.state import DashboardState
 
 
-# All NudeNet detection classes
 NUDENET_CLASSES = [
     "BUTTOCKS_EXPOSED",
     "FEMALE_GENITALIA_EXPOSED",
@@ -32,7 +27,6 @@ NUDENET_CLASSES = [
     "FEMALE_BREAST_EXPOSED",
 ]
 
-# Unsafe labels that trigger censoring
 UNSAFE_LABELS = [
     "FEMALE_GENITALIA_EXPOSED",
     "MALE_GENITALIA_EXPOSED",
@@ -47,17 +41,16 @@ def detect_nudity_coordinates(
     state: "DashboardState",
     detector=None,
 ) -> list[dict]:
-    """
-    Run NudeNet detection to get coordinates of nudity regions without censoring.
+    """Run NudeNet detection to get coordinates of nudity regions without censoring.
 
     Args:
-        image: PIL Image to analyze
-        state: Dashboard state with nudenet_detector and temp_dir
-        detector: Optional NudeNet detector (uses state.nudenet_detector if None)
+        image: PIL Image to analyze.
+        state: Dashboard state with nudenet_detector and temp_dir.
+        detector: Optional NudeNet detector (uses state.nudenet_detector if None).
 
     Returns:
-        List of detection dictionaries with 'class', 'score', and 'box' keys
-        Box format: [x, y, width, height]
+        List of detection dictionaries with 'class', 'score', and 'box' keys.
+        Box format: [x, y, width, height].
     """
     nudenet_detector = detector if detector is not None else state.nudenet_detector
 
@@ -65,17 +58,13 @@ def detect_nudity_coordinates(
         return []
 
     try:
-        # Save image temporarily for detection
         temp_path = state.temp_dir / f"detect_{int(time.time() * 1000)}.png"
         image.save(temp_path)
 
-        # Run detection to get coordinates
         detections = nudenet_detector.detect(str(temp_path))
 
-        # Clean up temp file
         temp_path.unlink(missing_ok=True)
 
-        # Filter for unsafe labels with sufficient confidence
         unsafe_detections = [
             det for det in detections if det["class"] in UNSAFE_LABELS and det["score"] > 0.45
         ]
@@ -92,45 +81,41 @@ def apply_censorship_boxes(
     detections: list[dict],
     blur_intensity: int = 50,
 ) -> Image.Image:
-    """
-    Apply censorship to an image using pre-detected coordinates.
+    """Apply censorship to an image using pre-detected coordinates.
+
     Scales coordinates if image size differs from detection image.
 
     Args:
-        image: PIL Image to censor
-        detections: List of detection dicts with 'box' key [x, y, w, h]
-        blur_intensity: Deprecated, kept for API compatibility
+        image: PIL Image to censor.
+        detections: List of detection dictionaries from detect_nudity_coordinates.
+        blur_intensity: Blur intensity for censoring (higher = more blur).
 
     Returns:
-        PIL Image with censored regions (black boxes)
+        Censored PIL Image.
     """
+
     if not detections:
         return image
 
     import numpy as np
 
-    # Convert PIL to numpy array
     img_array = np.array(image)
     img_h, img_w = img_array.shape[:2]
 
-    # Apply censorship to each detection
     for det in detections:
         box = det["box"]
         x, y, w, h = box
 
-        # Ensure coordinates are within image bounds
         x = max(0, min(x, img_w))
         y = max(0, min(y, img_h))
         w = min(w, img_w - x)
         h = min(h, img_h - y)
 
         if w > 0 and h > 0:
-            # Draw black box over the region
             x1, y1 = int(x), int(y)
             x2, y2 = int(x + w), int(y + h)
             img_array[y1:y2, x1:x2] = 0  # Black color
 
-    # Convert back to PIL
     return Image.fromarray(img_array)
 
 
@@ -150,7 +135,6 @@ def detect_content(
     Returns:
         Tuple of (detection results dict, censored image or None)
     """
-    # Use provided detector or fall back to state's detector
     nudenet_detector = detector if detector is not None else state.nudenet_detector
 
     if nudenet_detector is None:
@@ -162,21 +146,16 @@ def detect_content(
         }, None
 
     try:
-        # Save image temporarily for detection
         temp_path = state.temp_dir / f"detect_{int(time.time() * 1000)}.png"
         image.save(temp_path)
 
-        # Run detection
         detections = nudenet_detector.detect(str(temp_path))
 
-        # Analyze results
         has_unsafe = any(det["class"] in UNSAFE_LABELS and det["score"] > 0.5 for det in detections)
 
-        # Create censored image if unsafe content detected
         censored_image = None
         if has_unsafe:
             try:
-                # Use NudeNet's censor method to blur detected regions
                 censored_path = state.temp_dir / f"censored_{int(time.time() * 1000)}.png"
                 nudenet_detector.censor(
                     str(temp_path),
@@ -184,17 +163,14 @@ def detect_content(
                     output_path=str(censored_path),
                 )
                 censored_image = Image.open(censored_path)
-                # Make a copy so we can delete the temp file
                 censored_image = censored_image.copy()
                 censored_path.unlink(missing_ok=True)
                 state.log("Censored image created with blurred regions", "info")
             except Exception as e:
                 state.log(f"Failed to create censored image: {str(e)}", "warning")
 
-        # Clean up temp file
         temp_path.unlink(missing_ok=True)
 
-        # Create summary
         if not detections:
             summary = "No sensitive content detected"
         elif has_unsafe:
@@ -236,7 +212,6 @@ def format_nudenet_comparison(
     Returns:
         HTML formatted comparison table
     """
-    # Get all detections from both
     orig_scores = {}
     interv_scores = {}
 
@@ -254,25 +229,20 @@ def format_nudenet_comparison(
             if label not in interv_scores or score > interv_scores[label]:
                 interv_scores[label] = score
 
-    # Combine all labels
     all_labels = set(orig_scores.keys()) | set(interv_scores.keys())
 
-    # Build table rows
     if not all_labels:
         table_rows = '<tr><td colspan="3" style="text-align: center; color: var(--text-secondary);">No detections</td></tr>'
     else:
-        # Sort by original score descending
         sorted_labels = sorted(all_labels, key=lambda x: orig_scores.get(x, 0.0), reverse=True)
         rows = []
         for label in sorted_labels:
             orig_val = orig_scores.get(label, 0.0)
             interv_val = interv_scores.get(label, 0.0)
 
-            # Format with color coding
             orig_str = get_score_cell_html(orig_val)
             interv_str = get_score_cell_html(interv_val)
 
-            # Add indicators for unsafe labels
             if label in UNSAFE_LABELS:
                 label_display = f'<span class="unsafe-label">⚠️ {label}</span>'
             else:
@@ -337,7 +307,6 @@ def get_score_cell_html(score: float) -> str:
     return f'<span class="score-value {css_class}">{emoji} {score:.0%}</span>'
 
 
-# Keep old function for backward compatibility
 def get_score_cell_text(score: float) -> str:
     """Get formatted score text for table cell (deprecated, use get_score_cell_html).
 

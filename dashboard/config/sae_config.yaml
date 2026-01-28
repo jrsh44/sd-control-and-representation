@@ -8,27 +8,9 @@
 # =============================================================================
 
 config:
-  version: "2.1.0"
-  
   base_model:
     id: "sd-v1.5"
     model_id: "sd-legacy/stable-diffusion-v1-5"
-  
-  paths:
-    local:
-      models_dir: "./models/sae"
-      feature_sums_dir: "data/feature_sums"
-    cluster:
-      base: "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae"
-  
-  # Default intervention parameters (can be adjusted in UI)
-  defaults:
-    influence_factor: 100.0
-    features_number: 25
-
-# =============================================================================
-# SAE Models
-# =============================================================================
 
 sae_models:
   - id: "nudity_topk32"
@@ -43,12 +25,8 @@ sae_models:
       batch_size: 4096
       nb_concepts: 46080
     
-    files:
-      model_dir: "models/sd-v1-5/sae/exp36_topk32"
-    
-    layer:
-      id: "UNET_UP_1_ATT_1"
-      path: "unet.up_blocks.1.attentions.1.transformer_blocks.0"
+    model_dir: "models/sd-v1-5/sae/exp36_topk32"
+    layer_id: "UNET_UP_1_ATT_1"
     
     concepts:
       - id: "exposed_anus"
@@ -112,12 +90,8 @@ sae_models:
       batch_size: 4096
       nb_concepts: 40960
     
-    files:
-      model_dir: "models/sd-v1-5/sae/exp32_topk16"
-    
-    layer:
-      id: "UNET_UP_1_ATT_1"
-      path: "unet.up_blocks.1.attentions.1.transformer_blocks.0"
+    model_dir: "models/sd-v1-5/sae/exp32_topk16"
+    layer_id: "UNET_UP_1_ATT_1"
     
     concepts:
       - id: "exposed_anus"
@@ -166,12 +140,8 @@ sae_models:
       batch_size: 4096
       nb_concepts: 46080
     
-    files:
-      model_dir: "models/sd-v1-5/sae/exp36_topk64"
-    
-    layer:
-      id: "UNET_UP_1_ATT_1"
-      path: "unet.up_blocks.1.attentions.1.transformer_blocks.0"
+    model_dir: "models/sd-v1-5/sae/exp36_topk64"
+    layer_id: "UNET_UP_1_ATT_1"
     
     concepts:
       - id: "exposed_anus"

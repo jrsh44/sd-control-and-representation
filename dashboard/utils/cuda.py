@@ -1,8 +1,4 @@
-"""
-CUDA and GPU Utilities Module
-
-Provides GPU detection, compute capability checks, and CUDA compatibility verification.
-"""
+"""GPU detection and CUDA compatibility checks."""
 
 import torch
 
@@ -12,7 +8,7 @@ def get_gpu_compute_capability() -> tuple[int, int] | None:
 
     Returns:
         Tuple of (major, minor) version or None if not available.
-        e.g., (8, 0) for SM80 (Ampere), (7, 5) for SM75 (Turing)
+        e.g., (8, 0) for SM80 (Ampere), (7, 5) for SM75 (Turing).
     """
     if not torch.cuda.is_available():
         return None
@@ -26,7 +22,7 @@ def get_pytorch_supported_cuda_archs() -> list[int]:
     """Get list of CUDA SM architectures supported by current PyTorch build.
 
     Returns:
-        List of supported SM versions (e.g., [37, 50, 60, 70, 75, 80, 86, 90])
+        List of supported SM versions (e.g., [37, 50, 60, 70, 75, 80, 86, 90]).
     """
     try:
         if hasattr(torch.cuda, "get_arch_list"):
@@ -41,11 +37,9 @@ def get_pytorch_supported_cuda_archs() -> list[int]:
             return sorted(sm_versions)
     except Exception:
         pass
-    # Default known supported versions for typical PyTorch builds
     return [37, 50, 60, 61, 70, 75, 80, 86, 90]
 
 
-# Module-level constants (computed once at import)
 GPU_COMPUTE_CAPABILITY = get_gpu_compute_capability()
 FLASH_ATTENTION_SUPPORTED = GPU_COMPUTE_CAPABILITY is not None and GPU_COMPUTE_CAPABILITY[0] >= 8
 PYTORCH_SUPPORTED_ARCHS = get_pytorch_supported_cuda_archs()
@@ -55,7 +49,7 @@ def check_cuda_compatibility() -> tuple[bool, str, bool]:
     """Check if CUDA is available and compatible with GPU architecture.
 
     Returns:
-        Tuple of (is_compatible, status_message, flash_attention_ok)
+        Tuple of (is_compatible, status_message, flash_attention_ok).
     """
     if not torch.cuda.is_available():
         return False, "CUDA not available", False
@@ -63,13 +57,11 @@ def check_cuda_compatibility() -> tuple[bool, str, bool]:
     try:
         gpu_name = torch.cuda.get_device_name(0)
 
-        # Check compute capability
         if GPU_COMPUTE_CAPABILITY:
             major, minor = GPU_COMPUTE_CAPABILITY
             gpu_sm = major * 10 + minor
             sm_version = f"SM{major}{minor}"
 
-            # Check if GPU architecture is supported by PyTorch
             max_supported = max(PYTORCH_SUPPORTED_ARCHS) if PYTORCH_SUPPORTED_ARCHS else 90
 
             if gpu_sm > max_supported:

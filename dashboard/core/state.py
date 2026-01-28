@@ -1,8 +1,4 @@
-"""
-Dashboard State Management Module
-
-Provides centralized state management for the SD Control & Representation dashboard.
-"""
+"""Centralized state management for the dashboard."""
 
 import platform
 import tempfile
@@ -77,46 +73,46 @@ class DashboardState:
     def __init__(self):
         self.system_state = SystemState.IDLE
 
-        # Model states
         self.model_states: Dict[str, ModelLoadState] = {
             "sd_base": ModelLoadState.NOT_LOADED,
             "sae": ModelLoadState.NOT_LOADED,
             "nudenet": ModelLoadState.NOT_LOADED,
         }
 
-        # Loaded models
         self.sd_pipe = None
         self.sae_model = None
-        self.sae_stats = None  # SAE statistics for RepresentationModifier
+        self.sae_stats = None
         self.nudenet_detector = None
-        self.clip_model = None  # CLIP model for similarity scoring
+        self.clip_model = None
 
-        # Model load times
         self.load_times: Dict[str, Optional[float]] = {
             "sd_base": None,
             "sae": None,
             "nudenet": None,
         }
 
-        # Generation progress
         self.generation: Optional[GenerationProgress] = None
 
-        # Logs
         self.logs = []
         self.max_logs = 50
 
-        # Timing
         self.last_generation_time: Optional[float] = None
 
-        # Temp directory
         self.temp_dir = Path(tempfile.gettempdir()) / "sd-dashboard"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
 
     def log(self, message: str, level: str = "info") -> str:
-        """Add a log entry and return formatted log string"""
+        """Add a log entry and return formatted log string.
+
+        Args:
+            message: Log message text.
+            level: Log level ('info', 'success', 'error', 'warning', 'loading').
+
+        Returns:
+            Formatted log string containing all recent logs.
+        """
         timestamp = datetime.now().strftime("%H:%M:%S")
 
-        # Add prefix based on level (no emojis)
         prefix = {
             "info": "[INFO]",
             "success": "[SUCCESS]",
@@ -128,7 +124,6 @@ class DashboardState:
         log_entry = f"[{timestamp}] {prefix} {message}"
         self.logs.append(log_entry)
 
-        # Keep only recent logs
         if len(self.logs) > self.max_logs:
             self.logs = self.logs[-self.max_logs :]
 
@@ -137,13 +132,23 @@ class DashboardState:
     def set_model_state(
         self, model: str, model_state: ModelLoadState, load_time: Optional[float] = None
     ):
-        """Update model state"""
+        """Update model state.
+
+        Args:
+            model: Model identifier ('sd_base', 'sae', 'nudenet').
+            model_state: New state for the model.
+            load_time: Optional load time in seconds.
+        """
         self.model_states[model] = model_state
         if load_time is not None:
             self.load_times[model] = load_time
 
     def get_model_status_text(self) -> str:
-        """Generate model status display"""
+        """Generate model status display.
+
+        Returns:
+            Formatted markdown text showing status of all models.
+        """
         lines = ["**MODEL STATUS**", ""]
 
         status_icons = {
@@ -172,18 +177,31 @@ class DashboardState:
         return "\n".join(lines)
 
     def start_generation(self, total_steps: int, phase: str):
-        """Start tracking generation progress"""
+        """Start tracking generation progress.
+
+        Args:
+            total_steps: Total number of denoising steps.
+            phase: Generation phase ('original' or 'unlearned').
+        """
         self.generation = GenerationProgress(
             phase=phase, current_step=0, total_steps=total_steps, start_time=time.time()
         )
 
     def update_generation(self, step: int):
-        """Update generation progress"""
+        """Update generation progress.
+
+        Args:
+            step: Current step number.
+        """
         if self.generation:
             self.generation.current_step = step
 
     def get_progress_text(self) -> str:
-        """Get formatted progress text"""
+        """Get formatted progress text.
+
+        Returns:
+            Formatted markdown text showing generation progress.
+        """
         if not self.generation:
             return "*Ready to generate*"
 
@@ -200,7 +218,11 @@ class DashboardState:
 """
 
     def get_system_info(self) -> Dict[str, Any]:
-        """Get system information"""
+        """Get system information.
+
+        Returns:
+            Dictionary containing OS, Python, PyTorch, CUDA, and GPU details.
+        """
         info = {
             "OS": platform.system(),
             "Python": platform.python_version(),
@@ -217,6 +239,10 @@ class DashboardState:
         return info
 
     def clear_logs(self):
-        """Clear all logs"""
+        """Clear all logs.
+
+        Returns:
+            Formatted log string with clear confirmation message.
+        """
         self.logs = []
         return self.log("System log cleared", "info")

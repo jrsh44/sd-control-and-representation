@@ -7,16 +7,6 @@ An interactive web application for visualizing and testing concept unlearning in
 [![Demo Video](https://img.shields.io/badge/Watch-Demo%20Video-red?style=for-the-badge&logo=google-drive)](https://drive.google.com/file/d/1RSldFm64GFiDlkjNmmz-jksBUxa--YIV/view?usp=sharing)
 
 
-## 🎯 Goal
-
-The dashboard enables real-time concept intervention during image generation, allowing you to:
-
-- Compare original vs. intervention images side-by-side
-- Adjust intervention parameters (influence factor, number of neurons) per concept
-- Evaluate results using NudeNet detection and CLIP Score metrics
-- Visualize SAE feature activations through heatmaps
-
-
 ## 📋 Requirements
 
 | Component | Minimum | Recommended |
@@ -70,7 +60,7 @@ The dashboard is divided into three main panels:
 2. Click **Load SAE** and wait for green status
 3. Configure concepts to intervene on:
    - **Checkbox** — Enable/disable intervention for concept
-   - **Influence** — Strength of suppression (0–32)
+   - **Strength** — Intensity of concept suppression (0–32)
    - **Neurons** — Number of SAE neurons to modify (1–32)
 
 ### Panel 3: Image Generation
@@ -120,17 +110,19 @@ sae_models:
     name: "My SAE Model"
     
     hyperparameters:
-      topk: 32
-      nb_concepts: 46080
+      topk: 32              
+      nb_concepts: 46080    
+      learning_rate: 1.0e-3
+      warmup_steps: 100000
+      auxiliary_loss: 0.0625
+      epochs: 2
+      batch_size: 4096
     
     files:
       model_dir: "path/to/model/dir"
-      model_file: "model.pt"
-      feature_sums_file: "path/to/merged_feature_sums.pt"
     
     layer:
       id: "UNET_UP_1_ATT_1"
-      path: "unet.up_blocks.1.attentions.1.transformer_blocks.0"
     
     concepts:
       - id: "concept_key"        # Must match key in feature_sums file
@@ -143,7 +135,7 @@ sae_models:
 
 ```
 dashboard/
-├── app.py                    # Main entry point (Gradio UI)
+├── app.py                    # Main entry point
 ├── style.css                 # Custom styling
 ├── config/
 │   ├── sae_config.yaml       # SAE models & concepts configuration

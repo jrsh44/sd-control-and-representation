@@ -1,21 +1,10 @@
-"""
-SAE Configuration Loader
-
-Loads SAE model configurations from YAML files.
-
-Structure:
-    sae_models (list) → concepts (list)
-"""
+"""SAE model configuration loader from YAML files."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import yaml
-
-# =============================================================================
-# Data Classes
-# =============================================================================
 
 
 @dataclass
@@ -36,54 +25,28 @@ class ConceptConfig:
 
 
 @dataclass
-class SAEFilesConfig:
-    """File paths for an SAE model."""
-
-    model_dir: str
-    model_file: str = "model.pt"
-    feature_sums_file: str = ""
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "SAEFilesConfig":
-        return cls(
-            model_dir=data.get("model_dir", ""),
-            model_file=data.get("model_file", "model.pt"),
-            feature_sums_file=data.get("feature_sums_file", ""),
-        )
-
-
-@dataclass
 class SAEModelConfig:
     """Configuration for an SAE model."""
 
     id: str
     name: str
     layer_id: str = ""
-    layer_path: str = ""
+    model_dir: str = ""
+    model_file: str = "model.pt"
     hyperparameters: dict[str, Any] = field(default_factory=dict)
-    files: SAEFilesConfig | None = None
     concepts: list[ConceptConfig] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict) -> "SAEModelConfig":
-        files_data = data.get("files", {})
-        files = SAEFilesConfig.from_dict(files_data) if files_data else None
-
-        # Get layer info
-        layer_data = data.get("layer", {})
-        layer_id = layer_data.get("id", "")
-        layer_path = layer_data.get("path", "")
-
-        # Get concepts
         concepts = [ConceptConfig.from_dict(c) for c in data.get("concepts", [])]
 
         return cls(
             id=data["id"],
             name=data["name"],
-            layer_id=layer_id,
-            layer_path=layer_path,
+            layer_id=data.get("layer_id", ""),
+            model_dir=data.get("model_dir", ""),
+            model_file=data.get("model_file", "model.pt"),
             hyperparameters=data.get("hyperparameters", {}),
-            files=files,
             concepts=concepts,
         )
 
@@ -98,10 +61,7 @@ class SAEModelConfig:
 class SAEConfig:
     """Root configuration."""
 
-    version: str
     base_model_id: str
-    paths: dict[str, dict[str, str]] = field(default_factory=dict)
-    defaults: dict[str, Any] = field(default_factory=dict)
     sae_models: list[SAEModelConfig] = field(default_factory=list)
 
     @classmethod
@@ -112,10 +72,7 @@ class SAEConfig:
         sae_models = [SAEModelConfig.from_dict(sae_data) for sae_data in data.get("sae_models", [])]
 
         return cls(
-            version=config.get("version", "1.0.0"),
             base_model_id=base_model.get("model_id", ""),
-            paths=config.get("paths", {}),
-            defaults=config.get("defaults", {}),
             sae_models=sae_models,
         )
 
@@ -142,32 +99,43 @@ class SAEConfig:
             return sae.get_concept(concept_id)
         return None
 
-    def get_default_influence_factor(self) -> float:
-        return self.defaults.get("influence_factor", 100.0)
-
-    def get_default_features_number(self) -> int:
-        return self.defaults.get("features_number", 25)
-
-
-# =============================================================================
-# Public API
-# =============================================================================
-
 
 def load_sae_config(config_path: str | Path | None = None) -> SAEConfig:
-    """Load SAE configuration from the default or specified path."""
+    """Load SAE configuration from the default or specified path.
+
+    Args:
+        config_path: Optional path to config file. Uses default if None.
+
+    Returns:
+        Loaded SAEConfig object.
+    """
     if config_path is None:
         config_path = Path(__file__).parent / "sae_config.yaml"
     return SAEConfig.load(config_path)
 
 
 def get_sae_model_choices(config: SAEConfig) -> list[tuple[str, str]]:
-    """Get SAE model choices for Gradio dropdown. Returns (name, id) tuples."""
+    """Get SAE model choices for Gradio dropdown.
+
+    Args:
+        config: SAE configuration object.
+
+    Returns:
+        List of (name, id) tuples.
+    """
     return [(sae.name, sae.id) for sae in config.sae_models]
 
 
 def get_concept_choices(config: SAEConfig, sae_model_id: str) -> list[tuple[str, str, str]]:
-    """Get concept choices for Gradio checkboxes. Returns (name, id, description) tuples."""
+    """Get concept choices for Gradio checkboxes.
+
+    Args:
+        config: SAE configuration object.
+        sae_model_id: ID of the SAE model.
+
+    Returns:
+        List of (name, id, description) tuples.
+    """
     sae_model = config.get_sae_model(sae_model_id)
     if not sae_model:
         return []
@@ -175,7 +143,15 @@ def get_concept_choices(config: SAEConfig, sae_model_id: str) -> list[tuple[str,
 
 
 def get_layer_id(config: SAEConfig, sae_model_id: str) -> str:
-    """Get the layer ID for an SAE model."""
+    """Get the layer ID for an SAE model.
+
+    Args:
+        config: SAE configuration object.
+        sae_model_id: ID of the SAE model.
+
+    Returns:
+        Layer ID string or empty string if not found.
+    """
     sae_model = config.get_sae_model(sae_model_id)
     if not sae_model:
         return ""
@@ -183,45 +159,34 @@ def get_layer_id(config: SAEConfig, sae_model_id: str) -> str:
 
 
 def get_feature_sums_path(config: SAEConfig, sae_model_id: str) -> Path | None:
-    """
-    Get the full path to the feature sums file for an SAE model.
+    """Get the full path to the feature sums file for an SAE model.
 
     Args:
-        config: SAE configuration
-        sae_model_id: ID of the SAE model
+        config: SAE configuration.
+        sae_model_id: ID of the SAE model.
 
     Returns:
-        Full Path to the feature sums file, or None if not configured
+        Full Path to the feature sums file, or None if not configured.
     """
     sae_model = config.get_sae_model(sae_model_id)
-    if not sae_model or not sae_model.files:
+    if not sae_model or not sae_model.model_dir:
         return None
 
-    feature_sums_file = sae_model.files.feature_sums_file
-    if not feature_sums_file:
-        return None
-
-    # Get base path from config
-    local_paths = config.paths.get("local", {})
-    feature_sums_dir = local_paths.get("feature_sums_dir", "data/feature_sums")
-
-    # Build full path relative to project root
     project_root = Path(__file__).parent.parent.parent  # dashboard/config -> project root
-    full_path = project_root / feature_sums_dir / feature_sums_file
+    full_path = project_root / sae_model.model_dir / "merged_feature_sums.pt"
 
     return full_path
 
 
 def get_sae_hyperparameters(config: SAEConfig, sae_model_id: str) -> dict[str, Any] | None:
-    """
-    Get hyperparameters for an SAE model.
+    """Get hyperparameters for an SAE model.
 
     Args:
-        config: SAE configuration
-        sae_model_id: ID of the SAE model
+        config: SAE configuration.
+        sae_model_id: ID of the SAE model.
 
     Returns:
-        Dict with topk, nb_concepts, etc. or None if not found
+        Dict with topk, nb_concepts, etc. or None if not found.
     """
     sae_model = config.get_sae_model(sae_model_id)
     if not sae_model:
@@ -230,54 +195,34 @@ def get_sae_hyperparameters(config: SAEConfig, sae_model_id: str) -> dict[str, A
 
 
 def get_model_path(config: SAEConfig, sae_model_id: str) -> Path | None:
-    """
-    Get the full path to the SAE model weights file.
+    """Get the full path to the SAE model weights file.
 
     Args:
-        config: SAE configuration
-        sae_model_id: ID of the SAE model
+        config: SAE configuration.
+        sae_model_id: ID of the SAE model.
 
     Returns:
-        Full Path to the model weights file, or None if not configured
+        Full Path to the model weights file, or None if not configured.
     """
     sae_model = config.get_sae_model(sae_model_id)
-    if not sae_model or not sae_model.files:
+    if not sae_model or not sae_model.model_dir:
         return None
 
-    model_dir = sae_model.files.model_dir
-    model_file = sae_model.files.model_file
-    if not model_dir or not model_file:
-        return None
-
-    # Get base path from config
-    local_paths = config.paths.get("local", {})
-    models_dir = local_paths.get("models_dir", "./models/sae")
-
-    # Build full path relative to project root
     project_root = Path(__file__).parent.parent.parent  # dashboard/config -> project root
-    full_path = project_root / models_dir / model_dir / model_file
+    full_path = project_root / sae_model.model_dir / sae_model.model_file
 
     return full_path
 
 
-# =============================================================================
-# Testing
-# =============================================================================
-
 if __name__ == "__main__":
     config = load_sae_config()
-    print(f"Config version: {config.version}")
     print(f"SAE models: {[s.id for s in config.sae_models]}")
-    print(
-        f"Defaults: influence={config.get_default_influence_factor()}, features={config.get_default_features_number()}"
-    )
 
     for sae in config.sae_models:
         print(f"\n{sae.name}:")
-        print(f"  Layer: {sae.layer_id} ({sae.layer_path})")
+        print(f"  Layer: {sae.layer_id}")
         print(f"  Concepts: {len(sae.concepts)}")
 
-        # Test feature sums path
         feature_path = get_feature_sums_path(config, sae.id)
         if feature_path:
             exists = "✓ EXISTS" if feature_path.exists() else "✗ NOT FOUND"

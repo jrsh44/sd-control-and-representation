@@ -1,25 +1,19 @@
-"""
-SD Control & Representation - Interactive Dashboard
-Local deployment with comprehensive state management and progress tracking
-"""
+"""Interactive dashboard for controlling Stable Diffusion via Sparse Autoencoders."""
 
 import os
 import sys
 import time
 from pathlib import Path
 
-# This prevents CUDA kernel errors on unsupported GPU architectures
 os.environ.setdefault("XFORMERS_DISABLED", "1")
 
 import gradio as gr
 import torch
 
-# Add dashboard directory to path for imports when running directly
 _dashboard_dir = Path(__file__).parent
 _project_root = _dashboard_dir.parent
 if str(_dashboard_dir) not in sys.path:
     sys.path.insert(0, str(_dashboard_dir))
-# Also add project root for src imports
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
@@ -71,12 +65,10 @@ DENOISING_STEPS = 50
 state = DashboardState()
 
 
-# Dashboard UI
 def create_dashboard():
     """Create the main dashboard interface"""
 
     with gr.Blocks(title="SD Control") as app:
-        # 1. HEADER - Title and Description
         gr.HTML("""
 <div style="margin-bottom: 3rem; align-items:center; display: flex;">
     <h1 style="font-family: 'Space Mono', monospace; font-size: 2rem; font-weight: 700; letter-spacing: 0.05em; background: linear-gradient(135deg, #5b9bd5, #c87bf3); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; text-align: left;">
@@ -90,7 +82,6 @@ def create_dashboard():
 </div>
 """)
 
-        # 2. BASE MODEL SECTION
         with gr.Accordion(
             "Base Model",
             open=True,
@@ -98,7 +89,6 @@ def create_dashboard():
             elem_id="section-base-generation",
         ) as section_base_gen:
             with gr.Row(elem_classes=["section-content", "columns-gap-large"]):
-                # Base Model Selection
                 with gr.Column(scale=1, elem_classes=["column-base-model"]):
                     with gr.Column(elem_classes=["form-group-consistent"]):
                         sd_model_dropdown = gr.Dropdown(
@@ -115,7 +105,6 @@ def create_dashboard():
                         )
                         load_sd_btn = gr.Button("Load Model", variant="primary", size="sm")
 
-        # 3. INTERVENTION SECTION
         with gr.Accordion(
             "Concept Intervention",
             open=True,
@@ -123,10 +112,8 @@ def create_dashboard():
             elem_id="section-intervention",
         ) as section_intervention:
             with gr.Column(elem_classes=["section-content", "intervention-single-column"]):
-                # Row 1: SAE Model Selection
                 gr.Markdown("### SAE Model")
 
-                # Get SAE model choices from config
                 sae_choices = []
                 sae_choices = get_sae_model_choices(SAE_CONFIG)
 
@@ -139,14 +126,12 @@ def create_dashboard():
                 )
                 load_sae_btn = gr.Button("Load SAE", size="sm", variant="primary")
 
-                # Hidden checkbox to maintain state compatibility
                 enable_intervention = gr.Checkbox(
                     label="Enable Concept Intervention",
                     value=False,
                     visible=False,
                 )
 
-                # Row 3: Concept Selection & Strength (visible after layer selected)
                 with gr.Column(
                     elem_classes=["concept-selection-section"], visible=False
                 ) as concept_section:
@@ -158,7 +143,6 @@ def create_dashboard():
                         elem_classes=["concept-help-text"],
                     )
 
-                    # Create individual concept rows (max 20 concepts)
                     concept_components = {
                         "checkboxes": [],
                         "strengths": [],
@@ -217,7 +201,6 @@ def create_dashboard():
 
                     concept_metadata = gr.State(value=[])
 
-        # 4. IMAGE GENERATION
         with gr.Accordion(
             "Image Generation",
             open=True,
@@ -225,7 +208,6 @@ def create_dashboard():
             elem_id="section-results",
         ):
             with gr.Column(elem_classes=["section-content"]):
-                # Row 1: Prompt only
                 prompt_input = gr.Textbox(
                     label="Prompt",
                     placeholder="a beautiful landscape with mountains and sunset",
@@ -233,7 +215,6 @@ def create_dashboard():
                     elem_classes=["no-status-tracker"],
                 )
 
-                # Row 2: Generation Parameters
                 with gr.Row(
                     elem_classes=["no-status-tracker"],
                 ):
@@ -246,7 +227,6 @@ def create_dashboard():
                     )
                     seed_input = gr.Number(label="Seed (-1 = random)", value=-1, precision=0)
 
-                # Row 3: Censor checkbox and Neuron selection
                 with gr.Row(
                     elem_classes=["no-status-tracker"],
                 ):
@@ -273,7 +253,6 @@ def create_dashboard():
                     elem_classes=["warning-text"],
                 )
 
-                # Row 4: Generate button
                 generate_btn = gr.Button(
                     "Generate Image",
                     variant="primary",
@@ -282,15 +261,10 @@ def create_dashboard():
                     elem_id="btn-generate",
                 )
 
-                # Progress indicator below button
                 generation_progress = gr.HTML(
                     value="",
                     elem_classes=["progress-display"],
                 )
-
-                # ========================================
-                # ACCORDION: Generated Images (closed by default)
-                # ========================================
 
                 with gr.Accordion(
                     "🖼️ Generated Images (⚠️ May contain adult content)",
@@ -316,9 +290,6 @@ def create_dashboard():
                                 elem_classes=["result-image-bordered"],
                             )
 
-                # ========================================
-                # ACCORDION: NudeNet Score (open by default)
-                # ========================================
                 with gr.Accordion(
                     "📊 NudeNet Detection Score",
                     open=True,
@@ -330,9 +301,6 @@ def create_dashboard():
                         elem_classes=["nudenet-scores-comparison"],
                     )
 
-                # ========================================
-                # ACCORDION: CLIP Score (open by default)
-                # ========================================
                 with gr.Accordion(
                     "📐 CLIP Score Analysis",
                     open=True,
@@ -344,9 +312,6 @@ def create_dashboard():
                         elem_classes=["clip-scores-display"],
                     )
 
-                # ========================================
-                # ACCORDION: SAE Heatmaps (open by default)
-                # ========================================
                 with gr.Accordion(
                     "🔥 SAE Feature Heatmaps",
                     open=True,
@@ -383,7 +348,6 @@ def create_dashboard():
                             elem_id="btn-generate-heatmap",
                         )
 
-                    # Progress indicator below button
                     heatmap_progress = gr.HTML(
                         value="",
                         elem_classes=["progress-display"],
@@ -403,17 +367,11 @@ def create_dashboard():
                         visible=False,
                     )
 
-        # ========================
-        # HEATMAP CONCEPT UPDATE LOGIC
-        # ========================
-
-        # Update heatmap concept dropdown when concepts change in intervention section
         def update_heatmap_concept_dropdown(concept_meta, *checkbox_values):
             """Update available concepts for heatmap visualization dropdown"""
             if not concept_meta:
                 return gr.update(choices=[], value=None)
 
-            # Get selected concepts with their neurons count
             selected = []
             for i, is_checked in enumerate(checkbox_values[: len(concept_meta)]):
                 if is_checked:
@@ -425,7 +383,6 @@ def create_dashboard():
                 value=selected[0] if selected else None,
             )
 
-        # Connect all concept checkboxes to update heatmap dropdown
         for cb in concept_components["checkboxes"]:
             cb.change(
                 fn=update_heatmap_concept_dropdown,
@@ -433,22 +390,17 @@ def create_dashboard():
                 outputs=[heatmap_concept_dropdown],
             )
 
-        # Enable/disable heatmap generate button based on conditions
         def update_heatmap_btn_state(*args):
             """Enable heatmap button only if SD, SAE loaded, concept selected, and valid timesteps"""
-            # Check if models are loaded and a concept is selected
             sd_loaded = state.model_states.get("sd_base") == ModelLoadState.LOADED
             sae_loaded = state.model_states.get("sae") == ModelLoadState.LOADED
 
-            # args[0] is timesteps input, args[1] is selected concept from dropdown
             timesteps_input = args[0] if len(args) > 0 else ""
             concept_selected = args[1] if len(args) > 1 else None
 
-            # Validate timesteps input (must be non-empty and contain valid numbers)
             valid_timesteps = False
             if timesteps_input and timesteps_input.strip():
                 try:
-                    # Try parsing to check validity
                     parsed = [int(t.strip()) for t in timesteps_input.split(",") if t.strip()]
                     valid_timesteps = len(parsed) > 0
                 except ValueError:
@@ -459,7 +411,6 @@ def create_dashboard():
             )
             return gr.update(interactive=can_generate)
 
-        # Wire heatmap button state to timesteps and concept changes
         heatmap_timesteps.change(
             fn=update_heatmap_btn_state,
             inputs=[heatmap_timesteps, heatmap_concept_dropdown],
@@ -471,10 +422,6 @@ def create_dashboard():
             inputs=[heatmap_timesteps, heatmap_concept_dropdown],
             outputs=[generate_heatmap_btn],
         )
-
-        # ========================
-        # HEATMAP GENERATION HANDLER
-        # ========================
 
         def handle_generate_heatmaps(
             prompt,
@@ -499,14 +446,12 @@ def create_dashboard():
             print(f"[DEBUG] concept_selected: {heatmap_concept_selected}")
             print(f"[DEBUG] timesteps_input: {heatmap_timesteps_input}")
 
-            # Hide previous heatmap data and show starting progress
             yield (
                 "",
                 gr.update(value=[], visible=False),
                 '<div style="text-align: center; padding: 0.5rem; color: #5b9bd5;">🎨 Starting generation...</div>',
             )
 
-            # Check if model is loaded
             if state.sd_pipe is None or state.sae_model is None:
                 print("[DEBUG] ERROR: Models not loaded")
                 gr.Warning("Please load both SD and SAE models first.")
@@ -519,8 +464,7 @@ def create_dashboard():
                 yield "", gr.update(value=[], visible=False), ""
                 return
 
-            # Find the neuron count for the selected concept from intervention settings
-            neurons_count = 8  # default
+            neurons_count = 8
             per_timestep = intervention_mode_value == "per_timestep"
 
             if concept_meta:
@@ -538,13 +482,11 @@ def create_dashboard():
                                 )
                                 break
 
-            # Resolve random seed
             if seed == -1:
                 import random
 
                 seed = random.randint(0, 2**32 - 1)  # noqa: S311
 
-            # Parse timesteps
             try:
                 heatmap_timesteps_list = [
                     int(t.strip()) for t in heatmap_timesteps_input.split(",") if t.strip()
@@ -565,14 +507,11 @@ def create_dashboard():
                 layer_path = LayerPath[layer] if layer else LayerPath.UNET_UP_1_ATT_1
                 device = str(state.sd_pipe.device)
 
-                # Capture representations with progress tracking
                 generator = torch.Generator(device=device).manual_seed(seed)
 
                 if progress:
                     progress(0, desc="🎨 Starting generation...")
 
-                # Note: capture_layer_representations doesn't support callbacks,
-                # so we show phases instead
                 representations, final_image, latents = capture_layer_representations(
                     pipe=state.sd_pipe,
                     prompt=prompt,
@@ -588,7 +527,6 @@ def create_dashboard():
                     yield "", gr.update(value=[], visible=False), ""
                     return
 
-                # Update progress display
                 yield (
                     "",
                     gr.update(value=[], visible=False),
@@ -598,7 +536,6 @@ def create_dashboard():
                 if progress:
                     progress(0.5, desc="🧠 Processing activations...")
 
-                # Decode intermediate images
                 intermediate_images = {}
                 if latents is not None:
                     for timestep in heatmap_timesteps_list:
@@ -607,10 +544,8 @@ def create_dashboard():
                             intermediate_img = decode_latent_to_image(latent, state.sd_pipe, device)
                             intermediate_images[timestep] = intermediate_img
 
-                # Get concept name for stats lookup (replace _ with space)
                 stats_key = heatmap_concept_selected
 
-                # Look up in concept_meta to get the concept_id and convert to stats_key
                 if concept_meta:
                     for name, concept_id, _ in concept_meta:
                         if name == heatmap_concept_selected:
@@ -624,7 +559,6 @@ def create_dashboard():
                     yield "", gr.update(value=[], visible=False), ""
                     return
 
-                # Create RepresentationModifier for feature scoring
                 modifier = RepresentationModifier(
                     sae=state.sae_model,
                     stats_dict=state.sae_stats,
@@ -633,20 +567,17 @@ def create_dashboard():
                     max_concepts_number=32,
                 )
 
-                # Calculate feature scores
                 feature_scores = modifier.calculate_scores_for_concept(
                     concept_name=stats_key,
                     per_timestep=per_timestep,
                 )
 
-                # Update progress display
                 yield (
                     "",
                     gr.update(value=[], visible=False),
                     '<div style="text-align: center; padding: 0.5rem; color: #5b9bd5;">🔥 Generating heatmaps...</div>',
                 )
 
-                # Collect activations using concept-based feature selection
                 activations = collect_activations_from_representations(
                     representations=representations[0],
                     sae=state.sae_model,
@@ -656,11 +587,10 @@ def create_dashboard():
                     feature_scores=feature_scores,
                 )
 
-                # Generate heatmap gallery
                 heatmap_gallery_data = generate_heatmap_gallery(
                     activations=activations,
                     image=final_image,
-                    alpha=0.4,  # Fixed alpha
+                    alpha=0.4,
                     max_features=neurons_count,
                     intermediate_images=intermediate_images,
                     nudenet_detector=state.nudenet_detector,
@@ -669,7 +599,6 @@ def create_dashboard():
                     concept_name=heatmap_concept_selected,
                 )
 
-                # Create section header HTML
                 num_timesteps = len(heatmap_timesteps_list)
                 section_header_html = f"""
 <div class="analysis-container heatmap-header-container">
@@ -694,11 +623,10 @@ def create_dashboard():
                 )
                 gr.Info(f"✓ Generated {len(heatmap_gallery_data)} heatmaps", duration=5)
 
-                # Return gallery with dynamic columns matching neuron count and make visible
                 yield (
                     section_header_html,
                     gr.update(value=heatmap_gallery_data, columns=neurons_count, visible=True),
-                    "",  # Clear progress display
+                    "",
                 )
 
             except Exception as e:
@@ -710,7 +638,6 @@ def create_dashboard():
                 gr.Warning(f"Heatmap generation failed: {str(e)}")
                 yield "", gr.update(value=[], visible=False), ""
 
-        # Build inputs list for heatmap generation
         heatmap_generate_inputs = [
             prompt_input,
             guidance_input,
@@ -722,25 +649,18 @@ def create_dashboard():
             heatmap_concept_dropdown,
             concept_metadata,
         ]
-        # Add all concept components (needed to find neuron count for selected concept)
         for i in range(MAX_CONCEPTS):
             heatmap_generate_inputs.append(concept_components["checkboxes"][i])
             heatmap_generate_inputs.append(concept_components["strengths"][i])
             heatmap_generate_inputs.append(concept_components["neurons"][i])
-
-        # ========================
-        # EVENT HANDLERS
-        # ========================
 
         def update_generate_button_state(*checkbox_values):
             """Enable generate button only if SD loaded, SAE loaded, and at least one concept selected"""
             sd_loaded = state.model_states.get("sd_base") == ModelLoadState.LOADED
             sae_loaded = state.model_states.get("sae") == ModelLoadState.LOADED
 
-            # Check if at least one concept checkbox is selected
             any_concept_selected = any(checkbox_values[:MAX_CONCEPTS]) if checkbox_values else False
 
-            # Enable only if all conditions met
             can_generate = sd_loaded and sae_loaded and any_concept_selected
             return gr.update(interactive=can_generate)
 
@@ -765,7 +685,6 @@ def create_dashboard():
 
         def handle_load_sd(model_name, use_gpu):
             """Load SD model with UI state updates"""
-            # First, indicate loading state
             device_type = "GPU" if (use_gpu and CUDA_COMPATIBLE) else "CPU"
             gr.Info(
                 f"Loading Stable Diffusion v1.5 on {device_type}... This may take a moment.",
@@ -791,8 +710,6 @@ def create_dashboard():
                     f"✓ Stable Diffusion v1.5 loaded successfully on {device_type} ({load_time:.1f}s)",
                     duration=15,
                 )
-                # Generate button state will be updated by update_generate_button_state
-                # (needs SD + SAE + at least one concept selected)
                 yield (
                     gr.update(interactive=True),  # Re-enable load button
                     gr.update(interactive=False),  # Generate button managed by state checker
@@ -813,8 +730,6 @@ def create_dashboard():
         def handle_load_sae(sae_model_id):
             """Load SAE model and show concepts on success"""
 
-            # Build empty result for all concept components
-            # Order: rows (20), checkboxes (20), strengths (20), neurons (20)
             def build_empty_result():
                 result = [
                     gr.update(visible=False),  # concept_section
@@ -823,16 +738,12 @@ def create_dashboard():
                     gr.update(interactive=False),  # generate_btn
                     [],  # concept_metadata
                 ]
-                # Add updates for rows
                 for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(visible=False))
-                # Add updates for checkboxes
                 for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(label="Concept", value=False))
-                # Add updates for strengths
                 for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(value=4.0, interactive=False))
-                # Add updates for neurons
                 for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(value=8, interactive=False))
                 return tuple(result)
@@ -841,7 +752,6 @@ def create_dashboard():
                 yield build_empty_result()
                 return
 
-            # Indicate loading state
             loading_result = [
                 gr.update(visible=False),
                 gr.update(value=False),
@@ -849,16 +759,12 @@ def create_dashboard():
                 gr.update(interactive=False),
                 [],
             ]
-            # Rows
             for _ in range(MAX_CONCEPTS):
                 loading_result.append(gr.update(visible=False))
-            # Checkboxes
             for _ in range(MAX_CONCEPTS):
                 loading_result.append(gr.update())
-            # Strengths
             for _ in range(MAX_CONCEPTS):
                 loading_result.append(gr.update())
-            # Neurons
             for _ in range(MAX_CONCEPTS):
                 loading_result.append(gr.update())
             yield tuple(loading_result)
@@ -866,7 +772,6 @@ def create_dashboard():
             try:
                 state.set_model_state("sae", ModelLoadState.LOADING)
 
-                # Get SAE model info from config
                 sae_name = sae_model_id
                 layer_id = ""
                 sae_model_config = SAE_CONFIG.get_sae_model(sae_model_id)
@@ -896,31 +801,23 @@ def create_dashboard():
                 state.log(f"SAE loaded in {load_time:.1f}s", "success")
                 gr.Info(f"✓ SAE model loaded successfully ({load_time:.1f}s)", duration=15)
 
-                # Get concepts for this SAE model from config
                 concept_choices = []
                 concept_choices = get_concept_choices(SAE_CONFIG, sae_model_id)
 
-                # Generate button state will be updated by update_generate_button_state
-                # (needs SD + SAE + at least one concept selected)
-
-                # Build success result with concept components
-                # Order: rows (20), checkboxes (20), strengths (20), neurons (20)
                 result = [
-                    gr.update(visible=True),  # concept_section
-                    gr.update(value=True),  # enable_intervention
+                    gr.update(visible=True),
+                    gr.update(value=True),
                     gr.update(elem_classes=["main-section", "section-loaded"]),
-                    gr.update(interactive=False),  # generate_btn managed by state checker
-                    concept_choices,  # concept_metadata
+                    gr.update(interactive=False),
+                    concept_choices,
                 ]
 
-                # Rows
                 for i in range(MAX_CONCEPTS):
                     if i < len(concept_choices):
                         result.append(gr.update(visible=True))
                     else:
                         result.append(gr.update(visible=False))
 
-                # Checkboxes
                 for i in range(MAX_CONCEPTS):
                     if i < len(concept_choices):
                         name, concept_id, description = concept_choices[i]
@@ -928,11 +825,9 @@ def create_dashboard():
                     else:
                         result.append(gr.update(label="Concept", value=False, info=None))
 
-                # Strengths
                 for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(value=4.0, interactive=False))
 
-                # Neurons
                 for _ in range(MAX_CONCEPTS):
                     result.append(gr.update(value=8, interactive=False))
                 yield tuple(result)
@@ -943,7 +838,6 @@ def create_dashboard():
                 gr.Warning(f"Failed to load SAE model: {str(e)}", duration=15)
                 yield build_empty_result()
 
-        # SAE model selection
         sae_model_dropdown.change(
             fn=handle_sae_model_change,
             inputs=[sae_model_dropdown],
@@ -955,7 +849,6 @@ def create_dashboard():
             ],
         )
 
-        # Wire all concept checkboxes to update generate button state
         for cb in concept_components["checkboxes"]:
             cb.change(
                 fn=update_generate_button_state,
@@ -963,7 +856,6 @@ def create_dashboard():
                 outputs=[generate_btn],
             )
 
-        # Intervention toggle
         enable_intervention.change(
             fn=toggle_intervention,
             inputs=[enable_intervention],
@@ -973,7 +865,6 @@ def create_dashboard():
             ],
         )
 
-        # Generate button - handles both normal and intervention generation
         def handle_generate(
             prompt,
             guidance,
@@ -982,14 +873,13 @@ def create_dashboard():
             sae_model_id,
             nudenet_enabled,
             intervention_mode_value,
-            concept_meta,  # List of (name, id) tuples
-            *concept_values,  # All checkbox, strength, neurons values flattened
+            concept_meta,
+            *concept_values,
             progress=gr.Progress(),
         ):
             """
             Generate original and intervened images with progress tracking.
             """
-            # Determine per_timestep from radio selection
             per_timestep = intervention_mode_value == "per_timestep"
 
             print("\n" + "*" * 80)
@@ -1029,7 +919,6 @@ def create_dashboard():
             print(f"[DEBUG] state.sae_model is None: {state.sae_model is None}")
             print(f"[DEBUG] state.sae_stats is None: {state.sae_stats is None}")
 
-            # Check if model is loaded
             if state.sd_pipe is None:
                 print("[DEBUG] ERROR: SD pipe not loaded, returning None")
                 yield (
@@ -1045,23 +934,21 @@ def create_dashboard():
                 )
                 return
 
-            # Hide all analysis accordions before starting generation and clear heatmap data
             yield (
-                None,  # img_original
-                None,  # img_unlearned
-                "",  # nudenet_scores_comparison
-                "",  # clip_scores_display
-                gr.update(visible=False),  # images_accordion
-                gr.update(visible=False),  # nudenet_accordion
-                gr.update(visible=False),  # clip_accordion
-                gr.update(visible=False),  # heatmap_accordion
-                gr.update(),  # seed_input (no change yet)
-                "",  # heatmap_section_html (clear previous)
-                gr.update(value=[], visible=False),  # heatmap_section_gallery (clear previous)
-                '<div style="text-align: center; padding: 0.5rem; color: #5b9bd5;">🎨 Preparing generation...</div>',  # generation_progress
+                None,
+                None,
+                "",
+                "",
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(),
+                "",
+                gr.update(value=[], visible=False),
+                '<div style="text-align: center; padding: 0.5rem; color: #5b9bd5;">🎨 Preparing generation...</div>',
             )
 
-            # Resolve random seed ONCE before generating either image
             if seed == -1:
                 import random
 
@@ -1071,9 +958,6 @@ def create_dashboard():
             display_original = None
             display_intervened = None
 
-            # =====================================================================
-            # Use generate_comparison_images when intervention is enabled
-            # =====================================================================
             print("[DEBUG] Checking intervention conditions...")
             print(f"[DEBUG]   intervention_enabled: {intervention_enabled}")
             print(f"[DEBUG]   state.sae_model is not None: {state.sae_model is not None}")
@@ -1083,14 +967,11 @@ def create_dashboard():
                 print("[DEBUG] INTERVENTION MODE: Generating comparison images")
                 state.log("Using comparison mode: generating both images sequentially", "info")
 
-                # Get layer ID from config
                 layer = get_layer_id(SAE_CONFIG, sae_model_id)
                 print(f"[DEBUG] Using layer: {layer}")
 
-                # Total steps for both images combined
                 combined_total = DENOISING_STEPS * 2
 
-                # Progress callback for original image (steps 1 to total_steps)
                 def original_callback(pipe, step, timestep, callback_kwargs):
                     current = min(step + 1, combined_total)
                     if progress is not None:
@@ -1107,7 +988,6 @@ def create_dashboard():
                 generator = torch.Generator(device=state.sd_pipe.device).manual_seed(seed)
                 start_time = time.time()
 
-                # Generate original image with callback
                 output = state.sd_pipe(
                     prompt=prompt,
                     num_inference_steps=DENOISING_STEPS,
@@ -1120,7 +1000,6 @@ def create_dashboard():
                 original_time = time.time() - start_time
                 state.log(f"Original image generated in {original_time:.2f}s", "success")
 
-                # Progress callback for intervention image (steps total_steps+1 to combined_total)
                 def intervention_callback(pipe, step, timestep, callback_kwargs):
                     current = min(DENOISING_STEPS + step + 1, combined_total)
                     if progress is not None:
@@ -1132,9 +1011,7 @@ def create_dashboard():
 
                 state.log(f"Generating intervention image (seed={seed})...", "info")
 
-                # Generate with intervention
                 try:
-                    # Use same device as SD pipeline for consistency
                     device = str(state.sd_pipe.device)
 
                     valid_concepts = []
@@ -1200,14 +1077,12 @@ def create_dashboard():
                     intervened_image = None
                     state.log(f"Intervention failed: {str(e)}", "error")
 
-                # Show completion
                 if progress is not None:
                     progress((combined_total, combined_total), desc="📊 Calculating metrics...")
 
                 display_original = original_image
                 display_intervened = intervened_image
 
-                # Run NudeNet detection on both images
                 detection_orig = None
                 detection_interv = None
 
@@ -1231,10 +1106,8 @@ def create_dashboard():
                         display_intervened = censored_interv
                         state.log("Displaying censored version of intervened image", "info")
 
-                # Format combined comparison table
                 scores_comparison = format_nudenet_comparison(detection_orig, detection_interv)
 
-                # Calculate CLIP scores (use same device as SD pipeline)
                 clip_device = str(state.sd_pipe.device)
                 clip_scores = calculate_clip_scores(
                     prompt, original_image, intervened_image, clip_device, state
@@ -1243,7 +1116,6 @@ def create_dashboard():
 
                 state.system_state = SystemState.IDLE
 
-                # Final yield with both images and combined scores
                 print("[DEBUG] Yielding both images and scores for display")
                 print("*" * 80 + "\n")
                 yield (
@@ -1251,20 +1123,17 @@ def create_dashboard():
                     display_intervened,
                     scores_comparison,
                     clip_scores_html,
-                    gr.update(visible=True),  # images_accordion
-                    gr.update(visible=True),  # nudenet_accordion
-                    gr.update(visible=True),  # clip_accordion
-                    gr.update(visible=True),  # heatmap_accordion
-                    gr.update(value=seed),  # seed_input - update with resolved seed
-                    "",  # heatmap_section_html (cleared for new generation)
-                    gr.update(value=[], visible=False),  # heatmap_section_gallery (cleared)
-                    "",  # generation_progress (clear after completion)
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(value=seed),
+                    "",
+                    gr.update(value=[], visible=False),
+                    "",
                 )
 
             else:
-                # =====================================================================
-                # No intervention - generate original only
-                # =====================================================================
                 print("[DEBUG] NO INTERVENTION MODE: Generating original only")
                 if not intervention_enabled:
                     print("[DEBUG]   Reason: intervention_enabled is False")
@@ -1275,7 +1144,6 @@ def create_dashboard():
 
                 state.log("Generating original image only (no intervention)", "info")
 
-                # Progress callback for solo generation
                 def solo_callback(pipe, step, timestep, callback_kwargs):
                     current = min(step + 1, DENOISING_STEPS)
                     if progress is not None:
@@ -1291,7 +1159,6 @@ def create_dashboard():
                 generator = torch.Generator(device=state.sd_pipe.device).manual_seed(seed)
                 start_time = time.time()
 
-                # Generate with callback
                 output = state.sd_pipe(
                     prompt=prompt,
                     num_inference_steps=DENOISING_STEPS,
@@ -1304,7 +1171,6 @@ def create_dashboard():
                 generation_time = time.time() - start_time
                 state.log(f"Original image generated in {generation_time:.2f}s", "success")
 
-                # Show completion
                 if progress is not None:
                     progress(
                         (DENOISING_STEPS, DENOISING_STEPS),
@@ -1314,7 +1180,6 @@ def create_dashboard():
                 display_original = original_image
                 print(f"[DEBUG] Original image generated: {original_image is not None}")
 
-                # Run NudeNet detection on original
                 detection_orig = None
                 if original_image is not None and state.nudenet_detector is not None:
                     detection_orig, censored_orig = detect_content(original_image, state)
@@ -1326,10 +1191,8 @@ def create_dashboard():
                         display_original = censored_orig
                         state.log("Displaying censored version of original image", "info")
 
-                # Format comparison table (intervention column will show dashes)
                 scores_comparison = format_nudenet_comparison(detection_orig, None)
 
-                # Calculate CLIP scores (only for original since no intervention)
                 clip_device = str(state.sd_pipe.device)
                 clip_scores = calculate_clip_scores(
                     prompt, original_image, None, clip_device, state
@@ -1338,7 +1201,6 @@ def create_dashboard():
 
                 state.system_state = SystemState.IDLE
 
-                # Yield original only (no intervention image)
                 print("[DEBUG] Yielding original image only (no intervention)")
                 print("*" * 80 + "\n")
                 yield (
@@ -1346,17 +1208,16 @@ def create_dashboard():
                     None,
                     scores_comparison,
                     clip_scores_html,
-                    gr.update(visible=True),  # images_accordion
-                    gr.update(visible=True),  # nudenet_accordion
-                    gr.update(visible=True),  # clip_accordion
-                    gr.update(visible=True),  # heatmap_accordion
-                    gr.update(value=seed),  # seed_input - update with resolved seed
-                    "",  # heatmap_section_html (cleared for new generation)
-                    gr.update(value=[], visible=False),  # heatmap_section_gallery (cleared)
-                    "",  # generation_progress (clear after completion)
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(visible=True),
+                    gr.update(value=seed),
+                    "",
+                    gr.update(value=[], visible=False),
+                    "",
                 )
 
-        # Build inputs list for generate button
         generate_inputs = [
             prompt_input,
             guidance_input,
@@ -1367,13 +1228,11 @@ def create_dashboard():
             intervention_mode,
             concept_metadata,
         ]
-        # Add all concept components in interleaved order (checkbox, strength, neurons for each)
         for i in range(MAX_CONCEPTS):
             generate_inputs.append(concept_components["checkboxes"][i])
             generate_inputs.append(concept_components["strengths"][i])
             generate_inputs.append(concept_components["neurons"][i])
 
-        # Controls to disable/enable during generation
         generation_controls = [
             prompt_input,
             guidance_input,
@@ -1387,7 +1246,6 @@ def create_dashboard():
             sae_model_dropdown,
             load_sae_btn,
         ]
-        # Add all concept components (checkboxes, strengths, neurons)
         generation_controls.extend(concept_components["checkboxes"])
         generation_controls.extend(concept_components["strengths"])
         generation_controls.extend(concept_components["neurons"])
@@ -1407,7 +1265,6 @@ def create_dashboard():
                 gr.update(interactive=False),  # sae_model_dropdown
                 gr.update(interactive=False),  # load_sae_btn
             ]
-            # Disable all concept checkboxes, strengths, neurons
             for _ in range(MAX_CONCEPTS * 3):
                 result.append(gr.update(interactive=False))
             return tuple(result)
@@ -1427,10 +1284,8 @@ def create_dashboard():
                 gr.update(interactive=True),  # sae_model_dropdown
                 gr.update(interactive=True),  # load_sae_btn
             ]
-            # Re-enable all concept checkboxes
             for _ in range(MAX_CONCEPTS):
                 result.append(gr.update(interactive=True))  # checkboxes
-            # Restore strengths/neurons based on checkbox state
             for i in range(MAX_CONCEPTS):
                 is_checked = checkbox_values[i] if i < len(checkbox_values) else False
                 result.append(gr.update(interactive=is_checked))  # strengths
@@ -1439,7 +1294,6 @@ def create_dashboard():
                 result.append(gr.update(interactive=is_checked))  # neurons
             return tuple(result)
 
-        # Chain events: disable controls -> generate -> enable controls
         generate_btn.click(
             fn=disable_controls,
             inputs=None,
@@ -1467,7 +1321,6 @@ def create_dashboard():
             outputs=generation_controls,
         )
 
-        # Model loading buttons
         load_sd_btn.click(
             fn=handle_load_sd,
             inputs=[sd_model_dropdown, use_gpu_checkbox],
@@ -1498,7 +1351,6 @@ def create_dashboard():
             + concept_components["neurons"],
         )
 
-        # Wire up heatmap generate button - chain disable -> generate -> enable
         generate_heatmap_btn.click(
             fn=disable_controls,
             inputs=None,
@@ -1516,7 +1368,6 @@ def create_dashboard():
     return app
 
 
-# Launch
 if __name__ == "__main__":
     load_nudenet_model(state)
     app = create_dashboard()
@@ -1524,7 +1375,6 @@ if __name__ == "__main__":
     css_path = Path(__file__).parent / "style.css"
     custom_css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
-    # Enable queue for progress tracking to work
     app.queue()
 
     app.launch(
