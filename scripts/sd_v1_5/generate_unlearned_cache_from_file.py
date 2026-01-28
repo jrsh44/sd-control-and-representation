@@ -1,19 +1,22 @@
-#!/usr/bin/env python3
 """
 Generate unlearned images using SAE-based concept modification.
 
 Usage:
-  uv run scripts/sd_v1_5/generate_unlearned_cache_from_file.py \
-    --dataset-name "test" --prompts-file /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation/data/nudity/prompts_test.txt \
-    --concept "exposed anus" \
-    --results-dir /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images \
-    --model-name "SD_V1_5" --device "cpu" \
-    --guidance-scale 7.5 --steps 50 --seed 42 \
-    --sae-dir-path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096 \
-    --concept-sums-path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt \
-    --epsilon 1e-8 \
-    --influence-factors 1.0 2.0 3.0 \
-    --feature-numbers 10 20 30
+    uv run scripts/sd_v1_5/generate_unlearned_cache_from_file.py \
+        --dataset-name "dataset_name" \
+        --prompts-file path/to/prompts.txt \
+        --concept "concept_name" \
+        --results-dir path/to/output \
+        --model-name "SD_V1_5" \
+        --device "cpu" \
+        --guidance-scale 7.5 \
+        --steps 50 \
+        --seed 42 \
+        --sae-dir-path path/to/sae_model \
+        --concept-sums-path path/to/feature_sums.pt \
+        --epsilon 1e-8 \
+        --influence-factors 1.0 2.0 3.0 \
+        --feature-numbers 10 20 30
 
 Note: Uses UNET_UP_1_ATT_1 layer for modifier attachment (hardcoded)
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Merge temp metadata files and cleanup after interrupted cache generation.
 
@@ -9,20 +8,21 @@ and left behind temp files like:
   - *.lock
 
 Usage:
-  # Merge a specific layer:
-  uv run scripts/sd_v1_5/merge_cache_metadata.py \
-    --cache-dir /path/to/representations \
-    --layer unet_up_1_att_1
+    # Merge a specific layer
+    uv run scripts/sd_v1_5/merge_cache_metadata.py \
+        --cache-dir path/to/representations \
+        --layer layer_name
 
-  # Merge all layers in a cache directory:
-  uv run scripts/sd_v1_5/merge_cache_metadata.py \
-    --cache-dir /path/to/representations \
-    --all
+    # Merge all layers in a cache directory
+    uv run scripts/sd_v1_5/merge_cache_metadata.py \
+        --cache-dir path/to/representations \
+        --all
 
-  # Dry run (show what would be done):
-  uv run scripts/sd_v1_5/merge_cache_metadata.py \
-    --cache-dir /path/to/representations \
-    --all --dry-run
+    # Dry run (show what would be done)
+    uv run scripts/sd_v1_5/merge_cache_metadata.py \
+        --cache-dir path/to/representations \
+        --all \
+        --dry-run
 """
 
 import argparse

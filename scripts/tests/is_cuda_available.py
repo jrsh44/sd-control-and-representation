@@ -1,3 +1,13 @@
+"""
+Check CUDA availability and GPU information.
+
+This script checks if CUDA is available, displays GPU properties,
+and shows environment variables related to CUDA.
+
+Usage:
+    uv run scripts/tests/is_cuda_available.py
+"""
+
 import os
 import sys
 

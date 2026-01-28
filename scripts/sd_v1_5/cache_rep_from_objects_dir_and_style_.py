@@ -1,12 +1,13 @@
-#!/usr/bin/env python3
 """
 Generate cached representations from object prompts with optional artistic style.
 
 Usage:
-  uv run scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.py \
-    --prompts-dir data/unlearn_canvas/prompts/test \
-    --style Impressionism --layers UNET_UP_1_ATT_1 \
-    --model-name sd_v1_5 --log-images-every 1
+    uv run scripts/sd_v1_5/cache_rep_from_objects_dir_and_style_.py \
+        --prompts-dir path/to/prompts \
+        --style style_name \
+        --layers UNET_UP_1_ATT_1 \
+        --model-name sd_v1_5 \
+        --log-images-every 1
 
 Output: {results_dir}/{model_name}/{dataset_name}/representations/{train|validation}/{layer_name}/
 """

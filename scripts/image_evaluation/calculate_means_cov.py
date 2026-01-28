@@ -1,27 +1,25 @@
-#!/usr/bin/env python3
 """
 Script to extract and save Inception v3 statistics (mean and covariance) from images.
 
 This script processes subdirectories containing images, extracts features using Inception v3,
 and saves the mean vector and covariance matrix for later FID calculations.
 
-Example usage:
+Usage:
     # Process all subdirectories in a parent directory
     uv run scripts/image_evaluation/calculate_means_cov.py \
-        --parent-dir /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images/exposed_feet \
-        --output-dir /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/nudity/exposed_feet \
+        --parent-dir path/to/images \
+        --output-dir path/to/output
 
     # With options
-    uv run calculate_means_cov.py \\
-        --parent-dir ./results \\
-        --output-dir ./stats \\
+    uv run scripts/image_evaluation/calculate_means_cov.py \
+        --parent-dir path/to/images \
+        --output-dir path/to/stats \
         --max-images 1000 \\
         --device cuda \\
         --skip-existing
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -30,7 +28,7 @@ project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from src.utils.fid import extract_and_save_statistics
+from src.utils.fid import extract_and_save_statistics  # noqa: E402
 
 
 def main():
@@ -41,16 +39,16 @@ def main():
 Examples:
   # Process all subdirectories
   python calculate_means_cov.py --parent-dir ./results/experiments --output-dir ./fid_stats
-  
+
   # Limit images per subdirectory
   python calculate_means_cov.py --parent-dir ./results --output-dir ./stats --max-images 500
-  
+
   # Specify device
   python calculate_means_cov.py --parent-dir ./results --output-dir ./stats --device cuda
-  
+
   # Skip existing statistics
   python calculate_means_cov.py --parent-dir ./results --output-dir ./stats --skip-existing
-  
+
   # Quiet mode
   python calculate_means_cov.py --parent-dir ./results --output-dir ./stats --quiet
         """,

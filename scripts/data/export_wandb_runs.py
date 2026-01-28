@@ -1,10 +1,11 @@
 """Export wandb runs to CSV.
+
 Usage:
     uv run scripts/data/export_wandb_runs.py \
-    --entity "bartoszjezierski28-warsaw-university-of-technology" \
-    --project "sd-control-representation" \
-    --output /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation/data/wandb/runs07_12_2025.csv
-"""  # noqa: E501
+        --entity "your-wandb-entity" \
+        --project "your-project-name" \
+        --output path/to/output.csv
+"""
 
 import argparse
 import sys

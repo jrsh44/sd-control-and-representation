@@ -1,9 +1,11 @@
 """
-Example usage:
-uv run scripts/tests/nudenet_test.py \
-    --image_path /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation/data/wandb/images/Cache_cc3m-wds_sd_v1_5_2layers/awrnu5o7/media/images/generated_image_12_4ffb6d2965312fe23397.png \
-    --output_dir /mnt/evafs/groups/mi2lab/bjezierski/results/nudenet_test
-"""  # noqa: E501
+Test NudeNet detection functionality.
+
+Usage:
+    uv run scripts/tests/nudenet_test.py \
+        --image_path path/to/image.png \
+        --output_dir path/to/output
+"""
 
 import argparse
 import os

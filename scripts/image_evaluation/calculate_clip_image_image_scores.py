@@ -7,10 +7,10 @@ and calculates CLIP embedding cosine similarities using the CLIP model from Stab
 Folder structure: {source_path}/{concept}/fn_{digits}if_{float}/prompt_{4_digits}.png
                   {source_path}/{concept}/no_intervention/prompt_{4_digits}.png
 
-Example usage:
-uv run scripts/image_evaluation/calculate_clip_image_image_scores.py \
-  --source_folder /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images \
-  --output_csv /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/clip_image_image_scores.csv
+Usage:
+    uv run scripts/image_evaluation/calculate_clip_image_image_scores.py \
+        --source_folder path/to/images \
+        --output_csv path/to/output.csv
 """
 
 import argparse

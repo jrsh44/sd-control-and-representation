@@ -1,7 +1,14 @@
-#!/usr/bin/env python3
 """
-Test script for image generation with Stable Diffusion on cluster.
+Test script for image generation with Stable Diffusion.
+
 Generates images from text prompts and saves them to the results directory.
+
+Usage:
+    uv run scripts/tests/image_generation.py \
+        --prompt "your prompt" \
+        --output-dir path/to/output \
+        --device cpu \
+        --seed 42
 """
 
 import argparse

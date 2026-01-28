@@ -1,12 +1,13 @@
-#!/usr/bin/env python3
 """
 Generate cached representations from prompt file (supports SLURM array job splitting).
 
 Usage:
-  uv run scripts/sd_v1_5/cache_rep_from_file.py \
-    --prompts-file data/cc3m-wds/train.txt \
-    --num-prompts 1000 --array-id 2 --array-total 10 \
-    --layers UNET_UP_1_ATT_1
+    uv run scripts/sd_v1_5/cache_rep_from_file.py \
+        --prompts-file path/to/prompts.txt \
+        --num-prompts 1000 \
+        --array-id 2 \
+        --array-total 10 \
+        --layers UNET_UP_1_ATT_1
 
 Output: {results_dir}/{model_name}/{dataset_name}/representations/{layer_name}/
 """

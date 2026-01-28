@@ -10,8 +10,8 @@ Supports randomized splitting for both:
 
 Usage:
     uv run scripts/data/extract_cc3m_prompts.py \
-        --train-file data/cc3m-wds/train.txt \
-        --val-file data/cc3m-wds/validation.txt \
+        --train-file path/to/train.txt \
+        --val-file path/to/validation.txt \
         --val-size 5000 \
         --limit 50000
 """

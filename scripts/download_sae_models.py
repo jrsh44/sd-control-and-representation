@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Download SAE models from HuggingFace to local models directory.
 
@@ -10,10 +9,10 @@ Usage:
     uv run scripts/download_sae_models.py --all
 
     # Download specific experiments
-    uv run scripts/download_sae_models.py --experiments exp36_topk32 exp32_topk16
+    uv run scripts/download_sae_models.py --experiments experiment1 experiment2
 
     # Download to custom directory
-    uv run scripts/download_sae_models.py --all --output-dir /path/to/models
+    uv run scripts/download_sae_models.py --all --output-dir path/to/models
 
     # List available models without downloading
     uv run scripts/download_sae_models.py --list

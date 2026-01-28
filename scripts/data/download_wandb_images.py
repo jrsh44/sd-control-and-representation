@@ -1,14 +1,14 @@
 """Download images from specific wandb runs based on CSV filter.
-Usage:
 
-uv run scripts/data/download_wandb_images.py \
-    --csv-file /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation/data/wandb/runs07_12_2025.csv \
-    --entity "bartoszjezierski28-warsaw-university-of-technology" \
-    --project "sd-control-representation" \
-    --run-names "Cache_cc3m-wds_sd_v1_5_2layers" "Cache_nudity_sd_v1_5_2layers" \
-    --state finished \
-    --output-dir /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation/data/wandb/images
-"""  # noqa: E501
+Usage:
+    uv run scripts/data/download_wandb_images.py \
+        --csv-file path/to/runs.csv \
+        --entity "your-wandb-entity" \
+        --project "your-project-name" \
+        --run-names "run_name_1" "run_name_2" \
+        --state finished \
+        --output-dir path/to/output
+"""
 
 import argparse
 import csv

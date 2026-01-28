@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Script to calculate FID scores from pre-computed statistics files.
 
@@ -6,9 +5,9 @@ This script compares intervention subdirectories against COCO-2017 reference sta
 
 Usage:
     uv run scripts/image_evaluation/calculate_fid.py \
-        --coco-dir /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/coco \
-        --parent-dir /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/nudity/exposed_feet \
-        --output /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/scores/exposed_feet_fid.csv
+        --coco-dir path/to/coco/stats \
+        --parent-dir path/to/intervention/stats \
+        --output path/to/output.csv
 
 Directory structure expected:
     parent-dir/

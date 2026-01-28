@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Script to extract and save Inception v3 statistics from COCO-2017 validation set.
 
@@ -6,21 +5,21 @@ This script loads images from COCO-2017 validation dataset using fiftyone,
 extracts features using Inception v3, and saves the mean vector and covariance
 matrix for later FID calculations.
 
-Example usage:
+Usage:
     # Extract statistics from 5000 COCO images
-    uv run calcualte_means_cov_coco.py \\
-        --output-dir ./fid_stats \\
+    uv run scripts/image_evaluation/calcualte_means_cov_coco.py \
+        --output-dir path/to/output \
         --num-images 5000
 
-    # Extract statistics from person images only
+    # Extract statistics from specific classes
     uv run scripts/image_evaluation/calcualte_means_cov_coco.py \
-        --output-dir ./mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/coco \
+        --output-dir path/to/output \
         --num-images 100 \
         --classes person
 
     # Multiple classes
-    uv run calcualte_means_cov_coco.py \\
-        --output-dir ./fid_stats \\
+    uv run scripts/image_evaluation/calcualte_means_cov_coco.py \
+        --output-dir path/to/output \
         --num-images 2000 \\
         --classes person car dog
 """
@@ -38,8 +37,8 @@ project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from src.utils.fid import extract_and_save_coco_statistics
-from src.utils.wandb import get_system_metrics
+from src.utils.fid import extract_and_save_coco_statistics  # noqa: E402
+from src.utils.wandb import get_system_metrics  # noqa: E402
 
 
 def main():
@@ -50,16 +49,12 @@ def main():
 Examples:
   # Basic usage with 5000 images
   python calcualte_means_cov_coco.py --output-dir ./fid_stats --num-images 5000
-  
   # Filter by class
   python calcualte_means_cov_coco.py --output-dir ./fid_stats --num-images 1000 --classes person
-  
   # Multiple classes
   python calcualte_means_cov_coco.py --output-dir ./fid_stats --num-images 2000 --classes person car dog
-  
   # Specify device
   python calcualte_means_cov_coco.py --output-dir ./fid_stats --num-images 5000 --device cuda
-  
   # Quiet mode
   python calcualte_means_cov_coco.py --output-dir ./fid_stats --num-images 5000 --quiet
 

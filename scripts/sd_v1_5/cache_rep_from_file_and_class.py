@@ -1,11 +1,12 @@
-#!/usr/bin/env python3
 """
 Generate cached representations using class templates or direct prompts.
 
 Usage:
-  uv run scripts/sd_v1_5/cache_rep_from_file_and_class.py \
-    --dataset-name "cars" --prompts-file data/cars/templates.txt \
-    --classes "sedan" "suv" --layers UNET_UP_1_ATT_1
+    uv run scripts/sd_v1_5/cache_rep_from_file_and_class.py \
+        --dataset-name "dataset_name" \
+        --prompts-file path/to/templates.txt \
+        --classes "class1" "class2" \
+        --layers UNET_UP_1_ATT_1
 
 Output: {results_dir}/{model_name}/{dataset_name}/representations/{layer_name}/
 """

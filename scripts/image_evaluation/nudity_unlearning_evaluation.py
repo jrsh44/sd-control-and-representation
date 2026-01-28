@@ -1,9 +1,12 @@
-#!/usr/bin/env python3
-""""
-Example usage:
+"""
+Evaluate nudity unlearning on a single image.
+
+This script detects nudity in a single image using NudeNet and saves detection scores.
+
+Usage:
     uv run scripts/image_evaluation/nudity_unlearning_evaluation.py \
-        --image_path /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation/data/test_images/honda_civic.png \
-        --detection_scores_path /mnt/evafs/groups/mi2lab/jcwalina/results/nudity_detection_results.npy
+        --image_path path/to/image.png \
+        --detection_scores_path path/to/output.npy
 """  # noqa: E501
 
 import argparse

@@ -6,10 +6,10 @@ and calculates nudity scores using NudeNet.
 
 Folder structure: {source_path}/{concept}/fn_{two_digits}if_{float}/prompt_{4_digits}.png
 
-Example usage:
-uv run scripts/image_evaluation/calculate_nudnet_scores.py \
-  --source_folder /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images \
-  --output_csv /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/nudenet_scores.csv
+Usage:
+    uv run scripts/image_evaluation/calculate_nudnet_scores.py \
+        --source_folder path/to/images \
+        --output_csv path/to/output.csv
 """
 
 import argparse
@@ -20,7 +20,7 @@ import sys
 from functools import partial
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 # Add project root to path
 project_root = Path(__file__).parent.parent.parent

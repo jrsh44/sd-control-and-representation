@@ -1,3 +1,14 @@
+"""
+Detect nudity in images using NudeNet.
+
+This script runs nudity detection on images and saves detection scores.
+
+Usage:
+    uv run scripts/tests/nudity_detection.py \
+        --images_path /path/to/images \
+        --detection_scores_path /path/to/output/scores.npy
+"""
+
 import argparse
 import sys
 from pathlib import Path

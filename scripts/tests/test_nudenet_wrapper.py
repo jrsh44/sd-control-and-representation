@@ -1,10 +1,12 @@
 """
-Example usage:
-uv run scripts/tests/test_nudenet_wrapper.py \
-    --image_path /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation/data/wandb/images/Cache_nudity_sd_v1_5_2layers/didjhxb9/media/images/generated_image_59_3d4de63b9b6d9e8fda61.png \
-    --model 320n \
-    --threshold 0.7
-"""  # noqa: E501
+Test NudeNet wrapper for scoring images.
+
+Usage:
+    uv run scripts/tests/test_nudenet_wrapper.py \
+        --image_path path/to/image.png \
+        --model 320n \
+        --threshold 0.7
+"""
 
 import argparse
 import sys

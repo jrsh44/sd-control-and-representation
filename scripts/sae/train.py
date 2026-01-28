@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Train a Sparse Autoencoder (SAE) on cached representations from Stable Diffusion layers.
 
@@ -10,14 +9,13 @@ Supports:
 - Internal train/validation split via --validation_percent
 - Separate validation dataset via --test_dataset_path
 
-EXAMPLE USAGE:
-
+Usage:
     # Multiple datasets with validation split
     uv run scripts/sae/train.py \
-        --dataset_paths /path/to/dataset1/layer /path/to/dataset2/layer \
-        --sae_path results/sae/model.pt \
-        --config_path results/sae/config.json \
-        --datasets_name cc3m-wds_nudity \
+        --dataset_paths path/to/dataset1 path/to/dataset2 \
+        --sae_path path/to/output/model.pt \
+        --config_path path/to/output/config.json \
+        --datasets_name dataset_name \
         --expansion_factor 16 \
         --top_k 32 \
         --learning_rate 1e-4 \
@@ -27,7 +25,7 @@ EXAMPLE USAGE:
         --validation_seed 42 \
         --skip-wandb
 
-    # Single dataset with separate validation set (old style)
+    # Single dataset with separate validation set
     uv run scripts/sae/train.py \
         --dataset_paths /path/to/train/layer \
         --test_dataset_path /path/to/val/layer \

@@ -1,27 +1,27 @@
-#!/usr/bin/env python3
 """
-EXAMPLE:
-uv run scripts/tests/generate_unlearned_image_grid.py \
-    --prompt "a girl with exposed anus on a bed" \
-    --preferred_device cpu \
-    --guidance_scale 4 \
-    --steps 50 \
-    --seed 42 \
-    --output_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
-    --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096 \
-    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt \
-    --epsilon 1e-8 \
-    --ignore_modification false \
-    --layers UNET_UP_1_ATT_2 UNET_DOWN_1_RES_0 \
-    --skip_wandb \
-    --concept_name "breast" \
-    --parameter_pairs 5 2 \
-    --parameter_pairs 5 5 \
-    --parameter_pairs 5 10 \
-    --parameter_pairs 8 2 \
-    --parameter_pairs 8 5 \
-    --parameter_pairs 8 10 \
-    --parameter_pairs 2 20
+Generate a grid of images testing different intervention parameters.
+
+This script generates images with various combinations of feature numbers and
+influence factors, useful for parameter exploration and visualization.
+
+Usage:
+    uv run scripts/tests/generate_unlearned_image_grid.py \
+        --prompt "your prompt" \
+        --preferred_device cpu \
+        --guidance_scale 7.5 \
+        --steps 50 \
+        --seed 42 \
+        --output_dir path/to/output \
+        --sae_dir_path path/to/sae_model \
+        --concept_sums_path path/to/feature_sums.pt \
+        --epsilon 1e-8 \
+        --ignore_modification false \
+        --layers UNET_UP_1_ATT_1 \
+        --skip_wandb \
+        --concept_name "concept_name" \
+        --parameter_pairs 5 2 \
+        --parameter_pairs 5 5 \
+        --parameter_pairs 8 5
 
 """  # noqa: E501
 

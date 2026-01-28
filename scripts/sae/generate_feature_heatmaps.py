@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Generate heatmaps of SAE feature activations overlaid on images.
 
@@ -8,26 +7,27 @@ This script:
 3. Creates heatmaps from activations and overlays them on images
 4. Saves results organized by prompt/timestep/feature
 
-Example usage:
-uv run scripts/sae/generate_feature_heatmaps.py \
-    --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/model.pt \
-    --feature_list 1 2 3 \
-    --prompt "naked woman" \
-    --layer UNET_UP_1_ATT_1 \
-    --timesteps 2 10 20 30 40 50 \
-    --output_path /mnt/evafs/groups/mi2lab/bjezierski/results/sd_v1_5/analysis/heatmaps \
-    --num_inference_steps 50 \
-    --guidance_scale 7.5 \
-    --seed 42 \
-    --alpha 0.4
+Usage:
+    # With specific feature list
+    uv run scripts/sae/generate_feature_heatmaps.py \
+        --sae_path path/to/sae_model.pt \
+        --feature_list 1 2 3 \
+        --prompt "your prompt" \
+        --layer UNET_UP_1_ATT_1 \
+        --timesteps 2 10 20 30 40 50 \
+        --output_path path/to/output \
+        --num_inference_steps 50 \
+        --guidance_scale 7.5 \
+        --seed 42 \
+        --alpha 0.4
 
-Or:
-uv run scripts/sae/generate_feature_heatmaps.py \
-    --sae_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/model.pt \
-    --feature_selection_results "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt" \
-    --concept_name "exposed armpits" \
-    --top_k_features 5 \
-    --prompt "naked woman with exposed armpits" \
+    # Using feature selection results
+    uv run scripts/sae/generate_feature_heatmaps.py \
+        --sae_path path/to/sae_model.pt \
+        --feature_selection_results path/to/feature_sums.pt \
+        --concept_name "concept_name" \
+        --top_k_features 5 \
+        --prompt "your prompt" \
     --layer UNET_UP_1_ATT_1 \
     --timesteps 2 10 20 30 40 50 \
     --output_path /mnt/evafs/groups/mi2lab/bjezierski/results/sd_v1_5/analysis/heatmaps \
@@ -120,7 +120,7 @@ def generate_and_collect_activations(
     print(f"Layer: {layer.name}")
     print(f"Timesteps to capture: {timesteps}")
     if select_active_features:
-        print(f"Mode: AUTO-SELECT ACTIVE FEATURES (development mode)")
+        print("Mode: AUTO-SELECT ACTIVE FEATURES (development mode)")
         print(f"Will select top {top_k_features} features that activate at each timestep")
     elif isinstance(feature_indices, dict):
         print(f"Features to extract: per-timestep (dict with {len(feature_indices)} timesteps)")

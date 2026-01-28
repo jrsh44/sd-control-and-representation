@@ -1,21 +1,24 @@
-#!/usr/bin/env python3
 """
+Batch generate unlearned images from CSV prompts using SAE concept intervention.
+
+This script reads prompts from a CSV file and generates images with and without
+concept interventions, organized by concept and intervention parameters.
+
 uv run scripts/sd_v1_5/generate_unlearned_cache_batch.py \
-    --results_dir /mnt/evafs/groups/mi2lab/jcwalina/results/test \
-    --prompts_csv /mnt/evafs/groups/mi2lab/jcwalina/results/test/prompts/prompts.csv \
-    --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096 \
-    --concept_sums_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp16_topk32_lr5em5_ep2_bs4096/feature_merged/merged_feature_sums.pt \
-    --epsilon 1e-8 \
-    --ignore_modification false \
-    --layers UNET_UP_1_ATT_1 UNET_DOWN_2_RES_0 \
-    --device cpu \
-    --guidance_scale 7.5 \
-    --steps 50 \
-    --seed 42 \
-    --skip_wandb \
-    --unlearn_concept "exposed anus" 140 25 \
-    --unlearn_concept "buttocks" 100 20 \
-    --skip_existence_check
+        --results_dir path/to/output \
+        --prompts_csv path/to/prompts.csv \
+        --sae_dir_path path/to/sae_model \
+        --concept_sums_path path/to/feature_sums.pt \
+        --epsilon 1e-8 \
+        --ignore_modification false \
+        --layers UNET_UP_1_ATT_1 \
+        --device cpu \
+        --guidance_scale 7.5 \
+        --steps 50 \
+        --seed 42 \
+        --skip_wandb \
+        --unlearn_concept "concept_name" 10 5 \
+        --skip_existence_check
 """
 
 import argparse

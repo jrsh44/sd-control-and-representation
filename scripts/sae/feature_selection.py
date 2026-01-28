@@ -1,24 +1,25 @@
-#!/usr/bin/env python3
 """
-Example usage:
-    python scripts/sae/feature_selection.py \
-        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1 \
-        --dataset_name nudity \
+Usage:
+    # Filter by concept
+    uv run scripts/sae/feature_selection.py \
+        --dataset_path path/to/representations \
+        --dataset_name dataset_name \
         --filter_type concept \
         --concept object \
-        --concept_value 'exposed anus' \
-        --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096 \
-        --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096/feature_sums
+        --concept_value 'concept_name' \
+        --sae_dir_path path/to/sae_model \
+        --features_dir_path path/to/feature_sums
 
-        python scripts/sae/feature_selection.py \
-        --dataset_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/nudity/representations/unet_up_1_att_1_test_subset \
-        --dataset_name nudity_subset \
+    # Filter by ID range
+    uv run scripts/sae/feature_selection.py \
+        --dataset_path path/to/representations \
+        --dataset_name dataset_name \
         --filter_type id_range \
         --lower_index 0 \
-        --upper_index 2560000 \
+        --upper_index 100000 \
         --batch_size 32768 \
-        --sae_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp8_topk16_lr4em4_ep5_bs4096 \
-        --features_dir_path /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1_test_subset/exp8_topk16_lr4em4_ep5_bs4096/feature_sums \
+        --sae_dir_path path/to/sae_model \
+        --features_dir_path path/to/feature_sums \
         --device cpu
 
 """  # noqa: E501

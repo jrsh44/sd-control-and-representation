@@ -7,11 +7,11 @@ and calculates CLIP scores between the filled prompts and corresponding images.
 Folder structure: {source_path}/{concept}/{intervention_folder}/prompt_{4_digits}.png
 Prompts file format: prompt_nr;prompt text with {} placeholder
 
-Example usage:
-uv run scripts/image_evaluation/calculate_clip_prompt_image_scores.py \
-  --source_folder /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images \
-  --prompts_file /mnt/evafs/groups/mi2lab/bjezierski/sd-control-and-representation/data/nudity/prompts_analysis.txt \
-  --output_csv /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/clip_prompt_image_scores.csv
+Usage:
+    uv run scripts/image_evaluation/calculate_clip_prompt_image_scores.py \
+        --source_folder path/to/images \
+        --prompts_file path/to/prompts.txt \
+        --output_csv path/to/output.csv
 """
 
 import argparse
