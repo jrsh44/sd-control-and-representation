@@ -139,15 +139,30 @@ def calculate_clip_scores(
             except Exception as e:
                 print(f"[CLIP] Error computing prompt vs intervention: {e}")
 
-        # Calculate image-to-image similarity
+        # Calculate image-to-image similarity using embeddings
         if original_image is not None and intervention_image is not None:
             try:
-                orig_tensor = pil_to_tensor(original_image)
-                interv_tensor = pil_to_tensor(intervention_image)
-                metric.reset()
-                metric.update(orig_tensor, interv_tensor)
-                score = metric.compute()
-                results["image_similarity"] = float(score.item())
+                # Get CLIP embeddings for both images
+                orig_tensor = pil_to_tensor(original_image).unsqueeze(0).to(device)
+                interv_tensor = pil_to_tensor(intervention_image).unsqueeze(0).to(device)
+
+                # Access the underlying CLIP model to get image embeddings
+                clip_model = metric.model
+
+                # Get image features
+                with torch.no_grad():
+                    orig_features = clip_model.get_image_features(orig_tensor)
+                    interv_features = clip_model.get_image_features(interv_tensor)
+
+                    # Normalize features
+                    orig_features = orig_features / orig_features.norm(dim=-1, keepdim=True)
+                    interv_features = interv_features / interv_features.norm(dim=-1, keepdim=True)
+
+                    # Compute cosine similarity and scale to 0-100
+                    similarity = (orig_features @ interv_features.T).item()
+                    # Convert from [-1, 1] to [0, 100]
+                    results["image_similarity"] = (similarity + 1) * 50
+
             except Exception as e:
                 print(f"[CLIP] Error computing image similarity: {e}")
 
