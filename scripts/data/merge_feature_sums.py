@@ -3,7 +3,7 @@
 Merge partial feature sum files from parallel array jobs into a single file.
 
 Example usage:
-    python scripts/data/merge_feature_sums.py \
+    uv run scripts/data/merge_feature_sums.py \
         --input_dir "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_sums" \
         --pattern "*.pt" \
         --output_path "/mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/feature_merged/merged_feature_sums.pt"

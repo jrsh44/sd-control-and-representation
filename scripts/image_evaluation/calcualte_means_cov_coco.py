@@ -8,18 +8,18 @@ matrix for later FID calculations.
 
 Example usage:
     # Extract statistics from 5000 COCO images
-    python calcualte_means_cov_coco.py \\
+    uv run calcualte_means_cov_coco.py \\
         --output-dir ./fid_stats \\
         --num-images 5000
 
     # Extract statistics from person images only
-    python scripts/image_evaluation/calcualte_means_cov_coco.py \
+    uv run scripts/image_evaluation/calcualte_means_cov_coco.py \
         --output-dir ./mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/coco \
         --num-images 100 \
         --classes person
 
     # Multiple classes
-    python calcualte_means_cov_coco.py \\
+    uv run calcualte_means_cov_coco.py \\
         --output-dir ./fid_stats \\
         --num-images 2000 \\
         --classes person car dog

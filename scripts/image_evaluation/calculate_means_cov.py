@@ -7,12 +7,12 @@ and saves the mean vector and covariance matrix for later FID calculations.
 
 Example usage:
     # Process all subdirectories in a parent directory
-    python scripts/image_evaluation/calculate_means_cov.py \
+    uv run scripts/image_evaluation/calculate_means_cov.py \
         --parent-dir /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/images/exposed_feet \
         --output-dir /mnt/evafs/groups/mi2lab/mjarosz/results/sd_v1_5/sae/cc3m-wds_nudity/unet_up_1_att_1/exp36_topk32_lr1em3_warmup100000_aux00625_ep2_bs4096/fid/nudity/exposed_feet \
 
     # With options
-    python calculate_means_cov.py \\
+    uv run calculate_means_cov.py \\
         --parent-dir ./results \\
         --output-dir ./stats \\
         --max-images 1000 \\

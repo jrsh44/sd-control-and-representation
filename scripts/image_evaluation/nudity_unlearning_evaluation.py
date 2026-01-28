@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """"
 Example usage:
-    python scripts/image_evaluation/nudity_unlearning_evaluation.py \
+    uv run scripts/image_evaluation/nudity_unlearning_evaluation.py \
         --image_path /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation/data/test_images/honda_civic.png \
         --detection_scores_path /mnt/evafs/groups/mi2lab/jcwalina/results/nudity_detection_results.npy
 """  # noqa: E501
