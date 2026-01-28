@@ -1,17 +1,21 @@
 """
-Dashboard Tests - Phase 9: Testing & Validation
-Comprehensive test suite for the SD Control & Representation dashboard
+Dashboard Tests - Comprehensive Testing Suite
+Test suite for the SD Control & Representation dashboard
 
-Tests the modular dashboard components:
-- state.py: State management classes
-- layers.py: UNet layer selection
-- concepts.py: Concept loading and management
+Tests the dashboard components:
+- core/state.py: State management classes
+- core/model_loader.py: Model loading functions (mocked)
+- config/sae_config_loader.py: SAE configuration loading
+- utils/: Utility modules (cuda, clip_score, detection, heatmap)
 """
 
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import torch
+from PIL import Image
 
 # Add dashboard to path for imports
 dashboard_dir = Path(__file__).parent.parent / "dashboard"
@@ -83,165 +87,408 @@ class TestStateManagement:
         assert progress.elapsed_time >= 10
         assert progress.format_time(65) == "01:05"
 
+    def test_system_state_transitions(self):
+        """Test valid system state transitions"""
+        from core.state import DashboardState, SystemState
+
+        state = DashboardState()
+        state.system_state = SystemState.LOADING_MODEL
+        assert state.system_state == SystemState.LOADING_MODEL
+
+        state.system_state = SystemState.GENERATING
+        assert state.system_state == SystemState.GENERATING
+
+        state.system_state = SystemState.IDLE
+        assert state.system_state == SystemState.IDLE
+
+    def test_multiple_model_states(self):
+        """Test tracking multiple model states"""
+        from core.state import DashboardState, ModelLoadState
+
+        state = DashboardState()
+        state.set_model_state("sd_base", ModelLoadState.LOADED, 3.0)
+        state.set_model_state("sae", ModelLoadState.LOADED, 2.5)
+        state.set_model_state("nudenet", ModelLoadState.LOADED, 1.0)
+
+        assert all(s == ModelLoadState.LOADED for s in state.model_states.values())
+        assert state.load_times["sd_base"] == 3.0
+        assert state.load_times["sae"] == 2.5
+        assert state.load_times["nudenet"] == 1.0
+
+    def test_temp_dir_creation(self):
+        """Test temporary directory is created"""
+        from core.state import DashboardState
+
+        state = DashboardState()
+        assert state.temp_dir is not None
+        assert state.temp_dir.exists()
+        assert state.temp_dir.is_dir()
+
 
 # =============================================================================
-# Layer Management Tests
+# Configuration Tests
 # =============================================================================
 
 
-class TestLayerManagement:
-    """Test layer selection and information functions from layers.py"""
+class TestConfigLoader:
+    """Test SAE configuration loading from sae_config_loader.py"""
 
-    def test_get_all_layers(self):
-        """Test getting all layers"""
-        from core.layers import get_all_layers
+    def test_load_sae_config(self):
+        """Test loading SAE configuration"""
+        from config.sae_config_loader import load_sae_config
 
-        layers = get_all_layers()
+        config = load_sae_config()
+        assert config is not None
+        assert hasattr(config, "sae_models")
+        assert isinstance(config.sae_models, list)
 
-        assert isinstance(layers, dict)
-        assert len(layers) > 0
-        assert "Recommended" in layers
-        assert "Down Blocks" in layers
-        assert "Mid Block" in layers
-        assert "Up Blocks" in layers
+    def test_get_sae_model_choices(self):
+        """Test getting SAE model choices"""
+        from config.sae_config_loader import get_sae_model_choices, load_sae_config
 
-    def test_get_layer_choices(self):
-        """Test layer choices formatting"""
-        from core.layers import get_layer_choices
-
-        choices = get_layer_choices()
+        config = load_sae_config()
+        choices = get_sae_model_choices(config)
 
         assert isinstance(choices, list)
-        assert len(choices) > 0
-        assert all(isinstance(choice, tuple) for choice in choices)
-        assert all(len(choice) == 2 for choice in choices)
-
-    def test_get_layer_info_single(self):
-        """Test layer information retrieval for single layer"""
-        from core.layers import get_layer_info
-
-        info = get_layer_info("UNET_MID_ATT")
-        assert "UNET_MID_ATT" in info
-        assert "Layer:" in info
-
-    def test_get_layer_info_empty(self):
-        """Test layer info with empty selection"""
-        from core.layers import get_layer_info
-
-        info = get_layer_info([])
-        assert "No layer selected" in info
-
-    def test_get_layer_info_multiple(self):
-        """Test layer info with multiple layers"""
-        from core.layers import get_layer_info
-
-        info = get_layer_info(["UNET_MID_ATT", "UNET_UP_1_ATT_1"])
-        assert "2 layers selected" in info
-
-    def test_get_flat_layer_list(self):
-        """Test getting flat list of layers"""
-        from core.layers import get_flat_layer_list
-
-        layers = get_flat_layer_list()
-        assert isinstance(layers, list)
-        assert "UNET_MID_ATT" in layers
-        assert "UNET_UP_1_ATT_1" in layers
-
-    def test_is_recommended_layer(self):
-        """Test checking if layer is recommended"""
-        from core.layers import is_recommended_layer
-
-        assert is_recommended_layer("UNET_MID_ATT") is True
-        assert is_recommended_layer("UNET_DOWN_0_RES_0") is False
-
-
-# =============================================================================
-# Concept Management Tests
-# =============================================================================
-
-
-class TestConceptManagement:
-    """Test concept loading and management from concepts.py"""
-
-    def test_load_concepts(self):
-        """Test concept loading from file"""
-        from core.concepts import load_concepts
-
-        concepts = load_concepts()
-
-        assert isinstance(concepts, dict)
-        assert len(concepts) > 0
-        # Should have at least some concepts (or fallback)
-        assert all(isinstance(k, int) for k in concepts.keys())
-        assert all(isinstance(v, str) for v in concepts.values())
+        if len(choices) > 0:
+            assert all(isinstance(choice, tuple) for choice in choices)
+            assert all(len(choice) == 2 for choice in choices)
 
     def test_get_concept_choices(self):
-        """Test concept choices formatting"""
-        from core.concepts import get_concept_choices
+        """Test getting concept choices for an SAE model"""
+        from config.sae_config_loader import get_concept_choices, load_sae_config
 
-        choices = get_concept_choices()
+        config = load_sae_config()
+        if len(config.sae_models) > 0:
+            sae_model_id = config.sae_models[0].id
+            choices = get_concept_choices(config, sae_model_id)
 
-        assert isinstance(choices, list)
-        assert len(choices) > 0
-        assert all(isinstance(choice, tuple) for choice in choices)
-        # Format: ("ID: Label", ID)
-        assert all(len(choice) == 2 for choice in choices)
+            assert isinstance(choices, list)
+            if len(choices) > 0:
+                assert all(isinstance(choice, tuple) for choice in choices)
+                assert all(len(choice) == 3 for choice in choices)  # (name, id, description)
 
-    def test_get_concept_info_empty(self):
-        """Test concept info with empty selection"""
-        from core.concepts import get_concept_info
+    def test_get_layer_id(self):
+        """Test getting layer ID for an SAE model"""
+        from config.sae_config_loader import get_layer_id, load_sae_config
 
-        info = get_concept_info([])
-        assert "No concepts selected" in info
+        config = load_sae_config()
+        if len(config.sae_models) > 0:
+            sae_model_id = config.sae_models[0].id
+            layer_id = get_layer_id(config, sae_model_id)
+            assert isinstance(layer_id, str)
 
-    def test_get_concept_info_single(self):
-        """Test concept info with single selection"""
-        from core.concepts import get_concept_info
+    def test_get_feature_sums_path(self):
+        """Test getting feature sums path"""
+        from config.sae_config_loader import get_feature_sums_path, load_sae_config
 
-        info = get_concept_info([0])
-        assert "1 concept" in info
+        config = load_sae_config()
+        if len(config.sae_models) > 0:
+            sae_model_id = config.sae_models[0].id
+            path = get_feature_sums_path(config, sae_model_id)
+            assert path is None or isinstance(path, Path)
 
-    def test_get_concept_info_multiple(self):
-        """Test concept info with multiple selection"""
-        from core.concepts import get_concept_info
+    def test_get_sae_hyperparameters(self):
+        """Test getting SAE hyperparameters"""
+        from config.sae_config_loader import get_sae_hyperparameters, load_sae_config
 
-        info = get_concept_info([0, 1, 2])
-        assert "3 concept" in info
+        config = load_sae_config()
+        if len(config.sae_models) > 0:
+            sae_model_id = config.sae_models[0].id
+            hyperparams = get_sae_hyperparameters(config, sae_model_id)
+            assert hyperparams is None or isinstance(hyperparams, dict)
 
-    def test_get_concept_label(self):
-        """Test getting single concept label"""
-        from core.concepts import get_concept_label
+    def test_get_model_path(self):
+        """Test getting model path"""
+        from config.sae_config_loader import get_model_path, load_sae_config
 
-        label = get_concept_label(0)
-        assert isinstance(label, str)
-        assert len(label) > 0
-
-    def test_validate_concepts(self):
-        """Test concept validation"""
-        from core.concepts import validate_concepts
-
-        valid, invalid = validate_concepts([0, 1, 999])
-        assert 0 in valid
-        assert 1 in valid
-        assert 999 in invalid
+        config = load_sae_config()
+        if len(config.sae_models) > 0:
+            sae_model_id = config.sae_models[0].id
+            path = get_model_path(config, sae_model_id)
+            assert path is None or isinstance(path, Path)
 
 
 # =============================================================================
-# Error Handling Tests
+# CUDA Utilities Tests
 # =============================================================================
 
 
-class TestErrorHandling:
-    """Test error handling and edge cases"""
+class TestCudaUtils:
+    """Test CUDA utility functions"""
 
-    def test_load_concepts_missing_file(self):
-        """Test concept loading with missing file"""
-        from core.concepts import load_concepts
+    def test_get_gpu_compute_capability(self):
+        """Test GPU compute capability detection"""
+        from utils.cuda import get_gpu_compute_capability
 
-        # Should return fallback concepts
-        concepts = load_concepts(Path("nonexistent/path/classes.txt"))
-        assert isinstance(concepts, dict)
-        assert len(concepts) > 0
+        result = get_gpu_compute_capability()
+        # Result can be None (no GPU) or tuple of (major, minor)
+        assert result is None or (isinstance(result, tuple) and len(result) == 2)
+
+    def test_cuda_constants(self):
+        """Test CUDA module constants are defined"""
+        from utils.cuda import (
+            CUDA_COMPATIBLE,
+            CUDA_FLASH_ATTENTION_OK,
+            CUDA_STATUS,
+            GPU_COMPUTE_CAPABILITY,
+        )
+
+        assert isinstance(CUDA_COMPATIBLE, bool)
+        assert isinstance(CUDA_FLASH_ATTENTION_OK, bool)
+        assert isinstance(CUDA_STATUS, str)
+        # GPU_COMPUTE_CAPABILITY can be None or tuple
+
+    def test_get_pytorch_supported_cuda_archs(self):
+        """Test getting PyTorch supported CUDA architectures"""
+        from utils.cuda import get_pytorch_supported_cuda_archs
+
+        archs = get_pytorch_supported_cuda_archs()
+        assert isinstance(archs, list)
+        assert all(isinstance(arch, int) for arch in archs)
+
+
+# =============================================================================
+# CLIP Score Tests
+# =============================================================================
+
+
+class TestClipScore:
+    """Test CLIP score utilities"""
+
+    def test_pil_to_tensor(self):
+        """Test PIL image to tensor conversion"""
+        from utils.clip_score import pil_to_tensor
+
+        # Create a test image
+        img = Image.new("RGB", (64, 64), color=(255, 0, 0))
+        tensor = pil_to_tensor(img)
+
+        assert isinstance(tensor, torch.Tensor)
+        assert tensor.shape == (3, 64, 64)
+        assert tensor.dtype == torch.uint8
+
+    def test_pil_to_tensor_grayscale(self):
+        """Test PIL grayscale image conversion"""
+        from utils.clip_score import pil_to_tensor
+
+        # Create a grayscale image
+        img = Image.new("L", (64, 64), color=128)
+        tensor = pil_to_tensor(img)
+
+        # Should be converted to RGB
+        assert tensor.shape == (3, 64, 64)
+
+    @patch("utils.clip_score.CLIPScore")
+    def test_get_clip_model_initialization(self, mock_clip_score):
+        """Test CLIP model initialization"""
+        from utils.clip_score import get_clip_model
+
+        mock_model = MagicMock()
+        mock_clip_score.return_value = mock_model
+
+        model = get_clip_model(device="cpu")
+        assert model is not None
+        mock_clip_score.assert_called_once()
+
+    @patch("utils.clip_score.get_clip_model")
+    def test_calculate_clip_scores_both_images(self, mock_get_clip_model):
+        """Test calculating CLIP scores with both images"""
+        from utils.clip_score import calculate_clip_scores
+
+        # Mock CLIP model
+        mock_model = MagicMock()
+        mock_model.return_value = torch.tensor([75.0])
+        mock_get_clip_model.return_value = mock_model
+
+        # Create test images
+        img1 = Image.new("RGB", (64, 64), color=(255, 0, 0))
+        img2 = Image.new("RGB", (64, 64), color=(0, 255, 0))
+
+        scores = calculate_clip_scores("a red image", img1, img2, device="cpu")
+
+        assert isinstance(scores, dict)
+        assert "prompt_original" in scores
+        assert "prompt_intervention" in scores
+        assert "image_similarity" in scores
+
+    def test_format_clip_scores(self):
+        """Test formatting CLIP scores"""
+        from utils.clip_score import format_clip_scores
+
+        scores = {
+            "prompt_original": 75.5,
+            "prompt_intervention": 65.3,
+            "image_similarity": 85.7,
+        }
+
+        formatted = format_clip_scores(scores)
+        assert isinstance(formatted, str)
+        assert "75.5" in formatted
+        assert "65.3" in formatted
+        assert "85.7" in formatted
+
+
+# =============================================================================
+# Detection Utilities Tests
+# =============================================================================
+
+
+class TestDetectionUtils:
+    """Test NudeNet detection utilities"""
+
+    def test_nudenet_classes_defined(self):
+        """Test that NudeNet classes are defined"""
+        from utils.detection import NUDENET_CLASSES, UNSAFE_LABELS
+
+        assert isinstance(NUDENET_CLASSES, list)
+        assert isinstance(UNSAFE_LABELS, list)
+        assert len(NUDENET_CLASSES) > 0
+        assert len(UNSAFE_LABELS) > 0
+        assert all(label in NUDENET_CLASSES for label in UNSAFE_LABELS)
+
+    def test_detect_nudity_coordinates_no_detector(self):
+        """Test detection with no detector returns empty list"""
+        from core.state import DashboardState
+        from utils.detection import detect_nudity_coordinates
+
+        state = DashboardState()
+        state.nudenet_detector = None
+
+        img = Image.new("RGB", (64, 64), color=(255, 0, 0))
+        detections = detect_nudity_coordinates(img, state)
+
+        assert isinstance(detections, list)
+        assert len(detections) == 0
+
+    def test_apply_censorship_boxes_no_detections(self):
+        """Test censorship with no detections returns original image"""
+        from utils.detection import apply_censorship_boxes
+
+        img = Image.new("RGB", (64, 64), color=(255, 0, 0))
+        censored = apply_censorship_boxes(img, [])
+
+        assert isinstance(censored, Image.Image)
+        assert censored.size == img.size
+
+    def test_format_nudenet_comparison_no_detections(self):
+        """Test formatting comparison with no detections"""
+        from utils.detection import format_nudenet_comparison
+
+        result = format_nudenet_comparison([], [])
+        assert isinstance(result, str)
+        assert "Original" in result
+        assert "Intervention" in result
+
+
+# =============================================================================
+# Heatmap Utilities Tests
+# =============================================================================
+
+
+class TestHeatmapUtils:
+    """Test heatmap generation utilities"""
+
+    @patch("utils.heatmap.torch")
+    def test_decode_latent_to_image(self, mock_torch):
+        """Test decoding latent to image"""
+        from utils.heatmap import decode_latent_to_image
+
+        # Mock pipeline with VAE
+        mock_pipe = MagicMock()
+        mock_vae = MagicMock()
+        mock_pipe.vae = mock_vae
+        mock_vae.decode.return_value.sample = torch.randn(1, 3, 512, 512)
+
+        latent = torch.randn(1, 4, 64, 64)
+        image = decode_latent_to_image(latent, mock_pipe, "cpu")
+
+        assert isinstance(image, Image.Image)
+
+    def test_collect_activations_from_representations(self):
+        """Test collecting activations from representations"""
+        from utils.heatmap import collect_activations_from_representations
+
+        # Mock SAE model
+        mock_sae = MagicMock()
+        mock_sae.return_value = (
+            torch.randn(64, 1280),  # reconstructed
+            torch.randn(64, 100),  # codes (activations)
+            torch.randn(64, 100),  # indices
+        )
+
+        # Create mock representations
+        representations = torch.randn(5, 1, 64, 1280)
+        timesteps = [0, 1, 2]
+
+        activations = collect_activations_from_representations(
+            representations, mock_sae, timesteps, top_k_features=3, device="cpu"
+        )
+
+        assert isinstance(activations, dict)
+        assert len(activations) == 3  # 3 timesteps
+
+
+# =============================================================================
+# Model Loader Tests (Mocked)
+# =============================================================================
+
+
+class TestModelLoader:
+    """Test model loading functions (with mocking to avoid GPU requirements)"""
+
+    @patch("diffusers.StableDiffusionPipeline")
+    def test_load_sd_model_cpu(self, mock_pipeline_class):
+        """Test loading SD model on CPU"""
+        from core.model_loader import load_sd_model
+        from core.state import DashboardState
+
+        # Mock pipeline
+        mock_pipeline = MagicMock()
+        mock_pipeline.device = "cpu"
+        mock_pipeline_class.from_pretrained.return_value = mock_pipeline
+        mock_pipeline.to.return_value = mock_pipeline
+
+        state = DashboardState()
+        pipe = load_sd_model(state, use_gpu=False)
+
+        assert pipe is not None
+        assert state.sd_pipe is not None
+        mock_pipeline_class.from_pretrained.assert_called_once()
+
+    @patch("torchmetrics.multimodal.CLIPScore")
+    def test_load_clip_model(self, mock_clip_score_class):
+        """Test loading CLIP model"""
+        from core.model_loader import load_clip_model
+        from core.state import DashboardState
+
+        # Mock CLIP model
+        mock_clip = MagicMock()
+        mock_clip_score_class.return_value = mock_clip
+        mock_clip.to.return_value = mock_clip
+
+        state = DashboardState()
+        clip_model = load_clip_model(state, device="cpu")
+
+        assert clip_model is not None
+        assert state.clip_model is not None
+        mock_clip_score_class.assert_called_once()
+
+    @patch("nudenet.NudeDetector")
+    def test_load_nudenet_model(self, mock_nudenet_class):
+        """Test loading NudeNet model"""
+        from core.model_loader import load_nudenet_model
+        from core.state import DashboardState
+
+        # Mock NudeNet detector
+        mock_detector = MagicMock()
+        mock_nudenet_class.return_value = mock_detector
+
+        state = DashboardState()
+        detector = load_nudenet_model(state)
+
+        assert detector is not None
+        assert state.nudenet_detector is not None
 
 
 # =============================================================================
@@ -273,28 +520,36 @@ class TestIntegration:
         status = state.get_model_status_text()
         assert "Loaded" in status or "●" in status
 
-    def test_layer_concept_workflow(self):
-        """Test layer and concept selection workflow"""
-        from core.concepts import get_concept_choices, get_concept_info
-        from core.layers import get_layer_choices, get_layer_info
+    def test_config_and_state_integration(self):
+        """Test config loading and state management together"""
+        from config.sae_config_loader import load_sae_config
+        from core.state import DashboardState
 
-        # Get available layers
-        layer_choices = get_layer_choices()
-        assert len(layer_choices) > 0
+        config = load_sae_config()
+        state = DashboardState()
 
-        # Select a layer
-        selected_layer = [layer_choices[0][1]]
-        layer_info = get_layer_info(selected_layer)
-        assert len(layer_info) > 0
+        assert config is not None
+        assert state is not None
+        assert state.system_state.value == "idle"
 
-        # Get available concepts
-        concept_choices = get_concept_choices()
-        assert len(concept_choices) > 0
+    def test_logging_workflow(self):
+        """Test logging multiple messages"""
+        from core.state import DashboardState
 
-        # Select concepts
-        selected_concepts = [concept_choices[0][1], concept_choices[1][1]]
-        concept_info = get_concept_info(selected_concepts)
-        assert "2 concept" in concept_info
+        state = DashboardState()
+
+        # Log different types
+        state.log("Info message", "info")
+        state.log("Warning message", "warning")
+        state.log("Error message", "error")
+        state.log("Success message", "success")
+
+        assert len(state.logs) >= 4
+        log_text = "\n".join(state.logs)
+        assert "INFO" in log_text
+        assert "WARNING" in log_text
+        assert "ERROR" in log_text
+        assert "SUCCESS" in log_text
 
 
 # =============================================================================

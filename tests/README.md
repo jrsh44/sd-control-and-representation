@@ -216,29 +216,91 @@ Tests for `src/utils/visualization.py` - Image display utilities.
 ---
 
 ### test_dashboard.py
-Tests for `dashboard/` modules - Dashboard state, layers, and concepts.
+Tests for `dashboard/` modules - Dashboard components including state management, config loading, utilities, and model loaders.
+
+**Test Classes:**
+
+#### TestStateManagement
+Tests for `dashboard/core/state.py` - State management and progress tracking.
 
 | Function | Description |
 |----------|-------------|
 | `test_state_initialization` | Verifies DashboardState initializes with correct defaults. |
-| `test_log_message` | Tests logging functionality with log level. |
+| `test_log_message` | Tests logging functionality with log level formatting. |
 | `test_model_state_update` | Tests model state updates with load times. |
 | `test_get_model_status_text` | Tests model status text generation. |
-| `test_generation_progress` | Tests generation progress tracking and formatting. |
-| `test_get_all_layers` | Tests getting all UNet layers organized by category. |
-| `test_get_layer_choices` | Tests layer choices formatting for dropdowns. |
-| `test_get_layer_info_single` | Tests layer info retrieval for single layer. |
-| `test_get_layer_info_empty` | Tests layer info with empty selection. |
-| `test_get_layer_info_multiple` | Tests layer info with multiple layers. |
-| `test_get_flat_layer_list` | Tests getting flat list of all layers. |
-| `test_is_recommended_layer` | Tests checking if layer is recommended. |
-| `test_load_concepts` | Tests concept loading from file. |
-| `test_get_concept_choices` | Tests concept choices formatting. |
-| `test_get_concept_info_empty` | Tests concept info with empty selection. |
-| `test_get_concept_info_single` | Tests concept info with single selection. |
-| `test_get_concept_info_multiple` | Tests concept info with multiple selection. |
-| `test_get_concept_label` | Tests getting single concept label. |
-| `test_validate_concepts` | Tests concept validation. |
-| `test_load_concepts_missing_file` | Tests concept loading with missing file. |
-| `test_state_lifecycle` | Tests complete state lifecycle. |
-| `test_layer_concept_workflow` | Tests layer and concept selection workflow. | |
+| `test_generation_progress` | Tests generation progress tracking and time formatting. |
+| `test_system_state_transitions` | Tests system state transitions (IDLE, LOADING, GENERATING). |
+| `test_multiple_model_states` | Tests tracking multiple model states simultaneously. |
+| `test_temp_dir_creation` | Tests temporary directory creation. |
+
+#### TestConfigLoader
+Tests for `dashboard/config/sae_config_loader.py` - SAE configuration management.
+
+| Function | Description |
+|----------|-------------|
+| `test_load_sae_config` | Tests loading SAE configuration from YAML. |
+| `test_get_sae_model_choices` | Tests getting SAE model choices for dropdown. |
+| `test_get_concept_choices` | Tests getting concept choices for an SAE model. |
+| `test_get_layer_id` | Tests getting layer ID for an SAE model. |
+| `test_get_feature_sums_path` | Tests retrieving feature sums file path. |
+| `test_get_sae_hyperparameters` | Tests retrieving SAE hyperparameters. |
+| `test_get_model_path` | Tests retrieving model weights path. |
+
+#### TestCudaUtils
+Tests for `dashboard/utils/cuda.py` - CUDA detection and compatibility.
+
+| Function | Description |
+|----------|-------------|
+| `test_get_gpu_compute_capability` | Tests GPU compute capability detection. |
+| `test_cuda_constants` | Tests CUDA module constants are properly defined. |
+| `test_get_pytorch_supported_cuda_archs` | Tests getting PyTorch supported CUDA architectures. |
+
+#### TestClipScore
+Tests for `dashboard/utils/clip_score.py` - CLIP-based image similarity metrics.
+
+| Function | Description |
+|----------|-------------|
+| `test_pil_to_tensor` | Tests PIL image to tensor conversion. |
+| `test_pil_to_tensor_grayscale` | Tests grayscale to RGB conversion. |
+| `test_get_clip_model_initialization` | Tests CLIP model initialization (mocked). |
+| `test_calculate_clip_scores_both_images` | Tests CLIP score calculation for images (mocked). |
+| `test_format_clip_scores` | Tests formatting CLIP scores for display. |
+
+#### TestDetectionUtils
+Tests for `dashboard/utils/detection.py` - NudeNet content detection.
+
+| Function | Description |
+|----------|-------------|
+| `test_nudenet_classes_defined` | Tests NudeNet class definitions. |
+| `test_detect_nudity_coordinates_no_detector` | Tests detection with no detector loaded. |
+| `test_apply_censorship_boxes_no_detections` | Tests censorship with no detections. |
+| `test_format_nudenet_comparison_no_detections` | Tests comparison formatting. |
+
+#### TestHeatmapUtils
+Tests for `dashboard/utils/heatmap.py` - Feature activation heatmap generation.
+
+| Function | Description |
+|----------|-------------|
+| `test_decode_latent_to_image` | Tests latent tensor to image decoding (mocked). |
+| `test_collect_activations_from_representations` | Tests activation collection from SAE (mocked). |
+
+#### TestModelLoader
+Tests for `dashboard/core/model_loader.py` - Model loading functions (all mocked to avoid GPU requirements).
+
+| Function | Description |
+|----------|-------------|
+| `test_load_sd_model_cpu` | Tests Stable Diffusion model loading on CPU. |
+| `test_load_clip_model` | Tests CLIP model loading for similarity scoring. |
+| `test_load_nudenet_model` | Tests NudeNet detector loading. |
+
+#### TestIntegration
+Integration tests for full workflows.
+
+| Function | Description |
+|----------|-------------|
+| `test_state_lifecycle` | Tests complete state lifecycle from initialization to loaded. |
+| `test_config_and_state_integration` | Tests config loading and state management together. |
+| `test_logging_workflow` | Tests logging multiple messages with different levels. |
+
+---
