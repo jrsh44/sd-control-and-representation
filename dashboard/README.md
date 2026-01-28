@@ -27,13 +27,27 @@ An interactive web application for visualizing and testing concept unlearning in
 uv sync
 ```
 
-### 2. Run the dashboard
+### 2. Download SAE models
+
+The dashboard requires pre-trained SAE models. Download them from HuggingFace:
+
+```bash
+# Download all available models
+uv run scripts/download_sae_models.py --all
+
+# Or list available models first
+uv run scripts/download_sae_models.py --list
+```
+
+Models will be downloaded to the `models/` directory.
+
+### 3. Run the dashboard
 
 ```bash
 uv run python dashboard/app.py
 ```
 
-### 3. Open in browser
+### 4. Open in browser
 
 Navigate to `http://127.0.0.1:7860`
 
