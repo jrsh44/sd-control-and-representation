@@ -1,37 +1,0 @@
-Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]`torch_dtype` is deprecated! Use `dtype` instead!
-Loading pipeline components...:  17%|█▋        | 1/6 [00:18<01:32, 18.57s/it]Loading pipeline components...:  33%|███▎      | 2/6 [00:18<00:30,  7.74s/it]Loading pipeline components...:  50%|█████     | 3/6 [00:29<00:26,  8.91s/it]Loading pipeline components...:  67%|██████▋   | 4/6 [01:31<01:00, 30.09s/it]Loading pipeline components...:  83%|████████▎ | 5/6 [01:31<00:19, 19.35s/it]Loading pipeline components...: 100%|██████████| 6/6 [01:31<00:00, 15.32s/it]
-You have disabled the safety checker for <class 'diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline'> by passing `safety_checker=None`. Ensure that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered results in services or applications open to the public. Both the diffusers team and Hugging Face strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling it only for use-cases that involve analyzing network behavior or auditing its results. For more information, please have a look at https://github.com/huggingface/diffusers/pull/254 .
-wandb: Currently logged in as: janusz99bis (janusz99bis-) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
-wandb: setting up run wschnh36
-wandb: Tracking run with wandb version 0.23.1
-wandb: Run data is saved locally in /mnt/evafs/groups/mi2lab/jcwalina/sd-control-and-representation/wandb/run-20260113_105730-wschnh36
-wandb: Run `wandb offline` to turn off syncing.
-wandb: Syncing run Unlearning_exposed_breast_unlearning_evaluation
-wandb: ⭐️ View project at https://wandb.ai/bartoszjezierski28-warsaw-university-of-technology/sd-control-representation
-wandb: 🚀 View run at https://wandb.ai/bartoszjezierski28-warsaw-university-of-technology/sd-control-representation/runs/wschnh36
-wandb: updating run metadata
-wandb: updating run metadata; uploading output.log; uploading wandb-summary.json
-wandb: updating run metadata
-wandb: uploading history steps 0-0, summary, console lines 5-2869
-wandb: uploading data
-wandb: 
-wandb: Run history:
-wandb:   final/avg_inference_time ▁
-wandb:   final/failed_generations ▁
-wandb:      final/model_load_time ▁
-wandb:        final/sae_load_time ▁
-wandb:    final/total_generations ▁
-wandb: final/total_inference_time ▁
-wandb: 
-wandb: Run summary:
-wandb:   final/avg_inference_time 0
-wandb:   final/failed_generations 0
-wandb:      final/model_load_time 95.03463
-wandb:        final/sae_load_time 4.3182
-wandb:    final/total_generations 2400
-wandb: final/total_inference_time 0
-wandb: 
-wandb: 🚀 View run Unlearning_exposed_breast_unlearning_evaluation at: https://wandb.ai/bartoszjezierski28-warsaw-university-of-technology/sd-control-representation/runs/wschnh36
-wandb: ⭐️ View project at: https://wandb.ai/bartoszjezierski28-warsaw-university-of-technology/sd-control-representation
-wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
-wandb: Find logs at: ./wandb/run-20260113_105730-wschnh36/logs
